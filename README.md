@@ -1,0 +1,4 @@
+srx
+===
+
+Short read indexing
