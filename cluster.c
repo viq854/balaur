@@ -33,8 +33,8 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 		if((i > 0) && (i % 50000 == 0)) {
 			printf("Clustered %d reads. Total of %d distinct clusters found.\n", i, clusters->num_clusters);
 		}
-		read_t r = reads->reads[i];	
-		if((i == 0) || (r.simhash != prev_cluster->simhash)){
+		read_t* r = &reads->reads[i];	
+		if((i == 0) || (r->simhash != prev_cluster->simhash)){
 			// assign it to a new cluster
 			if(clusters->alloc_num_clusters == clusters->num_clusters) {
 				clusters->alloc_num_clusters <<= 1;
@@ -43,8 +43,8 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 			cluster_t* new_cluster = &clusters->clusters[clusters->num_clusters];
 			new_cluster->reads =  (read_t**) malloc(INIT_CLUSTER_SIZE * sizeof(read_t*));
 			new_cluster->alloc_size = INIT_CLUSTER_SIZE;
-			new_cluster->simhash = r.simhash;
-			new_cluster->reads[0] = &r;
+			new_cluster->simhash = r->simhash;
+			new_cluster->reads[0] = r;
 			new_cluster->size = 1;
 			clusters->num_clusters++;
 			prev_cluster = new_cluster;
@@ -53,7 +53,7 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 				prev_cluster->alloc_size <<= 1;
 				prev_cluster->reads = (read_t**) realloc(prev_cluster->reads, prev_cluster->alloc_size * sizeof(read_t*));
 			}
-			prev_cluster->reads[prev_cluster->size] = &r;
+			prev_cluster->reads[prev_cluster->size] = r;
 			prev_cluster->size++;
 		}
 	}

@@ -35,9 +35,14 @@ void index_reads(char* readsFname, index_params_t* params) {
 	cluster_sorted_reads(reads, &clusters);
 	
 	printf("Total number of clusers = %d \n", clusters->num_clusters);
+	int count = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
-		if(i < 50) {
+		if((count < 50) && (clusters->clusters[i].size > 1)) {
 			printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
+			count++;
+			for(int j = 0; j < clusters->clusters[i].size; j++) {
+				print_read(clusters->clusters[i].reads[j]);
+			}
 		}
 	}
 	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);

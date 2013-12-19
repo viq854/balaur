@@ -138,13 +138,13 @@ void free_reads(reads_t* reads) {
 }
 
 void print_read(read_t* read) {
-	printf("READ %s \n", read->name);
-	printf("FWD: ");
+	printf("%s \n", read->name);
+	//printf("FWD: ");
 	for(int i = 0; i < read->len; i++) {
 		printf("%c", iupacChar[(int) read->seq[i]]);
 	} printf("\n");
-	printf("RC: ");
-	for(int i = 0; i < read->len; i++) {
-		printf("%c", iupacChar[(int) read->rc[i]]);
-	} printf("\n");
+	//printf("RC: ");
+	//for(int i = 0; i < read->len; i++) {
+		//printf("%c", iupacChar[(int) read->rc[i]]);
+	//} printf("\n");
 }

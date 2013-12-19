@@ -59,6 +59,7 @@ static const unsigned char nt4_table[256] = {
 };
 
 reads_t* fastq2reads(char *readsFname);
+void print_read(read_t* read);
 
 
 #endif /*IO_H_*/
