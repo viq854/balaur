@@ -20,7 +20,7 @@ typedef struct {
 	cluster_t* clusters;
 } clusters_t;
 
-void sort_simhash(reads_t* reads);
+void sort_reads_simhash(reads_t* reads);
 void cluster_sorted_reads(reads_t* reads, clusters_t** out);
 void cluster_reads(reads_t* reads, clusters_t** out);
 

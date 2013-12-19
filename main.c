@@ -10,9 +10,9 @@
 
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 8;
+	params->k = 6;
 	params->s = 15;
-	params->min_freq = 0.02;
+	params->min_freq = 0.03;
 }
 
 void generate_reads(char* fname) {

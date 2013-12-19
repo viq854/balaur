@@ -28,13 +28,14 @@ void index_reads(char* readsFname, index_params_t* params) {
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
-		simhash(&reads->reads[i], histogram, params);
+		//simhash(&reads->reads[i], histogram, params);
+		cityhash(&reads->reads[i]);
 		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 4. sort the reads by their simhash
-	sort_simhash(reads);
+	sort_reads_simhash(reads);
 	
 	// 5. split reads into "clusters" based on their simhash 
 	t = clock();
@@ -45,7 +46,7 @@ void index_reads(char* readsFname, index_params_t* params) {
 	
 	int count = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
-		if((count < 50) && (clusters->clusters[i].size > 1)) {
+		if((count < 20) && (clusters->clusters[i].size > 1)) {
 			//printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
 			//count++;
 			//for(int j = 0; j < clusters->clusters[i].size; j++) {

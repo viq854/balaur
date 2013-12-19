@@ -10,6 +10,8 @@
 void simhash(read_t* r, int* histogram, index_params_t* params);
 void generate_kmer_hist(reads_t* reads, index_params_t* params, int** histogram);
 
+void cityhash(read_t* r);
+
 void hashlittle2( 
   const void *key,       /* the key to hash */
   size_t      length,    /* length of the key */

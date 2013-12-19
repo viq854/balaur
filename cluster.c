@@ -8,24 +8,36 @@
 #include "io.h"
 #include "cluster.h"
 
-int comp (const void * elem1, const void * elem2) {
-	simhash_t h1 = ((read_t*) elem1)->simhash;
-	simhash_t h2 = ((read_t*) elem2)->simhash;
+// read comparator
+int comp_reads(const void * r1, const void * r2) {
+	simhash_t h1 = ((read_t*) r1)->simhash;
+	simhash_t h2 = ((read_t*) r2)->simhash;
 	return (h1 > h2) - (h1 < h2);
 }
 
-simhash_t binaryToGray(simhash_t num) {
-        return (num >> 1) ^ num;
+// cluster comparator
+int comp_clusters(const void * r1, const void * r2) {
+	simhash_t h1 = ((read_t*) r1)->simhash;
+	simhash_t h2 = ((read_t*) r2)->simhash;
+	return (h1 > h2) - (h1 < h2);
 }
 
-void sort_simhash(reads_t* reads) {
-	qsort(reads->reads, reads->count, sizeof(read_t), comp);
-	/*printf("Sorted reads:\n");
-	for(int i = 0; i < reads->count; i++) {
-		printf("%llx\n", reads->reads[i].simhash);
-	}*/
+// sorts reads by their simhash value
+void sort_reads_simhash(reads_t* reads) {
+	qsort(reads->reads, reads->count, sizeof(read_t), comp_reads);
 }
 
+// sorts clusters by their simhash value
+void sort_clusters_simhash(clusters_t* clusters) {
+	qsort(clusters->clusters, clusters->num_clusters, sizeof(cluster_t), comp_clusters);
+}
+
+// collapse clusters with similar simhash value
+void collapse_clusters(clusters_t* clusters) {
+	
+}
+
+// finds the reads with the same simhash value and assigns them into the same cluster
 void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 	clusters_t* clusters = (clusters_t*) malloc(sizeof(clusters_t));
 	clusters->num_clusters = 0;

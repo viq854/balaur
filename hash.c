@@ -9,6 +9,8 @@
 #include "hash.h"
 #include "city.h"
 
+// --- k-mer weights ---
+
 // compute the frequency of each kmer
 void generate_kmer_hist(reads_t* reads, index_params_t* params, int** hist) {
 	// stores the counts of each kmer
@@ -51,6 +53,9 @@ int get_kmer_weight(char* seq, int len, int* histogram, index_params_t* params) 
 	return 1;
 }
 
+// --- LSH: simhash ---
+
+
 // for each bit position i in the kmer hash
 // if hash[i] is 1: increment v[i]; otherwise, decrement v[i]
 void add_kmer_hash_bits(int* v, simhash_t hash) {
@@ -90,7 +95,10 @@ void simhash(read_t* r, int* histogram, index_params_t* params) {
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	//add_kmer_hash_bits(v, CityHash64(&r->seq[i], (params->k - 1)));
-	
-	// TODO: add the remaining substring
 	generate_simhash_fp(r, v);
+}
+
+// --- regular hashing ---
+void cityhash(read_t* r) {
+	r->simhash = CityHash64(r->seq, r->len);
 }
