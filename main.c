@@ -8,7 +8,7 @@
 
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 2;
+	params->k = 4;
 	params->s = 15;
 }
 
