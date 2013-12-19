@@ -46,6 +46,8 @@ void simhash(read_t* r, index_params_t* params) {
 		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
+	add_kmer_hash_bits(v, CityHash64(&r->seq[i], (params->k - 1)));
+	
 	// TODO: add the remaining substring
 	generate_simhash_fp(r, v);
 }
