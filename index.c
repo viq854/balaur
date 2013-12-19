@@ -28,8 +28,8 @@ void index_reads(char* readsFname, index_params_t* params) {
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
-		//simhash(&reads->reads[i], histogram, params);
-		cityhash(&reads->reads[i]);
+		simhash(&reads->reads[i], histogram, params);
+		//cityhash(&reads->reads[i]);
 		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -54,6 +54,11 @@ void index_reads(char* readsFname, index_params_t* params) {
 			//}
 		}
 	}
+	
+	// 6. collapse the clusters that are close to each other in Hamming distance
+	int num_collapsed = collapse_clusters(clusters, params);
+	printf("Collapsed %d clusters \n", num_collapsed);
+	printf("Total number of clusters remaining = %d \n", clusters->num_clusters - num_collapsed);
 	
 	free_reads(reads);
 	free(histogram);

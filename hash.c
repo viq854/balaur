@@ -9,6 +9,12 @@
 #include "hash.h"
 #include "city.h"
 
+// --- hamming distance utils ---
+
+int hamming_dist(simhash_t h1, simhash_t h2) {
+	return __builtin_popcountl(h1 ^ h2);
+}
+
 // --- k-mer weights ---
 
 // compute the frequency of each kmer
