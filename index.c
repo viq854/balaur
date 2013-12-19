@@ -22,18 +22,23 @@ void index_reads(char* readsFname, index_params_t* params) {
 	t = clock();
 	for(int i = 0; i < reads->count; i++) {
 		simhash(&reads->reads[i], params);
-		printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
+		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 3. split reads into "clusters" based on their fp
+	// 3. sort the reads by their simhash
+	sort_simhash(reads);
+	
+	// 4. split reads into "clusters" based on their fp
 	t = clock();
 	clusters_t* clusters;
-	cluster_reads(reads, &clusters);
+	cluster_sorted_reads(reads, &clusters);
 	
 	printf("Total number of clusers = %d \n", clusters->num_clusters);
 	for(int i = 0; i < clusters->num_clusters; i++) {
-		printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
+		if(i < 50) {
+			printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
+		}
 	}
 	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
