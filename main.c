@@ -1,15 +1,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <math.h>
 #include <getopt.h>
 #include "index.h"
 
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 4;
+	params->k = 8;
 	params->s = 15;
+	params->min_freq = 0.02;
 }
 
 void generate_reads(char* fname) {
@@ -63,6 +66,21 @@ int main(int argc, char *argv[]) {
 	
 	//generate_reads(argv[1]);
 	index_reads(argv[1], params);
+	
+	/*for(uint64_t i = 0; i < 10; i++) {
+		//uint64_t gray = (num >> 1) ^ num;
+		//uint64_t num = i;
+		//uint64_t mask;
+	    //for (mask = num >> 1; mask != 0; mask = mask >> 1) {
+	      //  num = num ^ mask;
+	    //}
+		uint64_t n = i; 
+		uint64_t p = n;
+		while (n >>= 1ULL) {
+			p ^= n;
+		}
+		printf("%llu %llu \n",  i, p);
+	}*/
 	
 	free(params);
 	return 0;

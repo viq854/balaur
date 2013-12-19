@@ -3,6 +3,10 @@
 
 typedef struct {
 	int k; // length of the k-mers
+	float min_freq;
+	float max_freq;
+	uint64_t min_count;
+	uint64_t max_count;
 	int s; // length of the hash vector
 } index_params_t;
 
