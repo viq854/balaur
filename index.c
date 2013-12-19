@@ -18,32 +18,43 @@ void index_reads(char* readsFname, index_params_t* params) {
 	reads_t* reads = fastq2reads(readsFname);
 	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 2. compute the fingerprints of each read
+	// 2. compute the frequency of each kmer
+	int* histogram;
 	t = clock();
+	generate_kmer_hist(reads, params, &histogram);
+	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+	// 3. compute the fingerprints of each read
+	t = clock();
+	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
-		simhash(&reads->reads[i], params);
+		simhash(&reads->reads[i], histogram, params);
 		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 3. sort the reads by their simhash
+	// 4. sort the reads by their simhash
 	sort_simhash(reads);
 	
-	// 4. split reads into "clusters" based on their fp
+	// 5. split reads into "clusters" based on their simhash 
 	t = clock();
 	clusters_t* clusters;
 	cluster_sorted_reads(reads, &clusters);
+	printf("Total number of clusters = %d \n", clusters->num_clusters);
+	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	printf("Total number of clusers = %d \n", clusters->num_clusters);
 	int count = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
 		if((count < 50) && (clusters->clusters[i].size > 1)) {
-			printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
-			count++;
-			for(int j = 0; j < clusters->clusters[i].size; j++) {
-				print_read(clusters->clusters[i].reads[j]);
-			}
+			//printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
+			//count++;
+			//for(int j = 0; j < clusters->clusters[i].size; j++) {
+				//print_read(clusters->clusters[i].reads[j]);
+			//}
 		}
 	}
-	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+	free_reads(reads);
+	free(histogram);
+	free(clusters->clusters); //TODO
 }

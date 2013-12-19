@@ -14,6 +14,10 @@ int comp (const void * elem1, const void * elem2) {
 	return (h1 > h2) - (h1 < h2);
 }
 
+simhash_t binaryToGray(simhash_t num) {
+        return (num >> 1) ^ num;
+}
+
 void sort_simhash(reads_t* reads) {
 	qsort(reads->reads, reads->count, sizeof(read_t), comp);
 	/*printf("Sorted reads:\n");

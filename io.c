@@ -148,3 +148,24 @@ void print_read(read_t* read) {
 		//printf("%c", iupacChar[(int) read->rc[i]]);
 	//} printf("\n");
 }
+
+// --- Compression ---
+
+// number of chars in 16 bits (2 per char)
+#define CHARS_PER_SHORT 8
+#define BITS_PER_CHAR 2
+#define BITS_IN_SHORT 16
+
+// compress the seq of given length into 16 bits (using 2 bits per char)
+int pack_16(const char *seq, const int length, uint16_t* err) {
+	uint16_t c = 0;
+	for (int k = 0; k < length; k++) {
+		if(seq[k] == nt4_table[(int) 'N']) {
+			return -1;
+		}
+		c = c | (seq[k] << (BITS_IN_SHORT - (k+1) * BITS_PER_CHAR));
+	}
+	
+	*err = c;
+	return 0;
+}

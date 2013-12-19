@@ -60,6 +60,9 @@ static const unsigned char nt4_table[256] = {
 
 reads_t* fastq2reads(char *readsFname);
 void print_read(read_t* read);
+void free_reads(reads_t* reads);
 
+// compression
+int pack_16(const char *seq, const int length, uint16_t* err);
 
 #endif /*IO_H_*/
