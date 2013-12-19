@@ -12,6 +12,38 @@ void set_default_index_params(index_params_t* params) {
 	params->s = 15;
 }
 
+void generate_reads(char* fname) {
+	FILE* readsFile = (FILE*) fopen(fname, "w");
+	if (readsFile == NULL) {
+		printf("Cannot open reads file!\n");
+		exit(1);
+	}
+	
+	int readlen = 100;
+	int readnum = 100;
+	int pos = 0;
+	for(int i = 0; i < readnum; i++) {
+		fprintf(readsFile, "@r%d\n", i);
+		for(int j = 0; j < readlen; j++) {
+			if(j == pos) {
+				fprintf(readsFile, "%c", 'C');
+			} else {
+				fprintf(readsFile, "%c", 'A');
+			}
+		}
+		fprintf(readsFile, "\n+\n");
+		for(int j = 0; j < readlen; j++) {
+			fprintf(readsFile, "%d", 2);		
+		}
+		fprintf(readsFile, "\n");
+		pos++;
+		if(pos == readnum) {
+			pos = 0;
+		}
+	}
+	fclose(readsFile);
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		printf("Usage: srx [options] <reads.fq> \n");
@@ -28,7 +60,10 @@ int main(int argc, char *argv[]) {
 			default: return 0;
 		}
 	}
+	
+	//generate_reads(argv[1]);
 	index_reads(argv[1], params);
+	
 	free(params);
 	return 0;
 }

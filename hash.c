@@ -27,7 +27,7 @@ void generate_simhash_fp(read_t* r, int* v) {
 	simhash_t simhash = 0;
 	for (int b = 0; b < SIMHASH_BITLEN; b++) {
 		if(v[b] >= 0) {
-			simhash |= 1 << b;
+			simhash |= (1ULL << b);
 			r->simhash_popc++;
 		}
 	}
@@ -40,10 +40,12 @@ void simhash(read_t* r, index_params_t* params) {
 	int v[SIMHASH_BITLEN] = { 0 };
 	
 	// find the read kmers, hash them, and add the hash to V
-	for(int i = 0; i <= (r->len - params->k); i++) {
+	int i;
+	for(i = 0; i <= (r->len - params->k); i++) {
 		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
 		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
+	// TODO: add the remaining substring
 	generate_simhash_fp(r, v);
 }
