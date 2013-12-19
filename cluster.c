@@ -7,6 +7,7 @@
 #include <time.h>
 #include "io.h"
 #include "cluster.h"
+#include "hash.h"
 
 // read comparator
 int comp_reads(const void * r1, const void * r2) {
@@ -32,9 +33,63 @@ void sort_clusters_simhash(clusters_t* clusters) {
 	qsort(clusters->clusters, clusters->num_clusters, sizeof(cluster_t), comp_clusters);
 }
 
+void add_read_to_cluster(cluster_t* cluster, read_t* r) {
+	if(cluster->alloc_size == cluster->size) {
+		cluster->alloc_size <<= 1;
+		cluster->reads = (read_t**) realloc(cluster->reads, cluster->alloc_size * sizeof(read_t*));
+	}
+	cluster->reads[cluster->size] = r;
+	cluster->size++;
+}
+
+
 // collapse clusters with similar simhash value
-void collapse_clusters(clusters_t* clusters) {
+#define MAX_DIST 65
+int collapse_clusters(clusters_t* clusters, index_params_t* params) {
+	sort_clusters_simhash(clusters);
 	
+	// find the Hamming distance between adjacent simhashes (TODO: consider a window)
+	int* hammd_pairs  = (int*) malloc((clusters->num_clusters - 1) * sizeof(int));
+	
+	int min_dist = MAX_DIST;
+	int min_idx = 0;
+	for(int i = 0; i < clusters->num_clusters - 1; i++) {
+		simhash_t h1 = clusters->clusters[i].simhash;
+		simhash_t h2 = clusters->clusters[i+1].simhash;
+		int dist = hamming_dist(h1, h2);
+		hammd_pairs[i] = dist;
+		if(dist < min_dist) {
+			min_dist = dist;
+			min_idx = i;
+		}
+	}
+	
+	int num_collapsed = 0;
+	while(min_dist < params->max_hammd) {
+		// collapse cluster pair and min_idx
+		cluster_t* c1 = &clusters->clusters[min_idx];
+		cluster_t* c2 = &clusters->clusters[min_idx+1];
+		
+		for(int i = 0; i < c2->size; i++) {
+			add_read_to_cluster(c1, c2->reads[i]);
+		}
+		
+		// remove the pair and the neighbors from min search
+		hammd_pairs[min_idx] = MAX_DIST;
+		if(min_idx + 1 < clusters->num_clusters) hammd_pairs[min_idx + 1] = MAX_DIST;
+		if(min_idx - 1 >= 0) hammd_pairs[min_idx - 1] = MAX_DIST;
+		
+		// find the next min
+		min_dist = MAX_DIST;
+		for(int i = 0; i < clusters->num_clusters - 1; i++) {
+			if(hammd_pairs[i] < min_dist) {
+				min_dist = hammd_pairs[i];
+				min_idx = i;
+			}
+		}	
+		num_collapsed++;
+	}
+	return num_collapsed;
 }
 
 // finds the reads with the same simhash value and assigns them into the same cluster
@@ -65,12 +120,7 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 			clusters->num_clusters++;
 			prev_cluster = new_cluster;
 		} else {
-			if(prev_cluster->alloc_size == prev_cluster->size) {
-				prev_cluster->alloc_size <<= 1;
-				prev_cluster->reads = (read_t**) realloc(prev_cluster->reads, prev_cluster->alloc_size * sizeof(read_t*));
-			}
-			prev_cluster->reads[prev_cluster->size] = r;
-			prev_cluster->size++;
+			add_read_to_cluster(prev_cluster, r);
 		}
 	}
 	*out = clusters;

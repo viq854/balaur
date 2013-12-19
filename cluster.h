@@ -1,6 +1,7 @@
 #ifndef CLUSTER_H_
 #define CLUSTER_H_
 #include "io.h"
+#include "index.h"
 
 #define INIT_CLUSTER_SIZE 100
 #define INIT_NUM_CLUSTERS 10000
@@ -23,5 +24,7 @@ typedef struct {
 void sort_reads_simhash(reads_t* reads);
 void cluster_sorted_reads(reads_t* reads, clusters_t** out);
 void cluster_reads(reads_t* reads, clusters_t** out);
+
+int collapse_clusters(clusters_t* clusters, index_params_t* params);
 
 #endif /*CLUSTER_H_*/

@@ -7,6 +7,9 @@ typedef struct {
 	float max_freq;
 	uint64_t min_count;
 	uint64_t max_count;
+	
+	int max_hammd; // maximum hamming distance to
+	
 	int s; // length of the hash vector
 } index_params_t;
 

@@ -13,6 +13,7 @@ void set_default_index_params(index_params_t* params) {
 	params->k = 6;
 	params->s = 15;
 	params->min_freq = 0.03;
+	params->max_hammd = 10;
 }
 
 void generate_reads(char* fname) {
