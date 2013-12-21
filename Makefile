@@ -4,7 +4,7 @@ CFLAGS=		-g -Wall -O3 -std=c99 -fopenmp
 CXXFLAGS=	$(CFLAGS)
 DFLAGS=		-DHAVE_PTHREAD
 DBGFLAGS= 	#-DDEBUG_ENABLED
-OBJS=		index.o main.o io.o hash.o city.o cluster.o
+OBJS=		index.o main.o io.o hash.o city.o cluster.o align.o
 PROG=		srx
 INCLUDES=	
 LIBS=		-lm -lz -lpthread
