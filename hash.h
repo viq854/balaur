@@ -7,8 +7,12 @@
 // ---- simhash ----
 
 #define SIMHASH_BITLEN 64
-void simhash(read_t* r, int* histogram, index_params_t* params);
-void generate_kmer_hist(reads_t* reads, index_params_t* params, int** histogram);
+
+void simhash_read(read_t* r, int* histogram, index_params_t* params);
+void simhash_ref(ref_t* ref, ref_win_t* w, int* histogram, index_params_t* params);
+void generate_reads_kmer_hist(reads_t* reads, index_params_t* params, int** histogram);
+void generate_ref_kmer_hist(ref_t* ref, index_params_t* params, int** hist);
+
 int hamming_dist(simhash_t h1, simhash_t h2);
 
 void cityhash(read_t* r);

@@ -7,13 +7,15 @@
 #include <math.h>
 #include <getopt.h>
 #include "index.h"
-
+#include "align.h"
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 6;
+	params->k = 4;
 	params->s = 15;
 	params->min_freq = 0.03;
-	params->max_hammd = 10;
+	params->max_freq = 0.6;
+	params->max_hammd = 7;
+	params->ref_window_size = 6;
 }
 
 void generate_reads(char* fname) {
@@ -50,7 +52,7 @@ void generate_reads(char* fname) {
 
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
-		printf("Usage: srx [options] <reads.fq> \n");
+		printf("Usage: srx [options] <ref.fa> <reads.fq> \n");
 		exit(1);
 	}
 	index_params_t* params = (index_params_t*) calloc(1, sizeof(index_params_t));
@@ -66,7 +68,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	//generate_reads(argv[1]);
-	index_reads(argv[1], params);
+	//index_reads(argv[1], params);
+	index_ref(argv[1], params);
 	
 	/*for(uint64_t i = 0; i < 10; i++) {
 		//uint64_t gray = (num >> 1) ^ num;

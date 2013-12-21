@@ -3,6 +3,7 @@
 
 typedef struct {
 	int k; // length of the k-mers
+	
 	float min_freq;
 	float max_freq;
 	uint64_t min_count;
@@ -10,9 +11,12 @@ typedef struct {
 	
 	int max_hammd; // maximum hamming distance to
 	
+	int ref_window_size;
+	
 	int s; // length of the hash vector
 } index_params_t;
 
+void index_ref(char* fastaFname, index_params_t* params);
 void index_reads(char* readsFname, index_params_t* params);
 
 #endif /*INDEX_H_*/
