@@ -18,9 +18,9 @@ int hamming_dist(simhash_t h1, simhash_t h2) {
 // --- k-mer weights ---
 
 // compute the frequency of each kmer in the read set
-void generate_reads_kmer_hist(reads_t* reads, index_params_t* params, int** hist) {
+void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 	// stores the counts of each kmer
-	int* histogram = (int*) calloc(65536, sizeof(int));
+	reads->hist = (int*) calloc(65536, sizeof(int));
 	
 	// add the contribution of each read
 	for(int i = 0; i < reads->count; i++) {
@@ -31,12 +31,10 @@ void generate_reads_kmer_hist(reads_t* reads, index_params_t* params, int** hist
 			if(pack_16(&r->seq[j], params->k, &kmer)) {
 				continue;
 			}
-			//printf("compressed = %lx \n", kmer);
 			// update the count
-			histogram[kmer]++;
+			reads->hist[kmer]++;
 		}
 	}
-	*hist = histogram;
 }
 
 // checks if the window is informative or not
@@ -52,9 +50,9 @@ int is_valid_window(char* window, index_params_t* params) {
 }
 
 // compute the frequency of each kmer in the read set
-void generate_ref_kmer_hist(ref_t* ref, index_params_t* params, int** hist) {
+void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 	// stores the counts of each kmer
-	int* histogram = (int*) calloc(65536, sizeof(int));
+	ref->hist = (int*) calloc(65536, sizeof(int));
 	
 	ref->num_windows = 0;
 	seq_t max_num_windows = ref->len - params->ref_window_size + 1;
@@ -80,24 +78,23 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params, int** hist) {
 			continue;
 		}
 		// update the count
-		histogram[kmer]++;
+		ref->hist[kmer]++;
 	}
-	
-	*hist = histogram;
 }
 
 // returns the weight of each read kmer
 // 0 if the kmer should be ignored
-int get_reads_kmer_weight(char* seq, int len, int* histogram, index_params_t* params) {
+int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, index_params_t* params) {
 	uint16_t kmer;
 	if(pack_16(seq, len, &kmer)) {
 		return 0;
 	}
-	int count = histogram[kmer];
-	//printf("count %d \n", histogram[kmer]);
+	int min_count = reads_hist[kmer];
+	int max_count = ref_hist[kmer];
+	//printf("count %d \n", reads_hist[kmer]);
 	
 	// filter out infrequent kmers
-	if(count < params->min_count) {
+	if((min_count < params->min_count) || (max_count > params->max_count)) {
 		return 0;
 	}
 	return 1;
@@ -105,13 +102,13 @@ int get_reads_kmer_weight(char* seq, int len, int* histogram, index_params_t* pa
 
 // returns the weight of each reference kmer
 // 0 if the kmer should be ignored
-int get_ref_kmer_weight(char* seq, int len, int* histogram, index_params_t* params) {
+int get_ref_kmer_weight(char* seq, int len, int* hist, index_params_t* params) {
 	uint16_t kmer;
 	if(pack_16(seq, len, &kmer) < 0) {
 		return 0;
 	}
-	int count = histogram[kmer];
-	//printf("count %d \n", histogram[kmer]);
+	int count = hist[kmer];
+	//printf("count %d \n", hist[kmer]);
 	
 	// filter out infrequent kmers
 	if(count > params->max_count) {
@@ -149,16 +146,16 @@ simhash_t generate_simhash_fp(int* v) {
 }
 
 // computes the Charikar simhash fingerprint
-void simhash_read(read_t* r, int* histogram, index_params_t* params) {	
+void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {	
 	int v[SIMHASH_BITLEN] = { 0 };
 	
 	// find the read kmers, hash them, and add the hash to V
 	int i;
 	for(i = 0; i <= (r->len - params->k); i++) {
-		int weight = get_reads_kmer_weight(&r->seq[i], params->k, histogram, params);
+		int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
 		if(weight == 0) continue;
 		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
-		//printf("hash = %llx \n", kmer_hash);
+		printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	//add_kmer_hash_bits(v, CityHash64(&r->seq[i], (params->k - 1)));
@@ -171,12 +168,12 @@ void cityhash(read_t* r) {
 }
 
 // compute the simhash of a reference window
-void simhash_ref(ref_t* ref, ref_win_t* window, int* histogram, index_params_t* params) {
+void simhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	//printf("w = %llu \n", window->pos);
 	int v[SIMHASH_BITLEN] = { 0 };
 	// find the read kmers, hash them, and add the hash to V
 	for(int i = 0; i <= (params->ref_window_size - params->k); i++) {
-		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, histogram, params);
+		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
 		if(weight == 0) continue;
 		simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
 		//printf("hash = %llx \n", kmer_hash);

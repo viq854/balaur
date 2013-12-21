@@ -11,11 +11,10 @@
 
 void set_default_index_params(index_params_t* params) {
 	params->k = 4;
-	params->s = 15;
-	params->min_freq = 0.03;
+	params->min_freq = 0.001;
 	params->max_freq = 0.6;
-	params->max_hammd = 7;
 	params->ref_window_size = 6;
+	params->max_hammd = 7;
 }
 
 void generate_reads(char* fname) {
@@ -59,10 +58,13 @@ int main(int argc, char *argv[]) {
 	set_default_index_params(params);
 
 	int c;
-	while ((c = getopt(argc-1, argv+1, "k:s:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "k:w:d:")) >= 0) {
 		switch (c) {
 			case 'k': params->k = atoi(optarg); break;
-			case 's': params->s = atoi(optarg); break;
+			case 'w': params->ref_window_size = atoi(optarg); break;
+			case 'd': params->max_hammd = atoi(optarg); break;
+			case 'minf': params->min_freq = atof(optarg); break;
+			case 'maxf': params->max_freq = atof(optarg); break;
 			default: return 0;
 		}
 	}
@@ -73,7 +75,7 @@ int main(int argc, char *argv[]) {
 	ref_t* ref;
 	index_ref(argv[1], params, &ref);
 	reads_t* reads;
-	index_reads(argv[2], params, &reads);
+	index_reads(argv[2], ref, params, &reads);
 	align_reads(ref, reads);
 	
 	/*for(uint64_t i = 0; i < 10; i++) {

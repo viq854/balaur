@@ -45,6 +45,19 @@ void sort_reads_simhash(reads_t* reads) {
 	qsort(reads->reads, reads->count, sizeof(read_t), comp_reads);
 }
 
+// finds the number of windows with a different simhash
+seq_t get_num_distinct(ref_t* ref) {
+	simhash_t prev;
+	seq_t num_diff = 0;
+	for(seq_t i = 0; i < ref->num_windows; i++) {
+		if((i == 0) || (ref->windows[i].simhash != prev)){
+			num_diff++;
+			prev = ref->windows[i].simhash;
+		} 
+	}
+	return num_diff;
+}
+
 void add_read_to_cluster(cluster_t* cluster, read_t* r) {
 	if(cluster->alloc_size == cluster->size) {
 		cluster->alloc_size <<= 1;
@@ -53,7 +66,6 @@ void add_read_to_cluster(cluster_t* cluster, read_t* r) {
 	cluster->reads[cluster->size] = r;
 	cluster->size++;
 }
-
 
 // collapse clusters with similar simhash value
 #define MAX_DIST 65

@@ -57,7 +57,7 @@ void align_reads(ref_t* ref, reads_t* reads) {
 		}
 		hits++;
 	}
-	printf("Total number of hits fund = %d \n", hits);
+	printf("Total number of hits found = %d \n", hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 }
