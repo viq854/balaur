@@ -28,7 +28,7 @@ void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 		for(int j = 0; j <= (r->len - params->k); j++) {
 			// compress the kmer into 16 bits
 			uint16_t kmer;
-			if(pack_16(&r->seq[j], params->k, &kmer)) {
+			if(pack_16(&r->seq[j], params->k, &kmer) < 0) {
 				continue;
 			}
 			// update the count
@@ -72,13 +72,23 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 	
 	// compute the k-mers
 	for(seq_t j = 0; j <= (ref->len - params->k); j++) {
-		// compress the kmer into 16 bits
-		uint16_t kmer;
-		if(pack_16(&ref->seq[j], params->k, &kmer)) {
-			continue;
+		if((j < ref->len - params->ref_window_size) && (is_valid_window(&ref->seq[j], params))) {
+			// compress the kmer into 16 bits
+			uint16_t kmer;
+			if(pack_16(&ref->seq[j], params->k, &kmer) < 0) {
+				continue;
+			}
+			// update the count
+			ref->hist[kmer]++;
+		} else {
+			// compress the kmer into 16 bits
+			uint16_t kmer;
+			if(pack_16(&ref->seq[j], params->k, &kmer) >= 0) {
+				//not a stretch of N's
+				ref->hist[kmer] += params->ref_window_size - params->k;
+			}
+			j += params->ref_window_size - params->k;
 		}
-		// update the count
-		ref->hist[kmer]++;
 	}
 }
 
@@ -86,7 +96,7 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 // 0 if the kmer should be ignored
 int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, index_params_t* params) {
 	uint16_t kmer;
-	if(pack_16(seq, len, &kmer)) {
+	if(pack_16(seq, len, &kmer) < 0) {
 		return 0;
 	}
 	int min_count = reads_hist[kmer];
@@ -155,7 +165,7 @@ void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 		int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
 		if(weight == 0) continue;
 		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
-		printf("hash = %llx \n", kmer_hash);
+		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	//add_kmer_hash_bits(v, CityHash64(&r->seq[i], (params->k - 1)));

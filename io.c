@@ -187,6 +187,28 @@ char *strdup(const char *str) {
     return dup;
 }
 
+// assumes that reads were generated with wgsim
+void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
+    int token_index = 0;
+    const char delimiters[] = "_";
+    char* read_name_dup = strdup(read_name);
+    char* token = strtok(read_name_dup, delimiters);
+    while (token != NULL) {
+        if(token_index == 1) {
+                sscanf(token, "%u", ref_pos_l);
+        } else if(token_index == 2) {
+                sscanf(token, "%u", ref_pos_r);
+        } else if(token_index == 3) {
+                *strand = (strcmp(token, "nm") == 0) ? 1 : 0;
+        } else if(token_index > 3){
+        	break;
+        }
+        token = strtok(NULL, delimiters);
+        token_index++;
+    }
+    free(read_name_dup);
+}
+
 void free_reads(reads_t* reads) {
 	for(int i = 0; i < reads->count; i++) {
 		if(reads->reads[i].seq) free(reads->reads[i].seq);

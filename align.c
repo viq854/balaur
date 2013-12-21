@@ -29,6 +29,21 @@ seq_t find_window_match(ref_t* ref, simhash_t h) {
 	return -1;
 }
 
+// check if any read in this cluster matches the window position
+int eval_hit(cluster_t* cluster, seq_t hit_pos) {
+	read_t r = *cluster->reads[0];
+	unsigned int pos_l, pos_r;
+	int strand;
+	parse_read_mapping(r.name, &pos_l, &pos_r, &strand); 
+
+    for(int j = -10; j <= pos_r - pos_l + 1 + 10; j++) {
+        if(hit_pos == (pos_l + j) - 1) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // aligns the indexed reads to the iindexed reference
 void align_reads(ref_t* ref, reads_t* reads) {
 	printf("**** SRX Alignment ****\n");
@@ -50,6 +65,7 @@ void align_reads(ref_t* ref, reads_t* reads) {
 	// 3. for each cluster simhash, find the neighbors in the reference
 	t = clock();
 	int hits = 0;
+	int acc_hits = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
 		// binary search to find the matching ref window(s) 
 		seq_t idx = find_window_match(ref, clusters->clusters[i].simhash);
@@ -57,8 +73,13 @@ void align_reads(ref_t* ref, reads_t* reads) {
 			continue; // no match found
 		}
 		hits++;
+		
+		if(eval_hit(&clusters->clusters[i], ref->windows[idx].pos)) {
+			acc_hits++;
+		}
 	}
 	printf("Total number of hits found = %d \n", hits);
+	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 }

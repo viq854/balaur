@@ -76,8 +76,11 @@ typedef struct {
 
 ref_t* fasta2ref(char *fastaFname);
 reads_t* fastq2reads(char *readsFname);
+
 void print_read(read_t* read);
 void free_reads(reads_t* reads);
+
+void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand); 
 
 // compression
 int pack_16(const char *seq, const int length, uint16_t* err);
