@@ -10,7 +10,7 @@
 #include "hash.h"
 #include "cluster.h"
 
-void index_reads(char* readsFname, index_params_t* params) {
+void index_reads(char* readsFname, index_params_t* params, reads_t** reads_idx) {
 	printf("**** SRX Read Indexing ****\n");
 	
 	// 1. load the reads (TODO: batch mode)
@@ -63,12 +63,14 @@ void index_reads(char* readsFname, index_params_t* params) {
 	printf("Total clustering collapse time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	*/
 	
+	*reads_idx = reads;
+	
 	//free_reads(reads);
 	//free(histogram);
 	//free(clusters->clusters); //TODO
 }
 
-void index_ref(char* fastaFname, index_params_t* params) {
+void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	printf("**** SRX Reference Indexing ****\n");
 		
 	// 1. load the reference
@@ -93,4 +95,7 @@ void index_ref(char* fastaFname, index_params_t* params) {
 	
 	// 4. sort the windows by their simhash
 	//sort_windows_simhash(ref);
+	
+	*ref_idx = ref;
+	
 }
