@@ -18,6 +18,6 @@ typedef struct {
 } index_params_t;
 
 void index_ref(char* fastaFname, index_params_t* params, ref_t** refidx);
-void index_reads(char* readsFname, index_params_t* params, reads_t** ridx);
+void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t** ridx);
 
 #endif /*INDEX_H_*/

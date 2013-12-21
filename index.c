@@ -10,7 +10,7 @@
 #include "hash.h"
 #include "cluster.h"
 
-void index_reads(char* readsFname, index_params_t* params, reads_t** reads_idx) {
+void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t** reads_idx) {
 	printf("**** SRX Read Indexing ****\n");
 	
 	// 1. load the reads (TODO: batch mode)
@@ -19,16 +19,15 @@ void index_reads(char* readsFname, index_params_t* params, reads_t** reads_idx) 
 	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 2. compute the frequency of each kmer
-	int* histogram;
 	t = clock();
-	generate_reads_kmer_hist(reads, params, &histogram);
+	generate_reads_kmer_hist(reads, params);
 	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 3. compute the fingerprints of each read
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
-		simhash_read(&reads->reads[i], histogram, params);
+		simhash_read(&reads->reads[i], reads->hist, ref->hist, params);
 		//cityhash(&reads->reads[i]);
 		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
@@ -79,9 +78,8 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 2. compute the frequency of each kmer and filter out windows to be discarded
-	int* histogram;
 	t = clock();
-	generate_ref_kmer_hist(ref, params, &histogram);
+	generate_ref_kmer_hist(ref, params);
 	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	printf("Total number of valid windows: %llu\n", ref->num_windows);
 	
@@ -89,13 +87,9 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	t = clock();
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
 	for(seq_t i = 0; i < ref->num_windows; i++) {
-		simhash_ref(ref, &ref->windows[i], histogram, params);
+		simhash_ref(ref, &ref->windows[i], params);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 4. sort the windows by their simhash
-	//sort_windows_simhash(ref);
-	
 	*ref_idx = ref;
-	
 }

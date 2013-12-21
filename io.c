@@ -219,8 +219,10 @@ void print_read(read_t* read) {
 
 // compress the seq of given length into 16 bits (using 2 bits per char)
 // returns -1 if the seq contains bases that should be ignored (e.g. N or $)
-int pack_16(const char *seq, const int length, uint16_t* err) {
+int pack_16(const char *seq, int length, uint16_t* err) {
 	uint16_t c = 0;
+	
+	if (length > 8) length = 8; // TODO 
 	for (int k = 0; k < length; k++) {
 		if(seq[k] == BASE_IGNORE) {
 			return -1;

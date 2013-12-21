@@ -40,6 +40,7 @@ typedef struct {
 	char* seq;
 	ref_win_t* windows;
 	seq_t num_windows;
+	int* hist;
 } ref_t;
 
 typedef struct {
@@ -69,6 +70,7 @@ typedef struct {
 	// number of reads
 	unsigned int count;
 	read_t* reads;
+	int* hist;
 } reads_t;
 
 
