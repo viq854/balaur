@@ -38,12 +38,13 @@ void align_reads(ref_t* ref, reads_t* reads) {
 	sort_windows_simhash(ref);
 	sort_reads_simhash(reads);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total number of distinct window hashes = %llu \n", get_num_distinct(ref));
 	
 	// 2. split reads into "clusters" based on their simhash 
 	t = clock();
 	clusters_t* clusters;
 	cluster_sorted_reads(reads, &clusters);
-	printf("Total number of clusters = %d \n", clusters->num_clusters);
+	printf("Total number of read clusters = %d \n", clusters->num_clusters);
 	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 3. for each cluster simhash, find the neighbors in the reference
