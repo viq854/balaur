@@ -69,7 +69,12 @@ int main(int argc, char *argv[]) {
 	
 	//generate_reads(argv[1]);
 	//index_reads(argv[1], params);
-	index_ref(argv[1], params);
+	
+	ref_t* ref;
+	index_ref(argv[1], params, &ref);
+	reads_t* reads;
+	index_reads(argv[2], params, &reads);
+	align_reads(ref, reads);
 	
 	/*for(uint64_t i = 0; i < 10; i++) {
 		//uint64_t gray = (num >> 1) ^ num;
