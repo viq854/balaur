@@ -58,13 +58,13 @@ int main(int argc, char *argv[]) {
 	set_default_index_params(params);
 
 	int c;
-	while ((c = getopt(argc-1, argv+1, "k:w:d:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "k:w:d:L:H:")) >= 0) {
 		switch (c) {
 			case 'k': params->k = atoi(optarg); break;
 			case 'w': params->ref_window_size = atoi(optarg); break;
 			case 'd': params->max_hammd = atoi(optarg); break;
-			case 'minf': params->min_freq = atof(optarg); break;
-			case 'maxf': params->max_freq = atof(optarg); break;
+			case 'L': params->min_freq = atof(optarg); break;
+			case 'H': params->max_freq = atof(optarg); break;
 			default: return 0;
 		}
 	}
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
 	reads_t* reads;
 	index_reads(argv[2], ref, params, &reads);
 	align_reads(ref, reads);
-	
+
 	/*for(uint64_t i = 0; i < 10; i++) {
 		//uint64_t gray = (num >> 1) ^ num;
 		//uint64_t num = i;
