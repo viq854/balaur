@@ -26,6 +26,7 @@ typedef struct {
 
 void sort_windows_simhash(ref_t* ref);
 void sort_reads_simhash(reads_t* reads);
+seq_t get_num_distinct(ref_t* ref);
 void cluster_sorted_reads(reads_t* reads, clusters_t** out);
 void cluster_reads(reads_t* reads, clusters_t** out);
 
