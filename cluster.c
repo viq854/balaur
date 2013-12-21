@@ -9,6 +9,13 @@
 #include "cluster.h"
 #include "hash.h"
 
+// ref window comparator
+int comp_windows(const void * r1, const void * r2) {
+	simhash_t h1 = ((ref_win_t*) r1)->simhash;
+	simhash_t h2 = ((ref_win_t*) r2)->simhash;
+	return (h1 > h2) - (h1 < h2);
+}
+
 // read comparator
 int comp_reads(const void * r1, const void * r2) {
 	simhash_t h1 = ((read_t*) r1)->simhash;
@@ -18,19 +25,24 @@ int comp_reads(const void * r1, const void * r2) {
 
 // cluster comparator
 int comp_clusters(const void * r1, const void * r2) {
-	simhash_t h1 = ((read_t*) r1)->simhash;
-	simhash_t h2 = ((read_t*) r2)->simhash;
+	simhash_t h1 = ((cluster_t*) r1)->simhash;
+	simhash_t h2 = ((cluster_t*) r2)->simhash;
 	return (h1 > h2) - (h1 < h2);
 }
 
-// sorts reads by their simhash value
-void sort_reads_simhash(reads_t* reads) {
-	qsort(reads->reads, reads->count, sizeof(read_t), comp_reads);
+// sorts reference windows by their simhash value
+void sort_windows_simhash(ref_t* ref) {
+	qsort(ref->windows, ref->num_windows, sizeof(ref_win_t), comp_windows);
 }
 
 // sorts clusters by their simhash value
 void sort_clusters_simhash(clusters_t* clusters) {
 	qsort(clusters->clusters, clusters->num_clusters, sizeof(cluster_t), comp_clusters);
+}
+
+// sorts reads by their simhash value
+void sort_reads_simhash(reads_t* reads) {
+	qsort(reads->reads, reads->count, sizeof(read_t), comp_reads);
 }
 
 void add_read_to_cluster(cluster_t* cluster, read_t* r) {

@@ -7,6 +7,66 @@
 #include <math.h>
 #include "io.h"
 
+/* Reference I/O */
+
+void fasta_error(char* fastaFname) {
+	printf("Error: File %s does not comply with the FASTA file format \n", fastaFname);
+	exit(1);
+}
+
+// reads the sequence data from the FASTA file
+ref_t* fasta2ref(char *fastaFname) {
+	FILE * fastaFile = (FILE*) fopen(fastaFname, "r");
+	if (fastaFile == NULL) {
+		printf("fasta2ref: Cannot open FASTA file: %s!\n", fastaFname);
+		exit(1);
+	}
+
+	ref_t* ref = (ref_t*) calloc(1, sizeof(ref_t));
+	seq_t allocatedSeqLen = INIT_REFLEN_ALLOC;
+	ref->len = 0;
+	ref->seq = (char*) malloc(allocatedSeqLen * sizeof(char));
+
+	char c = (char) getc(fastaFile);
+	if(c != '>') fasta_error(fastaFname);
+	while(!feof(fastaFile)) {
+		c = (char) getc(fastaFile);
+
+		// sequence description line (> ...)
+		while(c != '\n' && !feof(fastaFile)){
+			c = (char) getc(fastaFile);
+		}
+		if(feof(fastaFile)) fasta_error(fastaFname);
+
+		// sequence data
+		while(c != '>' && !feof(fastaFile)){
+			if (c != '\n'){
+				if (c >= 'a' && c <= 'z'){
+					c += 'A'-'a';
+				}
+				// reallocate twice as much memory
+				if (ref->len >= allocatedSeqLen) {
+					allocatedSeqLen <<= 1;
+					ref->seq = (char*)realloc(ref->seq, sizeof(char)*allocatedSeqLen);
+				}
+				*(ref->seq + ref->len) = nt4_table[(int) c];
+				ref->len++;
+			}
+			c = (char) getc(fastaFile);
+		}
+		// add $ as a separator between chromosomes
+		// to disallow spanning the boundary
+		*(ref->seq + ref->len) = nt4_table[(int) '$'];
+		ref->len++;
+	}
+	ref->len--; // to ignore the last $
+	printf("Done reading FASTA file. Total sequence length read = %llu\n", ref->len);
+	fclose(fastaFile);
+
+	return ref;
+}
+
+
 /* Reads I/O */
 
 void fastq_error(char* fastqFname) {
@@ -53,7 +113,7 @@ reads_t* fastq2reads(char *readsFname) {
 
 		// line 2 (sequence letters)
 		int readLen = 0;
-		int allocatedReadLen = READ_LENGTH;
+		int allocatedReadLen = INIT_READLEN_ALLOC;
 		read->seq = (char*) malloc(allocatedReadLen*sizeof(char));
 		read->rc = (char*) malloc(allocatedReadLen*sizeof(char));
 		//read->qual = (char*) malloc(allocatedReadLen*sizeof(char));
@@ -62,7 +122,7 @@ reads_t* fastq2reads(char *readsFname) {
 		while (c != '\n' && !feof(readsFile)) {
 			if (readLen >= allocatedReadLen) {
 				//printf("Loading reads: readLen = %u, allocReadLen = %u, reallocing...", readLen, allocatedReadLen);
-				allocatedReadLen += READ_LENGTH;
+				allocatedReadLen <<= 1;
 				read->seq = (char*) realloc(read->seq, allocatedReadLen*sizeof(char));
 				read->rc = (char*) realloc(read->rc, allocatedReadLen*sizeof(char));
 				//read->qual = (char*) realloc(read->qual, allocatedReadLen*sizeof(char));
@@ -153,14 +213,16 @@ void print_read(read_t* read) {
 
 // number of chars in 16 bits (2 per char)
 #define CHARS_PER_SHORT 8
-#define BITS_PER_CHAR 2
-#define BITS_IN_SHORT 16
+#define BITS_PER_CHAR 	2
+#define BITS_IN_SHORT 	16
+#define BASE_IGNORE		4
 
 // compress the seq of given length into 16 bits (using 2 bits per char)
+// returns -1 if the seq contains bases that should be ignored (e.g. N or $)
 int pack_16(const char *seq, const int length, uint16_t* err) {
 	uint16_t c = 0;
 	for (int k = 0; k < length; k++) {
-		if(seq[k] == nt4_table[(int) 'N']) {
+		if(seq[k] == BASE_IGNORE) {
 			return -1;
 		}
 		c = c | (seq[k] << (BITS_IN_SHORT - (k+1) * BITS_PER_CHAR));
