@@ -101,10 +101,11 @@ int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, in
 	}
 	int min_count = reads_hist[kmer];
 	int max_count = ref_hist[kmer];
-	//printf("count %d \n", reads_hist[kmer]);
+	//printf("count %d %llu \n", reads_hist[kmer], params->min_count);
+	//printf("count %d %llu \n", ref_hist[kmer], params->max_count);
 	
 	// filter out infrequent kmers
-	if((min_count < params->min_count) || (max_count > params->max_count)) {
+	if((max_count == 0 && min_count < params->min_count) || (max_count > params->max_count)) {
 		return 0;
 	}
 	return 1;
@@ -179,6 +180,13 @@ void cityhash(read_t* r) {
 
 // compute the simhash of a reference window
 void simhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
+	//if(window->pos == 26738515) {
+		 //for(seq_t i = 0; i < 100; i++) {
+			 //printf("%c", iupacChar[(int) ref->seq[window->pos + i]]);
+		 //} 
+		 //printf("\n");
+	//}
+	
 	//printf("w = %llu \n", window->pos);
 	int v[SIMHASH_BITLEN] = { 0 };
 	// find the read kmers, hash them, and add the hash to V
@@ -190,4 +198,8 @@ void simhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	window->simhash = generate_simhash_fp(v);
+	
+	//if(window->pos == 26738515) {
+		//printf("window hash %llx \n", window->simhash); 
+	//}
 }
