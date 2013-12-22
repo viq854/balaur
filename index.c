@@ -80,7 +80,7 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	// 1. load the reference
 	clock_t t = clock();
 	ref_t* ref = fasta2ref(fastaFname);
-	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 2. compute the frequency of each kmer and filter out windows to be discarded
 	t = clock();
