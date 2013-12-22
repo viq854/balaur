@@ -10,6 +10,16 @@
 #include "hash.h"
 #include "cluster.h"
 
+int is_valid_read(char* seq, index_params_t* params) {
+	char c = seq[0];
+	for(int i = 1; i < 100; i++) {
+		if(seq[i] != c) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t** reads_idx) {
 	printf("**** SRX Read Indexing ****\n");
 	
@@ -26,11 +36,14 @@ void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t**
 	// 3. compute the fingerprints of each read
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
+	int invalid = 0;
 	for(int i = 0; i < reads->count; i++) {
+		if(!is_valid_read(reads->reads[i].seq, params)) invalid++;
 		simhash_read(&reads->reads[i], reads->hist, ref->hist, params);
 		//cityhash(&reads->reads[i]);
 		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
 	}
+	printf("Invalid reads %d\n", invalid);
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 4. sort the reads by their simhash

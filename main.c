@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 	sprintf(idxFname, "%s.idx", argv[1]);
 	store_ref_idx(ref, idxFname);
 	ref = load_ref_idx(idxFname);
-	
+	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
 	free(idxFname);
 	
 	// 2. reads
