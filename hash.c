@@ -20,7 +20,7 @@ int hamming_dist(simhash_t h1, simhash_t h2) {
 // compute the frequency of each kmer in the read set
 void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 	// stores the counts of each kmer
-	reads->hist = (int*) calloc(65536, sizeof(int));
+	reads->hist = (int*) calloc(KMER_HIST_SIZE, sizeof(int));
 	
 	// add the contribution of each read
 	for(int i = 0; i < reads->count; i++) {
@@ -52,7 +52,7 @@ int is_valid_window(char* window, index_params_t* params) {
 // compute the frequency of each kmer in the read set
 void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 	// stores the counts of each kmer
-	ref->hist = (int*) calloc(65536, sizeof(int));
+	ref->hist = (int*) calloc(KMER_HIST_SIZE, sizeof(int));
 	
 	ref->num_windows = 0;
 	seq_t max_num_windows = ref->len - params->ref_window_size + 1;

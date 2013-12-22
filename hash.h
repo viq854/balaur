@@ -7,6 +7,7 @@
 // ---- simhash ----
 
 #define SIMHASH_BITLEN 64
+#define KMER_HIST_SIZE 65536
 
 void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params);
 void simhash_ref(ref_t* ref, ref_win_t* w, index_params_t* params);
