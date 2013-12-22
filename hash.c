@@ -17,32 +17,12 @@ int hamming_dist(simhash_t h1, simhash_t h2) {
 
 // --- k-mer weights ---
 
-// compute the frequency of each kmer in the read set
-void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
-	// stores the counts of each kmer
-	reads->hist = (int*) calloc(KMER_HIST_SIZE, sizeof(int));
-	
-	// add the contribution of each read
-	for(int i = 0; i < reads->count; i++) {
-		read_t* r = &reads->reads[i];
-		for(int j = 0; j <= (r->len - params->k); j++) {
-			// compress the kmer into 16 bits
-			uint16_t kmer;
-			if(pack_16(&r->seq[j], params->k, &kmer) < 0) {
-				continue;
-			}
-			// update the count
-			reads->hist[kmer]++;
-		}
-	}
-}
-
-// checks if the window is informative or not
-// e.g. non-informative windows: same character is repeated throughout the window (NN...N)
-int is_valid_window(char* window, index_params_t* params) {
-	char c = window[0];
-	for(int i = 1; i < params->ref_window_size; i++) {
-		if(window[i] != c) {
+// checks if the sequence is informative or not
+// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
+int is_inform(char* seq, int len) {
+	char c = seq[0];
+	for(int i = 1; i < len; i++) {
+		if(seq[i] != c) {
 			return 1;
 		}
 	}
@@ -50,44 +30,71 @@ int is_valid_window(char* window, index_params_t* params) {
 }
 
 // compute the frequency of each kmer in the read set
-void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
+void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 	// stores the counts of each kmer
-	ref->hist = (int*) calloc(KMER_HIST_SIZE, sizeof(int));
+	reads->hist = (int*) calloc(params->hist_size, sizeof(int));
 	
-	ref->num_windows = 0;
-	seq_t max_num_windows = ref->len - params->ref_window_size + 1;
-	ref->windows = (ref_win_t*) malloc(max_num_windows*sizeof(ref_win_t));
-	seq_t i;
-	for(i = 0; i < max_num_windows; i++) {
-		if(is_valid_window(&ref->seq[i], params)) {
-			ref_win_t* window = &ref->windows[ref->num_windows];
-			window->pos = i;
-			ref->num_windows++;	
-		} else {
-			// skip until at least 1 potential valid kmer
-			i += params->k;
+	// add the contribution of each read
+	for(int i = 0; i < reads->count; i++) {
+		read_t* r = &reads->reads[i];
+		for(int j = 0; j <= (r->len - params->k); j++) {
+			if(params->hist_size == KMER_HIST_SIZE16) {
+				// compress the kmer into 16 bits
+				uint16_t kmer;
+				if(pack_16(&r->seq[j], params->k, &kmer) < 0) {
+					continue;
+				}
+				// update the count
+				reads->hist[kmer]++;
+			} else {
+				// compress the kmer into 16 bits
+				uint32_t kmer;
+				if(pack_32(&r->seq[j], params->k, &kmer) < 0) {
+					continue;
+				}
+				// update the count
+				reads->hist[kmer]++;
+			}
 		}
 	}
-	ref->windows = (ref_win_t*) realloc(ref->windows, ref->num_windows*sizeof(ref_win_t));
-	
+}
+
+// compute the frequency of each kmer in the reference
+void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
+	// stores the counts of each kmer
+	ref->hist = (int*) calloc(params->hist_size, sizeof(int));
 	// compute the k-mers
 	for(seq_t j = 0; j <= (ref->len - params->k); j++) {
-		if((j < ref->len - params->ref_window_size) && (is_valid_window(&ref->seq[j], params))) {
-			// compress the kmer into 16 bits
+		if(params->hist_size == KMER_HIST_SIZE16) {
 			uint16_t kmer;
-			if(pack_16(&ref->seq[j], params->k, &kmer) < 0) {
-				continue;
+			int r = pack_16(&ref->seq[j], params->k, &kmer);
+			// valid window
+			if((j < ref->len - params->ref_window_size) && (is_inform(&ref->seq[j], params->ref_window_size))) {
+				if(r >= 0) {
+					ref->hist[kmer]++;
+				}
+			} else { // repetitive window
+				if(r >= 0) {
+					//not a stretch of N's
+					ref->hist[kmer] += params->ref_window_size - params->k;	
+				}
+				j += params->ref_window_size - params->k;
 			}
-			// update the count
-			ref->hist[kmer]++;
 		} else {
-			// compress the kmer into 16 bits
-			uint16_t kmer;
-			if(pack_16(&ref->seq[j], params->k, &kmer) >= 0) {
-				//not a stretch of N's
-				ref->hist[kmer] += params->ref_window_size - params->k;
+			uint32_t kmer;
+			int r = pack_32(&ref->seq[j], params->k, &kmer);
+			// valid window
+			if((j < ref->len - params->ref_window_size) && (is_inform(&ref->seq[j], params->ref_window_size))) {
+				if(r >= 0) {
+					ref->hist[kmer]++;
+				}
+			} else { // repetitive window
+				if(r >= 0) {
+					//not a stretch of N's
+					ref->hist[kmer] += params->ref_window_size - params->k;	
+				}
+				j += params->ref_window_size - params->k;
 			}
-			j += params->ref_window_size - params->k;
 		}
 	}
 }
@@ -104,7 +111,9 @@ int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, in
 	//printf("count %d %llu \n", reads_hist[kmer], params->min_count);
 	//printf("count %d %llu \n", ref_hist[kmer], params->max_count);
 	
-	// filter out infrequent kmers
+	// filter out kmers if:
+	// 1. count is too low and kmer does not occur in the reference
+	// 2. count is too high
 	if((max_count == 0 && min_count < params->min_count) || (max_count > params->max_count)) {
 		return 0;
 	}
@@ -121,7 +130,7 @@ int get_ref_kmer_weight(char* seq, int len, int* hist, index_params_t* params) {
 	int count = hist[kmer];
 	//printf("count %d \n", hist[kmer]);
 	
-	// filter out infrequent kmers
+	// filter out kmers that are too frequent
 	if(count > params->max_count) {
 		return 0;
 	}

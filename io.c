@@ -76,11 +76,9 @@ void store_ref_idx(ref_t* ref, const char* idxFname) {
 	fwrite(&ref->len, sizeof(seq_t), 1, idxFile);
 	fwrite(&ref->num_windows, sizeof(seq_t), 1, idxFile);
 	fwrite(ref->windows, sizeof(ref_win_t), ref->num_windows, idxFile);
-	fwrite(ref->hist, sizeof(int), KMER_HIST_SIZE, idxFile);
 	fclose(idxFile);
 }
 
-// Load the BWT from a file
 ref_t* load_ref_idx(const char* idxFname) {
 	FILE* idxFile = (FILE*) fopen(idxFname, "rb");
 	if (idxFile == NULL) {
@@ -92,15 +90,13 @@ ref_t* load_ref_idx(const char* idxFname) {
 	fread(&ref->num_windows, sizeof(seq_t), 1, idxFile);
 	
 	ref->windows = (ref_win_t*) calloc(ref->num_windows, sizeof(ref_win_t));
-	ref->hist = (int*) calloc(KMER_HIST_SIZE, sizeof(int));
-	if((ref->windows == 0) || (ref->hist == 0)) {
+	if(ref->windows == 0) {
 		printf("Could not allocate memory for the ref index. \n");
 		exit(1);
 	}
 	fread(ref->windows, sizeof(ref_win_t), ref->num_windows, idxFile);
-	fread(ref->hist, sizeof(int), KMER_HIST_SIZE, idxFile);
-	
 	fclose(idxFile);
+	
 	return ref;
 }
 
@@ -270,18 +266,10 @@ void print_read(read_t* read) {
 
 // --- Compression ---
 
-// number of chars in 16 bits (2 per char)
-#define CHARS_PER_SHORT 8
-#define BITS_PER_CHAR 	2
-#define BITS_IN_SHORT 	16
-#define BASE_IGNORE		4
-
 // compress the seq of given length into 16 bits (using 2 bits per char)
 // returns -1 if the seq contains bases that should be ignored (e.g. N or $)
-int pack_16(const char *seq, int length, uint16_t* err) {
+int pack_16(const char *seq, const int length, uint16_t* ret) {
 	uint16_t c = 0;
-	
-	if (length > 8) length = 8; // TODO 
 	for (int k = 0; k < length; k++) {
 		if(seq[k] == BASE_IGNORE) {
 			return -1;
@@ -289,6 +277,18 @@ int pack_16(const char *seq, int length, uint16_t* err) {
 		c = c | (seq[k] << (BITS_IN_SHORT - (k+1) * BITS_PER_CHAR));
 	}
 	
-	*err = c;
+	*ret = c;
+	return 0;
+}
+
+int pack_32(const char *seq, const int length, uint32_t *ret) {
+	uint32_t c = 0;
+	for (int k = 0; k < length; k++) {
+		if(seq[k] == BASE_IGNORE) {
+			return -1;
+		}
+		c = c | (seq[k] << (BITS_IN_WORD - (k+1) * BITS_PER_CHAR));
+	}
+	*ret = c;
 	return 0;
 }

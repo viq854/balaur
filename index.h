@@ -4,6 +4,7 @@
 
 typedef struct {
 	int k; // length of the k-mers
+	uint64_t hist_size; // length of the k-mer freq histogram
 	
 	float min_freq;
 	float max_freq;
