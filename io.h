@@ -87,6 +87,16 @@ void store_ref_idx(ref_t* ref, const char* idxFname);
 ref_t* load_ref_idx(const char* idxFname);
 
 // compression
-int pack_16(const char *seq, const int length, uint16_t* err);
+#define CHARS_PER_SHORT 8   // number of chars in 16 bits
+#define CHARS_PER_WORD 	16	// number of chars in 32 bits
+#define BITS_PER_CHAR 	2
+#define BITS_IN_SHORT 	16
+#define BITS_IN_WORD 	32
+#define BASE_IGNORE		4
+#define KMER_HIST_SIZE16 (1ULL << 16) //65536
+#define KMER_HIST_SIZE32 (1ULL << 32)
+
+int pack_16(const char *seq, const int length, uint16_t *ret);
+int pack_32(const char *seq, const int length, uint32_t *ret); 
 
 #endif /*IO_H_*/
