@@ -82,6 +82,10 @@ void free_reads(reads_t* reads);
 
 void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand); 
 
+// index io
+void store_ref_idx(ref_t* ref, const char* idxFname);
+ref_t* load_ref_idx(const char* idxFname);
+
 // compression
 int pack_16(const char *seq, const int length, uint16_t* err);
 

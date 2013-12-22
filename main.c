@@ -10,10 +10,10 @@
 #include "align.h"
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 4;
+	params->k = 8;
 	params->min_freq = 0.001;
 	params->max_freq = 0.6;
-	params->ref_window_size = 6;
+	params->ref_window_size = 100;
 	params->max_hammd = 7;
 }
 
@@ -58,8 +58,9 @@ int main(int argc, char *argv[]) {
 	set_default_index_params(params);
 
 	int c;
-	while ((c = getopt(argc-1, argv+1, "k:w:d:L:H:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "I:k:w:d:L:H:")) >= 0) {
 		switch (c) {
+			
 			case 'k': params->k = atoi(optarg); break;
 			case 'w': params->ref_window_size = atoi(optarg); break;
 			case 'd': params->max_hammd = atoi(optarg); break;
@@ -70,29 +71,26 @@ int main(int argc, char *argv[]) {
 	}
 	
 	//generate_reads(argv[1]);
-	//index_reads(argv[1], params);
 	
+	// 1. ref
 	ref_t* ref;
 	index_ref(argv[1], params, &ref);
+	
+	// save index to file
+	char* idxFname  = (char*) malloc(strlen(argv[1]) + 5);
+	sprintf(idxFname, "%s.idx", argv[1]);
+	store_ref_idx(ref, idxFname);
+	ref = load_ref_idx(idxFname);
+	
+	free(idxFname);
+	
+	// 2. reads
 	reads_t* reads;
 	index_reads(argv[2], ref, params, &reads);
+	
+	// 3. map
 	align_reads(ref, reads);
 
-	/*for(uint64_t i = 0; i < 10; i++) {
-		//uint64_t gray = (num >> 1) ^ num;
-		//uint64_t num = i;
-		//uint64_t mask;
-	    //for (mask = num >> 1; mask != 0; mask = mask >> 1) {
-	      //  num = num ^ mask;
-	    //}
-		uint64_t n = i; 
-		uint64_t p = n;
-		while (n >>= 1ULL) {
-			p ^= n;
-		}
-		printf("%llu %llu \n",  i, p);
-	}*/
-	
 	free(params);
 	return 0;
 }
