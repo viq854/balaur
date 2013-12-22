@@ -84,10 +84,8 @@ int main(int argc, char *argv[]) {
 	// save index to file
 	char* idxFname  = (char*) malloc(strlen(argv[1]) + 5);
 	sprintf(idxFname, "%s.idx", argv[1]);
-	store_ref_idx(ref, idxFname);
-	
+	store_ref_idx(ref, idxFname);	
 	ref = load_ref_idx(idxFname);
-	generate_ref_kmer_hist(ref, params);
 	
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
 	free(idxFname);

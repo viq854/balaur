@@ -75,7 +75,9 @@ void store_ref_idx(ref_t* ref, const char* idxFname) {
 	}
 	fwrite(&ref->len, sizeof(seq_t), 1, idxFile);
 	fwrite(&ref->num_windows, sizeof(seq_t), 1, idxFile);
+	fwrite(&ref->hist_size, sizeof(seq_t), 1, idxFile);
 	fwrite(ref->windows, sizeof(ref_win_t), ref->num_windows, idxFile);
+	fwrite(ref->hist, sizeof(int), ref->hist_size, idxFile);
 	fclose(idxFile);
 }
 
@@ -88,13 +90,15 @@ ref_t* load_ref_idx(const char* idxFname) {
 	ref_t* ref = (ref_t*) calloc(1, sizeof(ref_t));
 	fread(&ref->len, sizeof(seq_t), 1, idxFile);
 	fread(&ref->num_windows, sizeof(seq_t), 1, idxFile);
-	
+	fread(&ref->hist_size, sizeof(seq_t), 1, idxFile);
 	ref->windows = (ref_win_t*) calloc(ref->num_windows, sizeof(ref_win_t));
-	if(ref->windows == 0) {
+	ref->hist = (int*) calloc(ref->hist_size, sizeof(int));
+	if((ref->windows == 0) || (ref->hist == 0)) {
 		printf("Could not allocate memory for the ref index. \n");
 		exit(1);
 	}
 	fread(ref->windows, sizeof(ref_win_t), ref->num_windows, idxFile);
+	fread(ref->hist, sizeof(int), ref->hist_size, idxFile);
 	fclose(idxFile);
 	
 	return ref;

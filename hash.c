@@ -63,6 +63,7 @@ void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 	// stores the counts of each kmer
 	ref->hist = (int*) calloc(params->hist_size, sizeof(int));
+	ref->hist_size = params->hist_size;
 	// compute the k-mers
 	for(seq_t j = 0; j <= (ref->len - params->k); j++) {
 		if(params->hist_size == KMER_HIST_SIZE16) {

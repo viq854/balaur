@@ -41,6 +41,7 @@ typedef struct {
 	ref_win_t* windows;
 	seq_t num_windows;
 	int* hist;
+	seq_t hist_size;
 } ref_t;
 
 typedef struct {
