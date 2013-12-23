@@ -11,10 +11,10 @@
 #include "hash.h"
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 8;
+	params->k = 4;
 	params->min_freq = 0.001;
 	params->max_freq = 0.6;
-	params->ref_window_size = 100;
+	params->ref_window_size = 6;
 	params->max_hammd = 7;
 }
 
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
 	index_reads(argv[2], ref, params, &reads);
 	
 	// 3. map
-	align_reads(ref, reads);
+	align_reads(ref, reads, params);
 
 	free(params);
 	return 0;

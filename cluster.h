@@ -14,7 +14,8 @@ typedef struct {
 	int alloc_size;
 	read_t** reads; // members of the cluster
 	
-	seq_t ref_idx[REF_MATCHES];
+	seq_t* ref_matches;
+	int num_matches;
 } cluster_t;
 
 // clusters of similar reads

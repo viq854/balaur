@@ -67,6 +67,10 @@ void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t**
 	
 	*reads_idx = reads;
 	
+	// free memory
+	free(ref->hist);
+	free(reads->hist);
+	
 	//free_reads(reads);
 	//free(histogram);
 	//free(clusters->clusters); //TODO
