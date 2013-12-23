@@ -103,12 +103,23 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 // returns the weight of each read kmer
 // 0 if the kmer should be ignored
 int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, index_params_t* params) {
-	uint16_t kmer;
-	if(pack_16(seq, len, &kmer) < 0) {
-		return 0;
+	int min_count, max_count;
+	if(params->hist_size == KMER_HIST_SIZE16) {
+		uint16_t kmer;
+		if(pack_16(seq, len, &kmer) < 0) {
+			return 0;
+		}
+		min_count = reads_hist[kmer];
+		max_count = ref_hist[kmer];
+	} else {
+		uint32_t kmer;
+		if(pack_32(seq, len, &kmer) < 0) {
+			return 0;
+		}
+		min_count = reads_hist[kmer];
+		max_count = ref_hist[kmer];
 	}
-	int min_count = reads_hist[kmer];
-	int max_count = ref_hist[kmer];
+	
 	//printf("count %d %llu \n", reads_hist[kmer], params->min_count);
 	//printf("count %d %llu \n", ref_hist[kmer], params->max_count);
 	
@@ -124,11 +135,20 @@ int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, in
 // returns the weight of each reference kmer
 // 0 if the kmer should be ignored
 int get_ref_kmer_weight(char* seq, int len, int* hist, index_params_t* params) {
-	uint16_t kmer;
-	if(pack_16(seq, len, &kmer) < 0) {
-		return 0;
+	int count;
+	if(params->hist_size == KMER_HIST_SIZE16) {
+		uint16_t kmer;
+		if(pack_16(seq, len, &kmer) < 0) {
+			return 0;
+		}
+		count = hist[kmer];
+	} else {
+		uint32_t kmer;
+		if(pack_32(seq, len, &kmer) < 0) {
+			return 0;
+		}
+		count = hist[kmer];
 	}
-	int count = hist[kmer];
 	//printf("count %d \n", hist[kmer]);
 	
 	// filter out kmers that are too frequent
