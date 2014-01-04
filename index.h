@@ -3,6 +3,7 @@
 #include "io.h"
 
 typedef struct {
+	int p; // number of permutation tables
 	int k; // length of the k-mers
 	uint64_t hist_size; // length of the k-mer freq histogram
 	
