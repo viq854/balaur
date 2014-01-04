@@ -11,10 +11,11 @@
 #include "hash.h"
 
 void set_default_index_params(index_params_t* params) {
-	params->k = 4;
-	params->min_freq = 0.001;
+	params->p = 2;
+	params->k = 8;
+	params->min_freq = 0.01;
 	params->max_freq = 0.6;
-	params->ref_window_size = 6;
+	params->ref_window_size = 100;
 	params->max_hammd = 7;
 }
 
@@ -82,12 +83,15 @@ int main(int argc, char *argv[]) {
 	index_ref(argv[1], params, &ref);
 	
 	// save index to file
-	char* idxFname  = (char*) malloc(strlen(argv[1]) + 5);
-	sprintf(idxFname, "%s.idx", argv[1]);
+	char* idxFname  = (char*) malloc(strlen(argv[1]) + 8);
+	char* histFname  = (char*) malloc(strlen(argv[1]) + 8);
+	sprintf(idxFname, "%s.idx%d", argv[1], params->k);
+	sprintf(idxFname, "%s.hst%d", argv[1], params->k);
 	store_ref_idx(ref, idxFname);	
 	ref = load_ref_idx(idxFname);
-	
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
+	
+	free(histFname);
 	free(idxFname);
 	
 	// 2. reads

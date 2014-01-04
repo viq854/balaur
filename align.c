@@ -14,16 +14,18 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params);
 int eval_hit(cluster_t* cluster);
 
+int* shuffle();
+void permute_ref(ref_t* ref, int perm[]);
+void permute_reads(clusters_t* reads, int perm[]);
+
 // aligns the indexed reads to the iindexed reference
 void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	printf("**** SRX Alignment ****\n");
 	
-	// 1. sort the ref windows and the reads by their simhash
+	// 1. sort the reads by their simhash
 	clock_t t = clock();
-	sort_windows_simhash(ref);
 	sort_reads_simhash(reads);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	printf("Total number of distinct window hashes = %llu \n", get_num_distinct(ref));
 	
 	// 2. split reads into "clusters" based on their simhash 
 	t = clock();
@@ -34,17 +36,27 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	
 	// 3. for each cluster simhash, find the neighbors in the reference
 	t = clock();
+	for(int p = 0; p < params->p; p++) {
+		if(p > 0) {
+			// generate a new permutation
+			int* perm = shuffle();
+			permute_ref(ref, perm);
+			sort_windows_simhash(ref);
+			permute_reads(clusters, perm);
+		}
+		for(int i = 0; i < clusters->num_clusters; i++) {
+			// binary search to find the matching ref window(s) 
+			find_window_match_diffk(ref, &clusters->clusters[i], params);
+		}
+	}
+	
 	int hits = 0;
 	int acc_hits = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
-        // binary search to find the matching ref window(s) 
-        int r = find_window_match(ref, &clusters->clusters[i], params);
-        if(r < 0) {
-            continue; // no match found
-        }
-        hits++;
-        acc_hits += eval_hit(&clusters->clusters[i]);
-    }
+		hits += clusters->clusters[i].num_matches;
+		if(clusters->clusters[i].num_matches == 0) continue;
+		acc_hits += eval_hit(&clusters->clusters[i]);
+	}
 	printf("Total number of hits found = %d \n", hits);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -74,22 +86,28 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 		} else {
 			high = mid - 1;
 		}
+		if(mid == 0) {
+			return -1;
+		}
 	}
 	if(idx == -1) {
 		return -1;
 	}
 	// find all the matches that have the same d msbits
-	seq_t l = idx-1;
+	seq_t l = idx - 1;
 	while (l >= 0) {
 		uint32_t d_win = get_msbits32(ref->windows[l].simhash);
 		uint32_t d_q = get_msbits32(cluster->simhash);
 		if(d_win != d_q) {
 			break;
 		}
+		if(l == 0) {
+			break;
+		}
 		l--;
 	}
 	l++;
-	seq_t h = idx+1;
+	seq_t h = idx + 1;
 	while (h < ref->num_windows) {
 		uint32_t d_win = get_msbits32(ref->windows[h].simhash);
 		uint32_t d_q = get_msbits32(cluster->simhash);
@@ -99,7 +117,12 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 		h++;
 	}
 	h--;
-	cluster->ref_matches = (seq_t*) malloc((h-l+1)*sizeof(seq_t));
+	
+	if(cluster->ref_matches == NULL) {
+		cluster->ref_matches = (seq_t*) malloc((h-l+1)*sizeof(seq_t));
+	} else {
+		cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, (cluster->num_matches + (h-l+1)) * sizeof(seq_t));
+	}
 	for(seq_t idx = l; idx <= h; idx++) {
 		// check the hamming distance
 		if(hamming_dist(ref->windows[idx].simhash, cluster->simhash) <= params->max_hammd) {
@@ -128,6 +151,9 @@ int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params) {
 			low = mid + 1;
 		} else {
 			high = mid - 1;
+		}
+		if(mid == 0) {
+			return -1;
 		}
 	}
 	return -1;
@@ -159,4 +185,59 @@ int eval_hit(cluster_t* cluster) {
         }
     }
     return matched;
+}
+
+// permutes a 64-bit integer
+// perm is a random permutation of integers 0..63
+void perm64(uint64_t* n, int* perm) {
+	uint64_t p = 0;
+	for(int i = 0; i < SIMHASH_BITLEN; i++) {
+		int idx = perm[i];
+		p |= (((*n >> idx) & 1) << i);
+	}
+	*n = p;
+}
+
+void permute_ref(ref_t* ref, int* perm) {
+	for(seq_t i = 0; i < ref->num_windows; i++) {
+		perm64(&(ref->windows[i].simhash), perm);
+	}
+}
+
+void permute_reads(clusters_t* clusters, int* perm) {
+	for(seq_t i = 0; i < clusters->num_clusters; i++) {
+		perm64(&(clusters->clusters[i].simhash), perm);
+	}
+}
+
+/* random integer from 0 to n-1 */
+int irand(int n) {
+	int r, rand_max = RAND_MAX - (RAND_MAX % n);
+	/* reroll until r falls in a range that can be evenly
+	 * distributed in n bins.  Unless n is comparable to
+	 * to RAND_MAX, it's not *that* important really. */
+	while ((r = rand()) >= rand_max);
+	return r / (rand_max / n);
+}
+
+void shuffle_int(int *perm) {
+	//int tmp;
+	int len = SIMHASH_BITLEN; // 64
+	while(len) {		
+		int j = irand(len);				
+		//if (j != len - 1) {			
+			//tmp = j; //list[j];
+			perm[j] = len - 1; //list[len - 1];
+			perm[len-1] = j; //tmp;
+		//} else {
+			//perm[j] = j;
+		//}
+		len--;			
+	}		
+}
+
+// generate a random shuffle of integers 0 to 63
+int* shuffle() {
+	static int perm[SIMHASH_BITLEN] = { 0 };
+	return perm;
 }
