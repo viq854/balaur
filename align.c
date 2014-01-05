@@ -125,12 +125,13 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 	}
 	for(seq_t idx = l; idx <= h; idx++) {
 		// check the hamming distance
-		if(hamming_dist(ref->windows[idx].simhash, cluster->simhash) <= params->max_hammd) {
+		int hammd = hamming_dist(ref->windows[idx].simhash, cluster->simhash);
+		if((hammd <= params->max_hammd) && (hammd < cluster->best_hamd)) {
 			if(cluster->num_matches == cluster->alloc_matches) {
 				cluster->alloc_matches <<= 1;
 				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
 			}
-			
+			cluster->best_hamd = hammd;
 			cluster->ref_matches[cluster->num_matches] = ref->windows[idx].pos;
 			cluster->num_matches++;
 		}
