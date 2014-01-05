@@ -36,6 +36,9 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	
 	// 3. for each cluster simhash, find the neighbors in the reference
 	static int perm[SIMHASH_BITLEN] = { 0 };
+	for(int i = 0; i < SIMHASH_BITLEN; i++) {
+		perm[i] = i;
+	}
 	t = clock();
 	for(int p = 0; p < params->p; p++) {
 		if(p > 0) {
@@ -126,7 +129,7 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 	for(seq_t idx = l; idx <= h; idx++) {
 		// check the hamming distance
 		int hammd = hamming_dist(ref->windows[idx].simhash, cluster->simhash);
-		if((hammd <= params->max_hammd) && (hammd < cluster->best_hamd)) {
+		if((hammd <= params->max_hammd) && (hammd <= cluster->best_hamd)) {
 			if(cluster->num_matches == cluster->alloc_matches) {
 				cluster->alloc_matches <<= 1;
 				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
@@ -227,17 +230,15 @@ int irand(int n) {
 }
 
 void shuffle(int *perm) {
-	//int tmp;
-	int len = SIMHASH_BITLEN; // 64
+	int tmp;
+	int len = SIMHASH_BITLEN; 
 	while(len) {		
 		int j = irand(len);				
-		//if (j != len - 1) {			
-			//tmp = j; //list[j];
-			perm[j] = len - 1; //list[len - 1];
-			perm[len-1] = j; //tmp;
-		//} else {
-			//perm[j] = j;
-		//}
+		if (j != len - 1) {			
+			tmp = perm[j];
+			perm[j] = perm[len-1];
+			perm[len-1] = tmp;
+		} 
 		len--;			
 	}		
 }
