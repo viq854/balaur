@@ -65,7 +65,7 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 
 // returns the idxs of the matching simhash window
 // uses binary search
-#define D_MSBITS_MATCH	24
+#define D_MSBITS_MATCH	16
 
 uint32_t get_msbits32(simhash_t h) {
 	return (h >> (SIMHASH_BITLEN - D_MSBITS_MATCH));
@@ -120,13 +120,17 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 	h--;
 	
 	if(cluster->ref_matches == NULL) {
-		cluster->ref_matches = (seq_t*) malloc((h-l+1)*sizeof(seq_t));
-	} else {
-		cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, (cluster->num_matches + (h-l+1)) * sizeof(seq_t));
+		cluster->alloc_matches = h-l+1;
+		cluster->ref_matches = (seq_t*) malloc(cluster->alloc_matches*sizeof(seq_t));
 	}
 	for(seq_t idx = l; idx <= h; idx++) {
 		// check the hamming distance
 		if(hamming_dist(ref->windows[idx].simhash, cluster->simhash) <= params->max_hammd) {
+			if(cluster->num_matches == cluster->alloc_matches) {
+				cluster->alloc_matches <<= 1;
+				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
+			}
+			
 			cluster->ref_matches[cluster->num_matches] = ref->windows[idx].pos;
 			cluster->num_matches++;
 		}
