@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include <limits.h>
 #include "index.h"
 #include "io.h"
 #include "hash.h"
@@ -41,6 +42,7 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	}
 	t = clock();
 	for(int p = 0; p < params->p; p++) {
+		printf("Permutation %d \n", p);
 		if(p > 0) {
 			// generate a new permutation
 			shuffle(perm);
@@ -51,6 +53,7 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 		for(int i = 0; i < clusters->num_clusters; i++) {
 			// binary search to find the matching ref window(s) 
 			find_window_match_diffk(ref, &clusters->clusters[i], params);
+			clusters->clusters[i].best_hamd = INT_MAX;
 		}
 	}
 	
