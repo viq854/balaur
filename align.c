@@ -14,7 +14,7 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params);
 int eval_hit(cluster_t* cluster);
 
-int* shuffle();
+void shuffle(int* perm);
 void permute_ref(ref_t* ref, int perm[]);
 void permute_reads(clusters_t* reads, int perm[]);
 
@@ -35,11 +35,12 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 3. for each cluster simhash, find the neighbors in the reference
+	static int perm[SIMHASH_BITLEN] = { 0 };
 	t = clock();
 	for(int p = 0; p < params->p; p++) {
 		if(p > 0) {
 			// generate a new permutation
-			int* perm = shuffle();
+			shuffle(perm);
 			permute_ref(ref, perm);
 			sort_windows_simhash(ref);
 			permute_reads(clusters, perm);
@@ -220,7 +221,7 @@ int irand(int n) {
 	return r / (rand_max / n);
 }
 
-void shuffle_int(int *perm) {
+void shuffle(int *perm) {
 	//int tmp;
 	int len = SIMHASH_BITLEN; // 64
 	while(len) {		
@@ -237,7 +238,8 @@ void shuffle_int(int *perm) {
 }
 
 // generate a random shuffle of integers 0 to 63
-int* shuffle() {
-	static int perm[SIMHASH_BITLEN] = { 0 };
-	return perm;
-}
+//int* shuffle() {
+	//static int perm[SIMHASH_BITLEN] = { 0 };
+	//shuffle_int();
+	//return perm;
+//}
