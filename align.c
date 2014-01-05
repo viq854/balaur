@@ -59,11 +59,14 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	
 	int hits = 0;
 	int acc_hits = 0;
+	int matched = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
 		hits += clusters->clusters[i].num_matches;
 		if(clusters->clusters[i].num_matches == 0) continue;
+		matched++;
 		acc_hits += eval_hit(&clusters->clusters[i]);
 	}
+	printf("Total number of clusters matched = %d \n", matched);
 	printf("Total number of hits found = %d \n", hits);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
