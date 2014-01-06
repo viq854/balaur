@@ -51,9 +51,12 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 			permute_reads(clusters, perm);
 		}
 		for(int i = 0; i < clusters->num_clusters; i++) {
+			if(clusters->clusters[i].acc == 1) continue;
+			
 			// binary search to find the matching ref window(s) 
 			find_window_match_diffk(ref, &clusters->clusters[i], params);
 			clusters->clusters[i].best_hamd = INT_MAX;
+			eval_hit(&clusters->clusters[i]);
 		}
 	}
 	
@@ -189,6 +192,7 @@ int eval_hit(cluster_t* cluster) {
         	for(seq_t idx = 0; idx < cluster->num_matches; idx++) {
             	seq_t hit_pos = cluster->ref_matches[idx];
             	if(hit_pos == j) {
+            		cluster->acc = 1;
 	                matched++;
 	                found = 1;
 	                break;
