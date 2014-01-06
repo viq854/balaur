@@ -143,6 +143,7 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 			new_cluster->reads[0] = r;
 			new_cluster->size = 1;
 			new_cluster->num_matches = 0;
+			new_cluster->acc = 0;
 			new_cluster->best_hamd = INT_MAX;
 			clusters->num_clusters++;
 			prev_cluster = new_cluster;
