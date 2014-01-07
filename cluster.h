@@ -17,8 +17,9 @@ typedef struct {
 	seq_t* ref_matches;
 	int num_matches;
 	int alloc_matches;
-	char acc; // matches accuretely
+	char acc; // DEBUG: whether read matched accuretely
 	int best_hamd;
+	int best_pos;
 } cluster_t;
 
 // clusters of similar reads
