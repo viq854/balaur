@@ -12,7 +12,7 @@
 // --- hamming distance utils ---
 
 int hamming_dist(simhash_t h1, simhash_t h2) {
-	return __builtin_popcountl(h1 ^ h2);
+	return __builtin_popcountll(h1 ^ h2);
 }
 
 // --- k-mer weights ---
@@ -47,7 +47,7 @@ void generate_reads_kmer_hist(reads_t* reads, index_params_t* params) {
 				// update the count
 				reads->hist[kmer]++;
 			} else {
-				// compress the kmer into 16 bits
+				// compress the kmer into 32 bits
 				uint32_t kmer;
 				if(pack_32(&r->seq[j], params->k, &kmer) < 0) {
 					continue;
@@ -69,32 +69,44 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 		if(params->hist_size == KMER_HIST_SIZE16) {
 			uint16_t kmer;
 			int r = pack_16(&ref->seq[j], params->k, &kmer);
-			// valid window
-			if((j < ref->len - params->ref_window_size) && (is_inform(&ref->seq[j], params->ref_window_size))) {
+			// check if not last window
+			if(j <= ref->len - params->ref_window_size) {
+				if(is_inform(&ref->seq[j], params->ref_window_size)) { // valid window
+					if(r >= 0) {
+						ref->hist[kmer]++;
+					}
+				} else { // repetitive window
+					if(r >= 0) {
+						//not a stretch of N's
+						ref->hist[kmer] += params->ref_window_size - params->k;	
+					}
+					j += params->ref_window_size - params->k;
+				}
+			} else { // last window
 				if(r >= 0) {
 					ref->hist[kmer]++;
 				}
-			} else { // repetitive window
-				if(r >= 0) {
-					//not a stretch of N's
-					ref->hist[kmer] += params->ref_window_size - params->k;	
-				}
-				j += params->ref_window_size - params->k;
 			}
 		} else {
 			uint32_t kmer;
 			int r = pack_32(&ref->seq[j], params->k, &kmer);
-			// valid window
-			if((j < ref->len - params->ref_window_size) && (is_inform(&ref->seq[j], params->ref_window_size))) {
+			// check if not last window
+			if(j <= ref->len - params->ref_window_size) {
+				if(is_inform(&ref->seq[j], params->ref_window_size)) { // valid window
+					if(r >= 0) {
+						ref->hist[kmer]++;
+					}
+				} else { // repetitive window
+					if(r >= 0) {
+						//not a stretch of N's
+						ref->hist[kmer] += params->ref_window_size - params->k;	
+					}
+					j += params->ref_window_size - params->k;
+				}
+			} else { // last window
 				if(r >= 0) {
 					ref->hist[kmer]++;
 				}
-			} else { // repetitive window
-				if(r >= 0) {
-					//not a stretch of N's
-					ref->hist[kmer] += params->ref_window_size - params->k;	
-				}
-				j += params->ref_window_size - params->k;
 			}
 		}
 	}
