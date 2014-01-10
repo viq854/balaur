@@ -32,7 +32,7 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	
 	// 4. hash each window
 	t = clock();
-	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
+	params->max_count = (uint64_t) ceil(params->max_freq*ref->num_windows);
 	for(seq_t i = 0; i < ref->num_windows; i++) {
 		simhash_ref(ref, &ref->windows[i], params);
 	}

@@ -19,6 +19,69 @@ void shuffle(int* perm);
 void permute_ref(ref_t* ref, int perm[]);
 void permute_reads(clusters_t* reads, int perm[]);
 
+
+void diff_stats(ref_t* ref, clusters_t* clusters) {
+	int diff_range = 30;
+	int* diff_hist = (int*) calloc(diff_range+1, sizeof(int));
+	for(int i = 0; i < clusters->num_clusters; i++) {
+		cluster_t c = clusters->clusters[i];
+		for(int j = 0; j < c.size; j++) {
+			read_t* r = c.reads[j];
+			unsigned int pos_l, pos_r;
+			int strand;
+			parse_read_mapping(r->name, &pos_l, &pos_r, &strand);
+			unsigned int true_pos = pos_l - 1;
+			for(seq_t k = 0; k < ref->num_windows; k++) {
+				if(true_pos == ref->windows[k].pos) {
+					int d = hamming_dist(ref->windows[k].simhash, c.simhash); 
+					if(d < diff_range) {
+						diff_hist[d]++;
+					} else {
+						diff_hist[diff_range]++;
+					}
+					break;
+				}
+			}
+		}
+	}
+	
+	for(int i = 0; i <= diff_range; i++) {
+		printf("diff = %d count = %d \n", i, diff_hist[i]);
+	}
+	
+	free(diff_hist);
+}
+
+void get_stats(ref_t* ref, clusters_t* clusters) {
+	int printed = 0;
+	for(int i = 0; i < clusters->num_clusters; i++) {
+		cluster_t c = clusters->clusters[i];
+		if(c.acc == 0) {
+			if(printed > 50) break;
+			printed++;
+			printf("Cluster %d size = %d hash %llx \n", i, c.size, c.simhash);
+			printf("best diff = %d \n", c.best_hamd);
+			printf("best pos = %llu \n", c.ref_matches[c.best_pos]);
+			for(int j = 0; j < c.size; j++) {
+				read_t* r = c.reads[j];
+				print_read(r);
+				unsigned int pos_l, pos_r;
+				int strand;
+				parse_read_mapping(r->name, &pos_l, &pos_r, &strand);
+				unsigned int true_pos = pos_l - 1;
+				for(seq_t k = 0; k < ref->num_windows; k++) {
+					if(true_pos == ref->windows[k].pos) {
+						printf("hamm dist true = %d simhash = %llx \n", hamming_dist(ref->windows[k].simhash, c.simhash), ref->windows[k].simhash);
+					}
+					if(c.ref_matches[c.best_pos] == ref->windows[k].pos) {
+						printf("hamm dist best = %d simhash = %llx\n", hamming_dist(ref->windows[k].simhash, c.simhash), ref->windows[k].simhash); 
+					}
+				}
+			}
+		}
+	}
+}
+
 // aligns the indexed reads to the iindexed reference
 void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	printf("**** SRX Alignment ****\n");
@@ -34,7 +97,10 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	cluster_sorted_reads(reads, &clusters);
 	printf("Total number of read clusters = %d \n", clusters->num_clusters);
 	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
+
+
+	//diff_stats(ref, clusters);
+
 	// 3. for each cluster simhash, find the neighbors in the reference
 	static int perm[SIMHASH_BITLEN] = { 0 };
 	for(int i = 0; i < SIMHASH_BITLEN; i++) {
@@ -55,7 +121,9 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 			
 			// binary search to find the matching ref window(s) 
 			find_window_match_diffk(ref, &clusters->clusters[i], params);
-			clusters->clusters[i].best_hamd = INT_MAX;
+			if(p < params->p - 1) {
+				//clusters->clusters[i].best_hamd = INT_MAX;
+			}
 			eval_hit(&clusters->clusters[i]);
 		}
 	}
@@ -68,11 +136,19 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 		if(clusters->clusters[i].num_matches == 0) continue;
 		matched++;
 		acc_hits += eval_hit(&clusters->clusters[i]);
+		if(clusters->clusters[i].acc == 0) {
+			//printf("hash = %llx \n", clusters->clusters[i].simhash);
+			//print_read(clusters->clusters[i].reads[0]);
+			//printf("best diff = %d \n", clusters->clusters[i].best_hamd);
+			//printf("best pos = %llu \n", clusters->clusters[i].ref_matches[clusters->clusters[i].best_pos]);
+		}	
 	}
 	printf("Total number of clusters matched = %d \n", matched);
 	printf("Total number of hits found = %d \n", hits);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+	//get_stats(ref, clusters);
 }
 
 // returns the idxs of the matching simhash window
@@ -107,8 +183,13 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 		return -1;
 	}
 	// find all the matches that have the same d msbits
-	seq_t l = idx - 1;
-	while (l >= 0) {
+	seq_t l;
+	if(idx != 0) {
+		l = idx - 1;
+	} else {
+		l = 0;
+	}
+	while (idx != 0 && l >= 0) {
 		uint32_t d_win = get_msbits32(ref->windows[l].simhash);
 		uint32_t d_q = get_msbits32(cluster->simhash);
 		if(d_win != d_q) {
@@ -119,7 +200,7 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 		}
 		l--;
 	}
-	l++;
+	if(idx != 0) l++;
 	seq_t h = idx + 1;
 	while (h < ref->num_windows) {
 		uint32_t d_win = get_msbits32(ref->windows[h].simhash);
@@ -142,8 +223,15 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 			if(cluster->num_matches == cluster->alloc_matches) {
 				cluster->alloc_matches <<= 1;
 				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
+				if(cluster->ref_matches == NULL) {
+					printf("Could not allocate memory for the matches\n");
+					return -1;
+				}
 			}
-			cluster->best_hamd = hammd;
+			if(hammd < cluster->best_hamd) {
+				cluster->best_hamd = hammd;
+				cluster->best_pos = cluster->num_matches;
+			}
 			cluster->ref_matches[cluster->num_matches] = ref->windows[idx].pos;
 			cluster->num_matches++;
 		}
@@ -187,8 +275,8 @@ int eval_hit(cluster_t* cluster) {
         parse_read_mapping(r.name, &pos_l, &pos_r, &strand);
         //printf("lpos %llu rpos %llu \n", pos_l, pos_r);
 
-        for(seq_t j = pos_l - 5; j <= pos_r + 5; j++) {
-            int found = 0;
+	int found = 0;
+        for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
         	for(seq_t idx = 0; idx < cluster->num_matches; idx++) {
             	seq_t hit_pos = cluster->ref_matches[idx];
             	if(hit_pos == j) {
@@ -253,9 +341,3 @@ void shuffle(int *perm) {
 	}		
 }
 
-// generate a random shuffle of integers 0 to 63
-//int* shuffle() {
-	//static int perm[SIMHASH_BITLEN] = { 0 };
-	//shuffle_int();
-	//return perm;
-//}
