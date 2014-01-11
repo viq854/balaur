@@ -34,7 +34,7 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	t = clock();
 	params->max_count = (uint64_t) ceil(params->max_freq*ref->num_windows);
 	for(seq_t i = 0; i < ref->num_windows; i++) {
-		simhash_ref(ref, &ref->windows[i], params);
+		simhash_ref_sparse(ref, &ref->windows[i], params);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
@@ -81,14 +81,9 @@ void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t**
 	// 3. compute the fingerprints of each read
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
-	//int invalid = 0;
 	for(int i = 0; i < reads->count; i++) {
-		//if(!is_inform(reads->reads[i].seq, reads->reads[i].len)) invalid++;
-		simhash_read(&reads->reads[i], reads->hist, ref->hist, params);
-		//cityhash(&reads->reads[i]);
-		//printf("read %d hash = %llx \n", i, reads->reads[i].simhash);
+		simhash_read_sparse(&reads->reads[i], reads->hist, ref->hist, params);
 	}
-	//printf("Invalid reads: %d\n", invalid);
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 4. sort the reads by their simhash

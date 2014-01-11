@@ -198,8 +198,10 @@ simhash_t generate_simhash_fp(int* v) {
 	return simhash;
 }
 
-// computes the Charikar simhash fingerprint
-void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {	
+// ---- Read Hashing ----
+
+// computes the simhash fingerprint using overlapping k-mers
+void simhash_read_ovp(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {	
 	int v[SIMHASH_BITLEN] = { 0 };
 	
 	// find the read kmers, hash them, and add the hash to V
@@ -215,23 +217,47 @@ void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 	r->simhash = generate_simhash_fp(v);
 }
 
-// --- regular hashing ---
-void cityhash(read_t* r) {
-	r->simhash = CityHash64(r->seq, r->len);
+// computes the simhash fingerprint using non-overlapping k-mers
+void simhash_read_novp(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {	
+	int v[SIMHASH_BITLEN] = { 0 };
+	
+	// find the read kmers, hash them, and add the hash to V
+	int i;
+	for(i = 0; i <= (r->len - params->k); i++) {
+		int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
+		if(weight == 0) continue;
+		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
+		//printf("hash = %llx \n", kmer_hash);
+		add_kmer_hash_bits(v, kmer_hash);
+	}
+	//add_kmer_hash_bits(v, CityHash64(&r->seq[i], (params->k - 1)));
+	r->simhash = generate_simhash_fp(v);
 }
 
-// compute the simhash of a reference window
-void simhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
-	//if(window->pos == 26738515) {
-		 //for(seq_t i = 0; i < 100; i++) {
-			 //printf("%c", iupacChar[(int) ref->seq[window->pos + i]]);
-		 //} 
-		 //printf("\n");
-	//}
-	
-	//printf("w = %llu \n", window->pos);
+// compute the simhash fingerprint using sparse k-mers
+void simhash_read_sparse(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {
 	int v[SIMHASH_BITLEN] = { 0 };
-	// find the read kmers, hash them, and add the hash to V
+	// find the kmers, hash them, and add the hash to V
+	char* kmer = (char*) malloc(params->k*sizeof(char));
+	for(int i = 0; i <params->m; i++) {
+		int* ids = &params->sparse_kmers[i*params->k]; 
+		for(int j = 0; j < params->k; j++) {
+			kmer[j] = r->seq[ids[j]];
+		}
+		int weight = get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
+		if(weight == 0) continue;
+		simhash_t kmer_hash = CityHash64(kmer, params->k);
+		add_kmer_hash_bits(v, kmer_hash);
+	}
+	r->simhash = generate_simhash_fp(v);
+}
+
+// ---- Reference Hashing ----
+
+// compute the simhash of a reference window using overlapping k-mers
+void simhash_ref_ovp(ref_t* ref, ref_win_t* window, index_params_t* params) {
+	int v[SIMHASH_BITLEN] = { 0 };
+	// find the kmers, hash them, and add the hash to V
 	for(int i = 0; i <= (params->ref_window_size - params->k); i++) {
 		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
 		if(weight == 0) continue;
@@ -240,8 +266,36 @@ void simhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	window->simhash = generate_simhash_fp(v);
-	
-	//if(window->pos == 26738515) {
-		//printf("window hash %llx \n", window->simhash); 
-	//}
 }
+
+// compute the simhash of a reference window using non-overlapping k-mers
+void simhash_ref_novp(ref_t* ref, ref_win_t* window, index_params_t* params) {
+	int v[SIMHASH_BITLEN] = { 0 };
+	// find the kmers, hash them, and add the hash to V
+	for(int i = 0; i <= (params->ref_window_size - params->k); i += params->k) {
+		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
+		if(weight == 0) continue;
+		simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
+		add_kmer_hash_bits(v, kmer_hash);
+	}
+	window->simhash = generate_simhash_fp(v);
+}
+
+// compute the simhash of a reference window using sparse k-mers
+void simhash_ref_sparse(ref_t* ref, ref_win_t* window, index_params_t* params) {
+	int v[SIMHASH_BITLEN] = { 0 };
+	// find the kmers, hash them, and add the hash to V
+	char* kmer = (char*) malloc(params->k*sizeof(char));
+	for(int i = 0; i <params->m; i++) {
+		int* ids = &params->sparse_kmers[i*params->k]; 
+		for(int j = 0; j < params->k; j++) {
+			kmer[j] = ref->seq[window->pos + ids[j]];
+		}
+		int weight = get_ref_kmer_weight(kmer, params->k, ref->hist, params);
+		if(weight == 0) continue;
+		simhash_t kmer_hash = CityHash64(kmer, params->k);
+		add_kmer_hash_bits(v, kmer_hash);
+	}
+	window->simhash = generate_simhash_fp(v);
+}
+

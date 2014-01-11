@@ -5,6 +5,8 @@
 typedef struct {
 	int p; // number of permutation tables
 	int k; // length of the k-mers
+	int m; // number of k-mers for sparse k-mers
+	int* sparse_kmers;
 	uint64_t hist_size; // length of the k-mer freq histogram
 	
 	float min_freq;
