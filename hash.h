@@ -8,8 +8,12 @@
 
 #define SIMHASH_BITLEN 64
 
-void simhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params);
-void simhash_ref(ref_t* ref, ref_win_t* w, index_params_t* params);
+void simhash_read_ovp(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params);
+void simhash_read_novp(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params);
+void simhash_read_sparse(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params);
+void simhash_ref_ovp(ref_t* ref, ref_win_t* w, index_params_t* params);
+void simhash_ref_novp(ref_t* ref, ref_win_t* w, index_params_t* params);
+void simhash_ref_sparse(ref_t* ref, ref_win_t* w, index_params_t* params);
 void generate_reads_kmer_hist(reads_t* reads, index_params_t* params);
 void generate_ref_kmer_hist(ref_t* ref, index_params_t* params);
 

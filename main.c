@@ -13,6 +13,7 @@
 void set_default_index_params(index_params_t* params) {
 	params->p = 16;
 	params->k = 8;
+	params->m = 100;
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
 	params->ref_window_size = 100;
@@ -51,6 +52,14 @@ void generate_reads(char* fname) {
 	fclose(readsFile);
 }
 
+
+int rand_range(int n) {
+	int r, rand_max = RAND_MAX - (RAND_MAX % n);
+	while ((r = rand()) >= rand_max);
+	return r / (rand_max / n);
+}
+
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) {
 		printf("Usage: srx [options] <ref.fa> <reads.fq> \n");
@@ -75,18 +84,36 @@ int main(int argc, char *argv[]) {
 	if(params->k > CHARS_PER_SHORT) {
 		params->hist_size = KMER_HIST_SIZE32;
 	}
-	
-	//generate_reads(argv[1]);
+		
+	// generate the sparse k-mer indices
+	int idx[100] = { 0 };
+	for(int i = 0; i < 100; i++) {
+		idx[i] = i;
+	}
+	params->sparse_kmers = (int*) malloc(params->m*params->k*sizeof(int));
+	for(int i = 0; i < params->m; i++) {
+		int offset = i*params->k;
+		// pick random k indices from the read
+		int cnt = 0;
+		int len = params->ref_window_size; 
+		while(cnt < params->k) {		
+			int j = rand_range(len);						
+			params->sparse_kmers[offset+cnt] = idx[j];
+			idx[j] = idx[len-1];
+			cnt++;
+			len--;			
+		}
+	}
 	
 	// 1. ref
 	ref_t* ref;
-	//index_ref(argv[1], params, &ref);
+	index_ref(argv[1], params, &ref);
 	
 	// save index to file
-	char* idxFname  = (char*) malloc(strlen(argv[1]) + 8);
-	char* histFname  = (char*) malloc(strlen(argv[1]) + 8);
-	sprintf(idxFname, "%s.idx%d", argv[1], params->k);
-	sprintf(histFname, "%s.hst%d", argv[1], params->k);
+	char* idxFname  = (char*) malloc(strlen(argv[1]) + 10);
+	char* histFname  = (char*) malloc(strlen(argv[1]) + 10);
+	sprintf(idxFname, "%s.idx_sp%d", argv[1], params->k);
+	sprintf(histFname, "%s.hst_sp%d", argv[1], params->k);
 	store_ref_idx(ref, idxFname);	
 	ref = load_ref_idx(idxFname);
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
