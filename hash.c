@@ -84,7 +84,7 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 			}
 		} else {
 			uint32_t kmer;
-			ifpack_32(&ref->seq[j], params->k, &kmer)) {
+			if(pack_32(&ref->seq[j], params->k, &kmer)) {
 				ref->hist[kmer]++;
 			}
 		}
@@ -98,23 +98,27 @@ void generate_ref_kmer_hist_sparse(ref_t* ref, index_params_t* params) {
 	ref->hist_size = params->hist_size;
 	// compute the k-mers
 	char* kmer_seq = (char*) malloc(params->k*sizeof(char));
-	for(int i = 0; i < params->m; i++) {
-		int* ids = &params->sparse_kmers[i*params->k]; 
-		for(int j = 0; j < params->k; j++) {
-			kmer_seq[j] = ref->seq[window->pos + ids[j]];
-		}
-		if(params->hist_size == KMER_HIST_SIZE16) {
-			uint16_t kmer;
-			if(pack_16(kmer_seq, params->k, &kmer) >= 0) {
-				ref->hist[kmer]++;
+	
+	for(int pos = 0; pos < ref->len; pos += params->ref_window_size) {
+		for(int i = 0; i < params->m; i++) {
+			int* ids = &params->sparse_kmers[i*params->k]; 
+			for(int j = 0; j < params->k; j++) {
+				kmer_seq[j] = ref->seq[pos + ids[j]];
 			}
-		} else {
-			uint32_t kmer;
-			if(pack_32(kmer_seq, params->k, &kmer) >= 0) {
-				ref->hist[kmer]++;
+			if(params->hist_size == KMER_HIST_SIZE16) {
+				uint16_t kmer;
+				if(pack_16(kmer_seq, params->k, &kmer) >= 0) {
+					ref->hist[kmer]++;
+				}
+			} else {
+				uint32_t kmer;
+				if(pack_32(kmer_seq, params->k, &kmer) >= 0) {
+					ref->hist[kmer]++;
+				}
 			}
 		}
 	}
+	free(kmer_seq);
 }
 
 // returns the weight of each read kmer
