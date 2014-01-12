@@ -21,12 +21,23 @@ int hamming_dist(simhash_t h1, simhash_t h2) {
 // e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
 int is_inform(char* seq, int len) {
 	char c = seq[0];
+	int count = 0; 
+	int countN = 0; 
 	for(int i = 1; i < len; i++) {
-		if(seq[i] != c) {
-			return 1;
+		if(seq[i] == c) {
+			count++; //return 1;
+		} 
+		if(seq[i] == 4) {
+			countN++;
+		}
+		if(count > len/2) {
+			return 0;
+		}
+		if(countN > 5) {
+			return 0;
 		}
 	}
-	return 0;
+	return 1;
 }
 
 // compute the frequency of each kmer in the read set
@@ -68,45 +79,39 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params) {
 	for(seq_t j = 0; j <= (ref->len - params->k); j++) {
 		if(params->hist_size == KMER_HIST_SIZE16) {
 			uint16_t kmer;
-			int r = pack_16(&ref->seq[j], params->k, &kmer);
-			// check if not last window
-			if(j <= ref->len - params->ref_window_size) {
-				if(is_inform(&ref->seq[j], params->ref_window_size)) { // valid window
-					if(r >= 0) {
-						ref->hist[kmer]++;
-					}
-				} else { // repetitive window
-					if(r >= 0) {
-						//not a stretch of N's
-						ref->hist[kmer] += params->ref_window_size - params->k;	
-					}
-					j += params->ref_window_size - params->k;
-				}
-			} else { // last window
-				if(r >= 0) {
-					ref->hist[kmer]++;
-				}
+			if(pack_16(&ref->seq[j], params->k, &kmer)) {
+				ref->hist[kmer]++;
 			}
 		} else {
 			uint32_t kmer;
-			int r = pack_32(&ref->seq[j], params->k, &kmer);
-			// check if not last window
-			if(j <= ref->len - params->ref_window_size) {
-				if(is_inform(&ref->seq[j], params->ref_window_size)) { // valid window
-					if(r >= 0) {
-						ref->hist[kmer]++;
-					}
-				} else { // repetitive window
-					if(r >= 0) {
-						//not a stretch of N's
-						ref->hist[kmer] += params->ref_window_size - params->k;	
-					}
-					j += params->ref_window_size - params->k;
-				}
-			} else { // last window
-				if(r >= 0) {
-					ref->hist[kmer]++;
-				}
+			ifpack_32(&ref->seq[j], params->k, &kmer)) {
+				ref->hist[kmer]++;
+			}
+		}
+	}
+}
+
+// compute the frequency of each kmer in the reference
+void generate_ref_kmer_hist_sparse(ref_t* ref, index_params_t* params) {
+	// stores the counts of each kmer
+	ref->hist = (int*) calloc(params->hist_size, sizeof(int));
+	ref->hist_size = params->hist_size;
+	// compute the k-mers
+	char* kmer_seq = (char*) malloc(params->k*sizeof(char));
+	for(int i = 0; i < params->m; i++) {
+		int* ids = &params->sparse_kmers[i*params->k]; 
+		for(int j = 0; j < params->k; j++) {
+			kmer_seq[j] = ref->seq[window->pos + ids[j]];
+		}
+		if(params->hist_size == KMER_HIST_SIZE16) {
+			uint16_t kmer;
+			if(pack_16(kmer_seq, params->k, &kmer) >= 0) {
+				ref->hist[kmer]++;
+			}
+		} else {
+			uint32_t kmer;
+			if(pack_32(kmer_seq, params->k, &kmer) >= 0) {
+				ref->hist[kmer]++;
 			}
 		}
 	}
@@ -290,12 +295,16 @@ void simhash_ref_sparse(ref_t* ref, ref_win_t* window, index_params_t* params) {
 		int* ids = &params->sparse_kmers[i*params->k]; 
 		for(int j = 0; j < params->k; j++) {
 			kmer[j] = ref->seq[window->pos + ids[j]];
+			//printf("%d", kmer[j]);
 		}
+		//printf("\n");
 		int weight = get_ref_kmer_weight(kmer, params->k, ref->hist, params);
 		if(weight == 0) continue;
 		simhash_t kmer_hash = CityHash64(kmer, params->k);
+		//printf("kmer hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	window->simhash = generate_simhash_fp(v);
+	//printf("hash = %llx \n", window->simhash);
 }
 
