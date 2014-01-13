@@ -67,6 +67,28 @@ ref_t* fasta2ref(char *fastaFname) {
 	return ref;
 }
 
+void store_perm(int* perm, int num, const char* permFname) {
+	FILE* permFile = (FILE*) fopen(permFname, "wb");
+	if (permFname == NULL) {
+		printf("store_ref_idx: Cannot open the IDX file %s!\n", permFname);
+		exit(1);
+	}
+	fwrite(perm, sizeof(int), num, permFile);
+	fclose(permFile);
+}
+
+int* load_perm(int num, const char* permFname) {
+	FILE* permFile = (FILE*) fopen(permFname, "rb");
+	if (permFname == NULL) {
+		printf("store_ref_idx: Cannot open the IDX file %s!\n", permFname);
+		exit(1);
+	}
+	int* perm = (int*) malloc(num*sizeof(int));
+	fread(perm, sizeof(int), num, permFile);
+	fclose(permFile);
+	return perm;
+}
+
 void store_ref_idx(ref_t* ref, const char* idxFname) {
 	FILE* idxFile = (FILE*) fopen(idxFname, "wb");
 	if (idxFile == NULL) {
