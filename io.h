@@ -86,6 +86,8 @@ void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* 
 // index io
 void store_ref_idx(ref_t* ref, const char* idxFname);
 ref_t* load_ref_idx(const char* idxFname);
+void store_perm(int* perm, int num, const char* permFname);
+int* load_perm(int num, const char* permFname);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits
