@@ -147,7 +147,7 @@ int get_reads_kmer_weight(char* seq, int len, int* reads_hist, int* ref_hist, in
 	// filter out kmers if:
 	// 1. count is too low and kmer does not occur in the reference
 	// 2. count is too high
-	if((max_count == 0 && min_count < params->min_count) || (max_count > params->max_count)) {
+	if(/*(max_count == 0 && min_count < params->min_count) ||*/ (max_count > params->max_count)) {
 		return 0;
 	}
 	return 1;

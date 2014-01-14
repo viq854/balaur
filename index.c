@@ -22,7 +22,7 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	
 	// 2. compute the frequency of each kmer and filter out windows to be discarded
 	t = clock();
-	generate_ref_kmer_hist(ref, params);
+	generate_ref_kmer_hist_sparse(ref, params);
 	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 3. compute valid reference windows
@@ -59,7 +59,7 @@ void generate_ref_windows(ref_t* ref, index_params_t* params) {
 			ref->num_windows++;	
 		} else {
 			// skip until at least 1 potential valid kmer
-			i += params->k;
+			//i += params->k;
 		}
 	}
 	ref->windows = (ref_win_t*) realloc(ref->windows, ref->num_windows*sizeof(ref_win_t));
@@ -83,6 +83,7 @@ void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t**
 	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
 		simhash_read_sparse(&reads->reads[i], reads->hist, ref->hist, params);
+		//if(i < 10) printf("%llx \n", reads->reads[i].simhash);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
