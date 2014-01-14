@@ -15,6 +15,9 @@ void simhash_ref_ovp(ref_t* ref, ref_win_t* w, index_params_t* params);
 void simhash_ref_novp(ref_t* ref, ref_win_t* w, index_params_t* params);
 void simhash_ref_sparse(ref_t* ref, ref_win_t* w, index_params_t* params);
 
+void sampling_hash_reads(read_t* r, index_params_t* params, int i);
+void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i);
+
 void generate_reads_kmer_hist(reads_t* reads, index_params_t* params);
 void generate_reads_kmer_hist_sparse(reads_t* reads, index_params_t* params);
 void generate_ref_kmer_hist(ref_t* ref, index_params_t* params);

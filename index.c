@@ -10,9 +10,16 @@
 #include "hash.h"
 #include "cluster.h"
 
+// --- Reference Indexing
+
 void generate_ref_windows(ref_t* ref, index_params_t* params);
 
-void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
+// index reference:
+// - load fasta
+// - generate valid windows (sliding window)
+// - compute the simhash of each window
+// - sort
+void index_ref_simhash(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	printf("**** SRX Reference Indexing ****\n");
 		
 	// 1. load the reference
@@ -47,6 +54,44 @@ void index_ref(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	*ref_idx = ref;
 }
 
+
+// index reference:
+// - load fasta
+// - generate valid windows (sliding window)
+void index_ref_windows(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
+	printf("**** SRX Reference Indexing ****\n");
+			
+	// 1. load the reference
+	clock_t t = clock();
+	ref_t* ref = fasta2ref(fastaFname);
+	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+	// 2. compute valid reference windows
+	t = clock();
+	generate_ref_windows(ref, params);
+	printf("Total number of valid windows: %llu\n", ref->num_windows);
+	
+	*ref_idx = ref;
+}
+
+// create hash table i 
+// - hash each window
+// - sort
+void index_ref_table_i(ref_t* ref, index_params_t* params, int i) {
+	// hash each window using sampling ids i
+	clock_t t = clock();
+	for(seq_t i = 0; i < ref->num_windows; i++) {
+		sampling_hash_ref(ref, &ref->windows[i], params, i);
+	}
+	printf("Total hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+	// sort the hashes
+	t = clock();
+	sort_windows_simhash(ref);
+	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total number of distinct window hashes = %llu \n", get_num_distinct(ref));
+}
+
 void generate_ref_windows(ref_t* ref, index_params_t* params) {
 	ref->num_windows = 0;
 	seq_t max_num_windows = ref->len - params->ref_window_size + 1;
@@ -65,7 +110,19 @@ void generate_ref_windows(ref_t* ref, index_params_t* params) {
 	ref->windows = (ref_win_t*) realloc(ref->windows, ref->num_windows*sizeof(ref_win_t));
 }
 
-void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t** reads_idx) {
+// --- Read Indexing ---
+
+void index_reads_table_i(reads_t* reads, index_params_t* params, int i) {
+	// hash each read using sampling ids i
+	clock_t t = clock();
+	for(int i = 0; i < reads->count; i++) {
+		sampling_hash_reads(&reads->reads[i], params, i);
+	}
+	printf("Total read hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
+}
+
+
+void index_reads_simhash(char* readsFname, ref_t* ref, index_params_t* params, reads_t** reads_idx) {
 	printf("**** SRX Read Indexing ****\n");
 	
 	// 1. load the reads (TODO: batch mode)

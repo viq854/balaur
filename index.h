@@ -21,7 +21,11 @@ typedef struct {
 	int s; // length of the hash vector
 } index_params_t;
 
-void index_ref(char* fastaFname, index_params_t* params, ref_t** refidx);
-void index_reads(char* readsFname, ref_t* ref, index_params_t* params, reads_t** ridx);
+void index_ref_simhash(char* fastaFname, index_params_t* params, ref_t** refidx);
+void index_ref_windows(char* fastaFname, index_params_t* params, ref_t** refidx);
+void index_ref_table_i(ref_t* ref, index_params_t* params, int i);
+
+void index_reads_simhash(char* readsFname, ref_t* ref, index_params_t* params, reads_t** ridx);
+void index_reads_table_i(reads_t* reads, index_params_t* params, int i);
 
 #endif /*INDEX_H_*/

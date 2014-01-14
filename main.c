@@ -93,8 +93,8 @@ int main(int argc, char *argv[]) {
 	params->sparse_kmers = (int*) malloc(params->m*params->k*sizeof(int));
 	for(int i = 0; i < params->m; i++) {
 		for(int k = 0; k < 100; k++) {
-                	idx[k] = k;
-        	}
+			idx[k] = k;
+        }
 		int offset = i*params->k;
 		// pick random k indices from the read
 		int cnt = 0;
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 
 	// 1. ref
 	ref_t* ref;
-	index_ref(argv[1], params, &ref);
+	index_ref_windows(argv[1], params, &ref);
 	
 	// save index to file
 	char* idxFname  = (char*) malloc(strlen(argv[1]) + 12);
@@ -125,11 +125,11 @@ int main(int argc, char *argv[]) {
 	//params->sparse_kmers = load_perm(params->m*params->k, permFname);
 	
 	for(int i = 0; i < params->m; i++) {
-                for(int j = 0; j < params->k; j++) {
-                        printf(" %d ", params->sparse_kmers[i*params->k + j]);
-                }
-                printf("\n");
+        for(int j = 0; j < params->k; j++) {
+        	printf(" %d ", params->sparse_kmers[i*params->k + j]);
         }
+        printf("\n");
+    }
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
 	
 	free(histFname);
@@ -138,10 +138,11 @@ int main(int argc, char *argv[]) {
 	
 	// 2. reads
 	reads_t* reads;
-	index_reads(argv[2], ref, params, &reads);
+	//index_reads(argv[2], ref, params, &reads);
+	reads = fastq2reads(argv[2]);
 	
 	// 3. map
-	align_reads(ref, reads, params);
+	align_reads_sampling(ref, reads, params);
 
 	free(params);
 	return 0;

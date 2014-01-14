@@ -126,7 +126,7 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 	
 	cluster_t* prev_cluster;
 	for(int i = 0; i < reads->count; i++) {
-		if((i > 0) && (i % 50000 == 0)) {
+		if((i > 0) && (i % 100000 == 0)) {
 			printf("Clustered %d reads. Total of %d distinct clusters found.\n", i, clusters->num_clusters);
 		}
 		read_t* r = &reads->reads[i];	

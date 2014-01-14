@@ -13,7 +13,10 @@
 
 int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* params);
 int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params);
-int eval_hit(cluster_t* cluster);
+void find_windows_exact(ref_t* ref, read_t* r, index_params_t* params);
+
+int eval_cluster_hit(cluster_t* cluster);
+int eval_read_hit(read_t* r);
 
 void shuffle(int* perm);
 void permute_ref(ref_t* ref, int perm[]);
@@ -48,7 +51,6 @@ void diff_stats(ref_t* ref, clusters_t* clusters) {
 	for(int i = 0; i <= diff_range; i++) {
 		printf("diff = %d count = %d \n", i, diff_hist[i]);
 	}
-	
 	free(diff_hist);
 }
 
@@ -82,8 +84,38 @@ void get_stats(ref_t* ref, clusters_t* clusters) {
 	}
 }
 
-// aligns the indexed reads to the iindexed reference
-void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
+// aligns the indexed reads to the indexed reference
+// using multiple tables of read sampling
+void align_reads_sampling(ref_t* ref, reads_t* reads, index_params_t* params) {
+	printf("**** SRX Alignment ****\n");
+	
+	// construct and search m hash tables using sampling
+	clock_t t = clock();
+	for(int i = 0; i < params->m; i++) {
+		printf("Table %d \n", i);
+		index_ref_table_i(ref, params, i);
+		index_reads_table_i(reads, params, i);
+		
+		for(int j = 0; j < reads->count; j++) {
+			if(reads->reads[j].acc == 1) continue;		
+			// binary search to find the matching ref window(s) 
+			find_windows_exact(ref, &reads->reads[j], params);
+			eval_read_hit(&reads->reads[j]);
+		}
+	}
+	
+	int acc_hits = 0;
+	for(int i = 0; i < reads->count; i++) {
+		acc_hits += reads->reads[i].acc;
+	}
+	printf("Total number of accurate hits found = %d \n", acc_hits);
+	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+}
+
+// aligns the indexed reads to the indexed reference
+// using simhash and permutation tables
+void align_reads_simhash(ref_t* ref, reads_t* reads, index_params_t* params) {
 	printf("**** SRX Alignment ****\n");
 	
 	// 1. sort the reads by their simhash
@@ -124,7 +156,7 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 			if(p < params->p - 1) {
 				//clusters->clusters[i].best_hamd = INT_MAX;
 			}
-			eval_hit(&clusters->clusters[i]);
+			eval_cluster_hit(&clusters->clusters[i]);
 		}
 	}
 	
@@ -135,7 +167,7 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 		hits += clusters->clusters[i].num_matches;
 		if(clusters->clusters[i].num_matches == 0) continue;
 		matched++;
-		acc_hits += eval_hit(&clusters->clusters[i]);
+		acc_hits += eval_cluster_hit(&clusters->clusters[i]);
 		if(clusters->clusters[i].acc == 0) {
 			//printf("hash = %llx \n", clusters->clusters[i].simhash);
 			//print_read(clusters->clusters[i].reads[0]);
@@ -149,6 +181,62 @@ void align_reads(ref_t* ref, reads_t* reads, index_params_t* params) {
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	//get_stats(ref, clusters);
+}
+
+void find_windows_exact(ref_t* ref, read_t* r, index_params_t* params) {
+	seq_t low = 0;
+	seq_t high = ref->num_windows - 1;
+	seq_t idx = -1;
+	while(high >= low) {
+		seq_t mid = (low + high) / 2;
+		if(ref->windows[mid].simhash == r->simhash) {
+			idx = mid;
+			break;
+		} else if (ref->windows[mid].simhash < r->simhash) {
+			low = mid + 1;
+		} else {
+			high = mid - 1;
+		}
+		if(mid == 0) return;
+	}
+	if(idx == -1) return;
+	
+	// find all the windows with the same simhash
+	seq_t l;
+	if(idx != 0) {
+		l = idx - 1;
+	} else {
+		l = 0;
+	}
+	while (idx != 0 && l >= 0) {
+		if(ref->windows[l].simhash != r->simhash) break;
+		if(l == 0) break;
+		l--;
+	}
+	if(idx != 0) l++;
+	seq_t h = idx + 1;
+	while (h < ref->num_windows) {
+		if(ref->windows[h].simhash != r->simhash) break;
+		h++;
+	}
+	h--;
+	
+	if(r->ref_matches == NULL) {
+		r->alloc_matches = h-l+1;
+		r->ref_matches = (seq_t*) malloc(r->alloc_matches*sizeof(seq_t));
+	}
+	for(seq_t idx = l; idx <= h; idx++) {
+		if(r->num_matches == r->alloc_matches) {
+			r->alloc_matches <<= 1;
+			r->ref_matches = (seq_t*) realloc(r->ref_matches, r->alloc_matches*sizeof(seq_t));
+			if(r->ref_matches == NULL) {
+				printf("Could not allocate memory for the matches\n");
+				return;
+			}
+		}
+		r->ref_matches[r->num_matches] = ref->windows[idx].pos;
+		r->num_matches++;
+	}
 }
 
 // returns the idxs of the matching simhash window
@@ -267,7 +355,7 @@ int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params) {
 }
 
 // check how many reads in this cluster match the window positions
-int eval_hit(cluster_t* cluster) {
+int eval_cluster_hit(cluster_t* cluster) {
     int matched = 0;
     for(int i = 0; i < cluster->size; i++) {
         read_t r = *cluster->reads[i];
@@ -293,6 +381,26 @@ int eval_hit(cluster_t* cluster) {
         }
     }
     return matched;
+}
+
+int eval_read_hit(read_t* r) {
+   unsigned int pos_l, pos_r;
+   int strand;
+   parse_read_mapping(r->name, &pos_l, &pos_r, &strand);
+   
+   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
+	   for(seq_t idx = 0; idx < r->num_matches; idx++) {
+		   seq_t hit_pos = r->ref_matches[idx];
+		   if(hit_pos == j) {
+			   r->acc = 1;
+               break;
+           }
+        }
+    	if(r->acc == 1) {
+    		break;
+    	}
+    }
+    return (r->acc == 1);
 }
 
 // permutes a 64-bit integer
