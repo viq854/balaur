@@ -80,8 +80,8 @@ void index_ref_windows(char* fastaFname, index_params_t* params, ref_t** ref_idx
 void index_ref_table_i(ref_t* ref, index_params_t* params, int i) {
 	// hash each window using sampling ids i
 	clock_t t = clock();
-	for(seq_t i = 0; i < ref->num_windows; i++) {
-		sampling_hash_ref(ref, &ref->windows[i], params, i);
+	for(seq_t j = 0; j < ref->num_windows; j++) {
+		sampling_hash_ref(ref, &ref->windows[j], params, i);
 	}
 	printf("Total hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
 	
@@ -115,8 +115,8 @@ void generate_ref_windows(ref_t* ref, index_params_t* params) {
 void index_reads_table_i(reads_t* reads, index_params_t* params, int i) {
 	// hash each read using sampling ids i
 	clock_t t = clock();
-	for(int i = 0; i < reads->count; i++) {
-		sampling_hash_reads(&reads->reads[i], params, i);
+	for(int j = 0; j < reads->count; j++) {
+		sampling_hash_reads(&reads->reads[j], params, i);
 	}
 	printf("Total read hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
 }
