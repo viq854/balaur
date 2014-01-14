@@ -310,7 +310,7 @@ void simhash_ref_sparse(ref_t* ref, ref_win_t* window, index_params_t* params) {
 
 // --- LSH Sampling ---
 
-void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i) {
+void sampling_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i) {
 	window->simhash = 0;
 	int* idxs = &params->sparse_kmers[i*params->k]; 
 	for(int j = 0; j < params->k; j++) {
@@ -319,12 +319,30 @@ void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, in
 	}
 }
 
-void sampling_hash_reads(read_t* r, index_params_t* params, int i) {
+void sampling_reads(read_t* r, index_params_t* params, int i) {
 	r->simhash = 0;
 	int* idxs = &params->sparse_kmers[i*params->k]; 
 	for(int j = 0; j < params->k; j++) {
 		char c = r->seq[idxs[j]];
 		r->simhash |= (c & 1ULL) << j; // 1st ls bit
 	}
+}
+
+void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i) {
+	int* idxs = &params->sparse_kmers[i*params->k]; 
+	char* kmer = (char*) malloc(params->k*sizeof(char));
+	for(int j = 0; j < params->k; j++) {
+		kmer[j] = ref->seq[window->pos + idxs[j]];
+	}
+	window->simhash = CityHash64(kmer, params->k);
+}
+
+void sampling_hash_reads(read_t* r, index_params_t* params, int i) {
+	int* idxs = &params->sparse_kmers[i*params->k]; 
+	char* kmer = (char*) malloc(params->k*sizeof(char));
+	for(int j = 0; j < params->k; j++) {
+		kmer[j] = r->seq[idxs[j]];
+	}
+	r->simhash = CityHash64(kmer, params->k);
 }
 
