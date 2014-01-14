@@ -64,6 +64,11 @@ typedef struct {
 	int strand;
 	uint64_t ref_pos_l;
 	uint64_t ref_pos_r;
+	
+	seq_t* ref_matches;
+	int num_matches;
+	int alloc_matches;
+	char acc; // DEBUG: whether read matched accuretely
 } read_t;
 
 // collection of reads

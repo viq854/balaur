@@ -207,8 +207,6 @@ simhash_t generate_simhash_fp(int* v) {
 	return simhash;
 }
 
-// ---- Read Hashing ----
-
 // computes the simhash fingerprint using overlapping k-mers
 void simhash_read_ovp(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {	
 	int v[SIMHASH_BITLEN] = { 0 };
@@ -261,8 +259,6 @@ void simhash_read_sparse(read_t* r, int* reads_hist, int* ref_hist, index_params
 	r->simhash = generate_simhash_fp(v);
 }
 
-// ---- Reference Hashing ----
-
 // compute the simhash of a reference window using overlapping k-mers
 void simhash_ref_ovp(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	int v[SIMHASH_BITLEN] = { 0 };
@@ -310,5 +306,25 @@ void simhash_ref_sparse(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	}
 	window->simhash = generate_simhash_fp(v);
 	//printf("hash = %llx \n", window->simhash);
+}
+
+// --- LSH Sampling ---
+
+void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i) {
+	window->simhash = 0;
+	int* idxs = &params->sparse_kmers[i*params->k]; 
+	for(int j = 0; j < params->k; j++) {
+		char c = ref->seq[window->pos + idxs[j]];
+		window->simhash |= (c & 1ULL) << j; // 1st ls bit
+	}
+}
+
+void sampling_hash_reads(read_t* r, index_params_t* params, int i) {
+	r->simhash = 0;
+	int* idxs = &params->sparse_kmers[i*params->k]; 
+	for(int j = 0; j < params->k; j++) {
+		char c = r->seq[idxs[j]];
+		r->simhash |= (c & 1ULL) << j; // 1st ls bit
+	}
 }
 

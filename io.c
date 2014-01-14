@@ -225,6 +225,11 @@ reads_t* fastq2reads(char *readsFname) {
 		for(int i = 0; i < read->len; i++) {
 			read->rc[read->len-1-i] = nt4_complement[(int)read->seq[i]];
 		}
+		
+		read->ref_matches = NULL;
+		read->num_matches = 0;
+		read->acc = 0;
+		
 		reads->count++;
 		if(reads->count > MAX_NUM_READS) {
 			printf("Warning: The number of reads in %s exceeds the maximum number of reads allowed (= %d). "
