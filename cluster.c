@@ -142,6 +142,7 @@ void cluster_sorted_reads(reads_t* reads, clusters_t** out) {
 			new_cluster->simhash = r->simhash;
 			new_cluster->reads[0] = r;
 			new_cluster->size = 1;
+			new_cluster->ref_matches = NULL;
 			new_cluster->num_matches = 0;
 			new_cluster->acc = 0;
 			new_cluster->best_hamd = INT_MAX;

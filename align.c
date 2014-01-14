@@ -211,7 +211,8 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 		h++;
 	}
 	h--;
-	
+
+	//printf("Range %llu %llu \n", l , h);	
 	if(cluster->ref_matches == NULL) {
 		cluster->alloc_matches = h-l+1;
 		cluster->ref_matches = (seq_t*) malloc(cluster->alloc_matches*sizeof(seq_t));
@@ -219,8 +220,8 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 	for(seq_t idx = l; idx <= h; idx++) {
 		// check the hamming distance
 		int hammd = hamming_dist(ref->windows[idx].simhash, cluster->simhash);
-		if((hammd <= params->max_hammd) && (hammd <= cluster->best_hamd)) {
-			if(cluster->num_matches == cluster->alloc_matches) {
+		if((hammd <= params->max_hammd)) {// && (hammd <= cluster->best_hamd)) {
+			if(cluster->num_matches == cluster->alloc_matches && cluster->alloc_matches != 0) {
 				cluster->alloc_matches <<= 1;
 				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
 				if(cluster->ref_matches == NULL) {
