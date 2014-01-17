@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 	
 	// 2. reads
 	reads_t* reads;
-	index_reads(argv[2], ref, params, &reads);
+	index_reads_simhash(argv[2], ref, params, &reads);
 	//reads = fastq2reads(argv[2]);
 	
 	// 3. map
