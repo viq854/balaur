@@ -353,7 +353,7 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	window->simhash = 0;
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
-		simhash_t min = INT_MAX; 
+		simhash_t min = LLONG_MAX; //INT_MAX; 
 		// generate all non-overlapping windows
 		for(int i = 0; i <= (params->ref_window_size - params->k); i += params->k) {
 			// TODO generate sparse k-mers from each window
@@ -367,17 +367,20 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 			if(kmer_hash < min) {
 				min = kmer_hash;
 			}
+//			printf("kmer %llx \n", kmer_hash);
 		}
 		// keep only the lowest bit of the min
-		window->simhash |= (min & 1ULL) << j; 
+//		printf("max %llx min %llx bit %d \n", INT_MAX, min, (min & 1ULL));
+		window->simhash |= (min & 1ULL) << (1*j); 
 	}
+//	printf("%llx \n", window->simhash);
 }
 
 void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {
 	r->simhash = 0;
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
-		simhash_t min = INT_MAX; 
+		simhash_t min = LLONG_MAX; //INT_MAX; 
 		// generate all non-overlapping windows
 		for(int i = 0; i <= (r->len - params->k); i += params->k) {
 			// TODO generate sparse k-mers from each window
@@ -393,7 +396,7 @@ void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 			}
 		}
 		// keep only the lowest bit of the min
-		r->simhash |= (min & 1ULL) << j; 
+		r->simhash |= (min & 1ULL) << (1*j); 
 	}
 }
 
