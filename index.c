@@ -29,7 +29,8 @@ void index_ref_simhash(char* fastaFname, index_params_t* params, ref_t** ref_idx
 	
 	// 2. compute the frequency of each kmer and filter out windows to be discarded
 	t = clock();
-	generate_ref_kmer_hist_sparse(ref, params);
+	//generate_ref_kmer_hist_sparse(ref, params);
+	generate_ref_kmer_hist(ref, params);
 	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 3. compute valid reference windows
@@ -41,7 +42,8 @@ void index_ref_simhash(char* fastaFname, index_params_t* params, ref_t** ref_idx
 	t = clock();
 	params->max_count = (uint64_t) ceil(params->max_freq*ref->num_windows);
 	for(seq_t i = 0; i < ref->num_windows; i++) {
-		simhash_ref_sparse(ref, &ref->windows[i], params);
+		//simhash_ref_sparse(ref, &ref->windows[i], params);
+		minhash_ref(ref, &ref->windows[i], params);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
@@ -116,7 +118,7 @@ void index_reads_table_i(reads_t* reads, index_params_t* params, int i) {
 	// hash each read using sampling ids i
 	clock_t t = clock();
 	for(int j = 0; j < reads->count; j++) {
-		sampling_hash_reads(&reads->reads[j], params, i);
+		sampling_hash_read(&reads->reads[j], params, i);
 	}
 	printf("Total read hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
 }
@@ -139,8 +141,8 @@ void index_reads_simhash(char* readsFname, ref_t* ref, index_params_t* params, r
 	t = clock();
 	params->min_count = (int) (params->min_freq*reads->count);
 	for(int i = 0; i < reads->count; i++) {
-		simhash_read_sparse(&reads->reads[i], reads->hist, ref->hist, params);
-		//if(i < 10) printf("%llx \n", reads->reads[i].simhash);
+		minhash_read(&reads->reads[i], reads->hist, ref->hist, params);
+		//simhash_read_sparse(&reads->reads[i], reads->hist, ref->hist, params);
 	}
 	printf("Total simhash computation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	

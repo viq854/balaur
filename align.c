@@ -14,6 +14,7 @@
 int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* params);
 int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params);
 void find_windows_exact(ref_t* ref, read_t* r, index_params_t* params);
+void find_windows_exact_bucket(ref_t* ref, read_t* r, index_params_t* params, int bucket);
 
 int eval_cluster_hit(cluster_t* cluster);
 int eval_read_hit(read_t* r);
@@ -21,7 +22,8 @@ int eval_read_hit(read_t* r);
 void shuffle(int* perm);
 void permute_ref(ref_t* ref, int perm[]);
 void permute_reads(clusters_t* reads, int perm[]);
-
+void shift_bucket_ref(ref_t* ref, int bucket);
+void shift_bucket_reads(reads_t* reads, int bucket);
 
 void diff_stats(ref_t* ref, clusters_t* clusters) {
 	int diff_range = 30;
@@ -100,6 +102,34 @@ void align_reads_sampling(ref_t* ref, reads_t* reads, index_params_t* params) {
 			if(reads->reads[j].acc == 1) continue;		
 			// binary search to find the matching ref window(s) 
 			find_windows_exact(ref, &reads->reads[j], params);
+			eval_read_hit(&reads->reads[j]);
+		}
+	}
+	
+	int acc_hits = 0;
+	for(int i = 0; i < reads->count; i++) {
+		acc_hits += reads->reads[i].acc;
+	}
+	printf("Total number of accurate hits found = %d \n", acc_hits);
+	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	
+}
+
+void align_reads_minhash(ref_t* ref, reads_t* reads, index_params_t* params) {
+	printf("**** SRX Alignment ****\n");
+	
+	// construct and search m hash tables using sampling
+	clock_t t = clock();
+	for(int i = 0; i < SIMHASH_BITLEN/MINHASH_BUCKET_SIZE; i++) {
+		printf("Bucket %d \n", i);
+		shift_bucket_ref(ref, i);
+		shift_bucket_reads(reads, i);
+		sort_windows_simhash(ref);
+		
+		for(int j = 0; j < reads->count; j++) {
+			if(reads->reads[j].acc == 1) continue;		
+			// binary search to find the matching ref window(s) 
+			find_windows_exact_bucket(ref, &reads->reads[j], params, i);
 			eval_read_hit(&reads->reads[j]);
 		}
 	}
@@ -217,6 +247,69 @@ void find_windows_exact(ref_t* ref, read_t* r, index_params_t* params) {
 	seq_t h = idx + 1;
 	while (h < ref->num_windows) {
 		if(ref->windows[h].simhash != r->simhash) break;
+		h++;
+	}
+	h--;
+	
+	if(r->ref_matches == NULL) {
+		r->alloc_matches = h-l+1;
+		r->ref_matches = (seq_t*) malloc(r->alloc_matches*sizeof(seq_t));
+	}
+	for(seq_t idx = l; idx <= h; idx++) {
+		if(r->num_matches == r->alloc_matches) {
+			r->alloc_matches <<= 1;
+			r->ref_matches = (seq_t*) realloc(r->ref_matches, r->alloc_matches*sizeof(seq_t));
+			if(r->ref_matches == NULL) {
+				printf("Could not allocate memory for the matches\n");
+				return;
+			}
+		}
+		r->ref_matches[r->num_matches] = ref->windows[idx].pos;
+		r->num_matches++;
+	}
+}
+
+char get_bucket_bits(simhash_t h, int bucket) {
+	char mask = 0xFF;
+	return h & mask;
+}
+
+void find_windows_exact_bucket(ref_t* ref, read_t* r, index_params_t* params, int bucket) {
+	seq_t low = 0;
+	seq_t high = ref->num_windows - 1;
+	seq_t idx = -1;
+	while(high >= low) {
+		seq_t mid = (low + high) / 2;
+		char wb = get_bucket_bits(ref->windows[mid].simhash, bucket);
+		char rb = get_bucket_bits(r->simhash, bucket);
+		if(wb == rb) {
+			idx = mid;
+			break;
+		} else if (wb < rb) {
+			low = mid + 1;
+		} else {
+			high = mid - 1;
+		}
+		if(mid == 0) return;
+	}
+	if(idx == -1) return;
+	
+	// find all the windows with the same simhash
+	seq_t l;
+	if(idx != 0) {
+		l = idx - 1;
+	} else {
+		l = 0;
+	}
+	while (idx != 0 && l >= 0) {
+		if(get_bucket_bits(ref->windows[l].simhash, bucket) != get_bucket_bits(r->simhash, bucket)) break;
+		if(l == 0) break;
+		l--;
+	}
+	if(idx != 0) l++;
+	seq_t h = idx + 1;
+	while (h < ref->num_windows) {
+		if(get_bucket_bits(ref->windows[h].simhash, bucket) != get_bucket_bits(r->simhash, bucket)) break;
 		h++;
 	}
 	h--;
@@ -401,6 +494,18 @@ int eval_read_hit(read_t* r) {
     	}
     }
     return (r->acc == 1);
+}
+
+void shift_bucket_ref(ref_t* ref, int bucket) {
+	for(seq_t i = 0; i < ref->num_windows; i++) {
+		ref->windows[i].simhash >>= (bucket*MINHASH_BUCKET_SIZE);
+	}
+}
+
+void shift_bucket_reads(reads_t* reads, int bucket) {
+	for(seq_t i = 0; i < reads->count; i++) {
+		reads->reads[i].simhash >>= (bucket*MINHASH_BUCKET_SIZE);
+	}
 }
 
 // permutes a 64-bit integer
