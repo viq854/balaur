@@ -9,11 +9,13 @@
 #include "index.h"
 #include "align.h"
 #include "hash.h"
+#include "mt64.h"
 
 void set_default_index_params(index_params_t* params) {
 	params->p = 1;
 	params->k = 64;
 	params->m = 2;
+	params->h = 64;
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
 	params->ref_window_size = 100;
@@ -107,42 +109,46 @@ int main(int argc, char *argv[]) {
 			len--;			
 		}
 	}
+	
+	params->rand_hash_pads = (simhash_t*) malloc(params->h*sizeof(simhash_t));
+	for(int i = 0; i < params->h; i++) {
+		params->rand_hash_pads[i] = genrand64_int64();
+	}
 
 	// 1. ref
 	ref_t* ref;
-	index_ref_windows(argv[1], params, &ref);
+	//index_ref_windows(argv[1], params, &ref);
+	index_ref_simhash(argv[1], params, &ref);
 	
 	// save index to file
 	char* idxFname  = (char*) malloc(strlen(argv[1]) + 12);
 	char* histFname  = (char*) malloc(strlen(argv[1]) + 12);
 	char* permFname  = (char*) malloc(strlen(argv[1]) + 12);
+	char* padFname  = (char*) malloc(strlen(argv[1]) + 12);
 	sprintf(idxFname, "%s.idx_sp%d.%d", argv[1], params->k, params->m);
 	sprintf(histFname, "%s.hst_sp%d.%d", argv[1], params->k, params->m);
 	sprintf(permFname, "%s.perm%d.%d", argv[1], params->k, params->m);
+	sprintf(padFname, "%s.pad%d", argv[1], params->h);
 	//store_ref_idx(ref, idxFname);	
 	//ref = load_ref_idx(idxFname);
 	//store_perm(params->sparse_kmers, params->m*params->k, permFname);
 	//params->sparse_kmers = load_perm(params->m*params->k, permFname);
 	
-	for(int i = 0; i < params->m; i++) {
-        for(int j = 0; j < params->k; j++) {
-        	printf(" %d ", params->sparse_kmers[i*params->k + j]);
-        }
-        printf("\n");
-    }
 	params->max_count = (uint64_t) (params->max_freq*ref->num_windows);
 	
 	free(histFname);
 	free(idxFname);
 	free(permFname);
+	free(padFname);
 	
 	// 2. reads
 	reads_t* reads;
-	//index_reads(argv[2], ref, params, &reads);
-	reads = fastq2reads(argv[2]);
+	index_reads(argv[2], ref, params, &reads);
+	//reads = fastq2reads(argv[2]);
 	
 	// 3. map
-	align_reads_sampling(ref, reads, params);
+	//align_reads_sampling(ref, reads, params);
+	align_reads_minhash(ref, reads, params);
 
 	free(params);
 	return 0;

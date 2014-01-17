@@ -6,7 +6,10 @@ typedef struct {
 	int p; // number of permutation tables
 	int k; // length of the k-mers
 	int m; // number of k-mers for sparse k-mers
+	int h; // number of hash functions for min-hash
 	int* sparse_kmers;
+	simhash_t* rand_hash_pads;
+	
 	uint64_t hist_size; // length of the k-mer freq histogram
 	
 	float min_freq;

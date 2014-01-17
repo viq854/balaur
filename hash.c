@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include "limits.h"
 #include "io.h"
 #include "hash.h"
 #include "city.h"
@@ -319,7 +320,7 @@ void sampling_ref(ref_t* ref, ref_win_t* window, index_params_t* params, int i) 
 	}
 }
 
-void sampling_reads(read_t* r, index_params_t* params, int i) {
+void sampling_read(read_t* r, index_params_t* params, int i) {
 	r->simhash = 0;
 	int* idxs = &params->sparse_kmers[i*params->k]; 
 	for(int j = 0; j < params->k; j++) {
@@ -337,12 +338,62 @@ void sampling_hash_ref(ref_t* ref, ref_win_t* window, index_params_t* params, in
 	window->simhash = CityHash64(kmer, params->k);
 }
 
-void sampling_hash_reads(read_t* r, index_params_t* params, int i) {
+void sampling_hash_read(read_t* r, index_params_t* params, int i) {
 	int* idxs = &params->sparse_kmers[i*params->k]; 
 	char* kmer = (char*) malloc(params->k*sizeof(char));
 	for(int j = 0; j < params->k; j++) {
 		kmer[j] = r->seq[idxs[j]];
 	}
 	r->simhash = CityHash64(kmer, params->k);
+}
+
+// --- MIN Hash ---
+
+void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
+	window->simhash = 0;
+	// find the kmers, hash them, and keep the min (only lowest bit)
+	for(int j = 0; j < params->h; j++) {
+		simhash_t min = INT_MAX; 
+		// generate all non-overlapping windows
+		for(int i = 0; i <= (params->ref_window_size - params->k); i += params->k) {
+			// TODO generate sparse k-mers from each window
+			int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
+			if(weight == 0) continue;
+			// hash the k-mer and compare to current min
+			simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
+			if(i > 0) {
+				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
+			}
+			if(kmer_hash < min) {
+				min = kmer_hash;
+			}
+		}
+		// keep only the lowest bit of the min
+		window->simhash |= (min & 1ULL) << j; 
+	}
+}
+
+void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {
+	r->simhash = 0;
+	// find the kmers, hash them, and keep the min (only lowest bit)
+	for(int j = 0; j < params->h; j++) {
+		simhash_t min = INT_MAX; 
+		// generate all non-overlapping windows
+		for(int i = 0; i <= (r->len - params->k); i += params->k) {
+			// TODO generate sparse k-mers from each window
+			int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
+			if(weight == 0) continue;
+			// hash the k-mer and compare to current min
+			simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
+			if(i > 0) {
+				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
+			}
+			if(kmer_hash < min) {
+				min = kmer_hash;
+			}
+		}
+		// keep only the lowest bit of the min
+		r->simhash |= (min & 1ULL) << j; 
+	}
 }
 
