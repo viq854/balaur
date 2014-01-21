@@ -351,11 +351,11 @@ void sampling_hash_read(read_t* r, index_params_t* params, int i) {
 
 void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	window->simhash = 0;
+	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
 		simhash_t min = LLONG_MAX; //INT_MAX; 
 		// generate all sparse kmers
-		char* kmer = (char*) malloc(params->k*sizeof(char));
 		for(int i = 0; i < params->m; i++) {
 			int* ids = &params->sparse_kmers[i*params->k]; 
 			for(int j = 0; j < params->k; j++) {
@@ -377,15 +377,16 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 //		printf("max %llx min %llx bit %d \n", INT_MAX, min, (min & 1ULL));
 		window->simhash |= (min & 1ULL) << (1*j); 
 	}
+	free(kmer);
 //	printf("%llx \n", window->simhash);
 }
 
 void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* params) {
 	r->simhash = 0;
+	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
 		simhash_t min = LLONG_MAX; //INT_MAX; 
-		char* kmer = (char*) malloc(params->k*sizeof(char));
 		for(int i = 0; i < params->m; i++) {
 			int* ids = &params->sparse_kmers[i*params->k]; 
 			for(int j = 0; j < params->k; j++) {
@@ -405,5 +406,6 @@ void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 		// keep only the lowest bit of the min
 		r->simhash |= (min & 1ULL) << (1*j); 
 	}
+	free(kmer);
 }
 
