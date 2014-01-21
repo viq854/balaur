@@ -2,13 +2,16 @@
 #define INDEX_H_
 #include "io.h"
 
-typedef struct {
-	int p; // number of permutation tables
+typedef struct {	
 	int k; // length of the k-mers
 	int m; // number of k-mers for sparse k-mers
-	int h; // number of hash functions for min-hash
+	int max_range; // range from which to generate sparse kmers
 	int* sparse_kmers;
+	
+	int h; // number of hash functions for min-hash
 	simhash_t* rand_hash_pads;
+	
+	int p; // number of permutation tables
 	
 	uint64_t hist_size; // length of the k-mer freq histogram
 	

@@ -12,9 +12,11 @@
 #include "mt64.h"
 
 void set_default_index_params(index_params_t* params) {
+	params->k = 16;
+	params->m = 10;
+	params->max_range = params->k + 10;
+	
 	params->p = 1;
-	params->k = 64;
-	params->m = 2;
 	params->h = 64;
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
@@ -89,17 +91,14 @@ int main(int argc, char *argv[]) {
 		
 	// generate the sparse k-mer indices
 	int idx[100] = { 0 };
-	for(int i = 0; i < 100; i++) {
-		idx[i] = i;
-	}
 	params->sparse_kmers = (int*) malloc(params->m*params->k*sizeof(int));
 	for(int i = 0; i < params->m; i++) {
-		for(int k = 0; k < 100; k++) {
+		for(int k = 0; k < params->ref_window_size; k++) {
 			idx[k] = k;
         }
 		int offset = i*params->k;
 		// pick random k indices from the read
-		int cnt = 0;
+		/*int cnt = 0;
 		int len = params->ref_window_size; 
 		while(cnt < params->k) {		
 			int j = rand_range(len);						
@@ -107,9 +106,31 @@ int main(int argc, char *argv[]) {
 			idx[j] = idx[len-1];
 			cnt++;
 			len--;			
+		}*/
+		
+		// pick random k *close-by* indices from the read
+		int start = rand_range(params->ref_window_size - params->max_range);
+		params->sparse_kmers[offset] = start;
+		int cnt = 1;
+		int len = params->max_range; 
+		while(cnt < params->k) {	
+			int j = rand_range(len) + 1; // exclude 0
+			params->sparse_kmers[offset + cnt] = start + idx[j]; 
+			idx[j] = idx[len-1];
+			cnt++;
+			len--;	
 		}
 	}
 	
+	for(int i = 0; i < params->m; i++) {
+		printf("m = %d \n", i);
+		for(int j = 0; j < params->k; j++) {
+			printf(" %d ", params->sparse_kmers[i*params->k + j]);
+		}
+		printf("\n");
+	}
+	
+	// hash functions for minhash
 	params->rand_hash_pads = (simhash_t*) malloc(params->h*sizeof(simhash_t));
 	for(int i = 0; i < params->h; i++) {
 		params->rand_hash_pads[i] = genrand64_int64();
@@ -148,7 +169,8 @@ int main(int argc, char *argv[]) {
 	
 	// 3. map
 	//align_reads_sampling(ref, reads, params);
-	align_reads_minhash(ref, reads, params);
+	//align_reads_minhash(ref, reads, params);
+	align_reads_simhash(ref, reads, params);
 
 	free(params);
 	return 0;

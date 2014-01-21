@@ -354,13 +354,17 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
 		simhash_t min = LLONG_MAX; //INT_MAX; 
-		// generate all non-overlapping windows
-		for(int i = 0; i <= (params->ref_window_size - params->k); i += params->k) {
-			// TODO generate sparse k-mers from each window
-			int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
+		// generate all sparse kmers
+		char* kmer = (char*) malloc(params->k*sizeof(char));
+		for(int i = 0; i < params->m; i++) {
+			int* ids = &params->sparse_kmers[i*params->k]; 
+			for(int j = 0; j < params->k; j++) {
+				kmer[j] = ref->seq[window->pos + ids[j]];
+			}
+			int weight = get_ref_kmer_weight(kmer, params->k, ref->hist, params);
 			if(weight == 0) continue;
 			// hash the k-mer and compare to current min
-			simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
+			simhash_t kmer_hash = CityHash64(kmer, params->k);
 			if(i > 0) {
 				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
 			}
@@ -381,13 +385,16 @@ void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 	// find the kmers, hash them, and keep the min (only lowest bit)
 	for(int j = 0; j < params->h; j++) {
 		simhash_t min = LLONG_MAX; //INT_MAX; 
-		// generate all non-overlapping windows
-		for(int i = 0; i <= (r->len - params->k); i += params->k) {
-			// TODO generate sparse k-mers from each window
-			int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
+		char* kmer = (char*) malloc(params->k*sizeof(char));
+		for(int i = 0; i < params->m; i++) {
+			int* ids = &params->sparse_kmers[i*params->k]; 
+			for(int j = 0; j < params->k; j++) {
+				kmer[j] = r->seq[ids[j]];
+			}
+			int weight = get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
 			if(weight == 0) continue;
 			// hash the k-mer and compare to current min
-			simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
+			simhash_t kmer_hash = CityHash64(kmer, params->k);
 			if(i > 0) {
 				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
 			}
