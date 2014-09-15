@@ -21,7 +21,7 @@ void set_default_index_params(index_params_t* params) {
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
 	params->ref_window_size = 100;
-	params->max_hammd = 20;
+	params->max_hammd = 10;
 	params->kmer_type = SPARSE;
 }
 
@@ -150,6 +150,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (strcmp(argv[1], "simh") == 0) { // SIMHASH
+		printf("LSH Algorithm: simhash \n");
+
 		params->alg = SIMH;
 
 		// 1. index the reference
@@ -164,7 +166,9 @@ int main(int argc, char *argv[]) {
 		// store the index
 		if(params->out_idx_fname) {
 			store_ref_idx(ref, params->in_idx_fname);
-			store_perm(params->sparse_kmers, params->m*params->k, sparseFname);
+			if (params->kmer_type == SPARSE) {
+				store_perm(params->sparse_kmers, params->m*params->k, sparseFname);
+			}
 		}
 
 		// 2. index the reads
@@ -175,6 +179,8 @@ int main(int argc, char *argv[]) {
 		align_reads_simhash(ref, reads, params);
 
 	} else if (strcmp(argv[1], "minh") == 0) { // MINHASH
+		printf("LSH Algorithm: minhash \n");
+
 		params->alg = MINH;
 
 		// 1. generate the independent hash functions
@@ -207,6 +213,8 @@ int main(int argc, char *argv[]) {
 		align_reads_minhash(ref, reads, params);
 
 	} else if (strcmp(argv[1], "sample") == 0) {
+		printf("LSH Algorithm: sampling \n");
+
 		params->alg = SAMPLE;
 
 		// 1. load the reference

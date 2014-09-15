@@ -91,8 +91,10 @@ void index_reads_lsh(char* readsFname, ref_t* ref, index_params_t* params, reads
 
 	// 2. compute the frequency of each kmer
 	t = clock();
-	generate_reads_kmer_hist(reads, params);
-	printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	if(params->kmer_type != SPARSE) {
+		generate_reads_kmer_hist(reads, params);
+		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	}
 
 	// 3. compute the fingerprints of each read
 	t = clock();
