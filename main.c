@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
 			ref = load_ref_idx(params->in_idx_fname);
 			params->sparse_kmers = load_perm(params->m*params->k, sparseFname);
 		} else {
-			index_ref_lsh(argv[2], params, &ref);
+			index_ref_lsh(argv[optind+1], params, &ref);
 		}
 		// store the index
 		if(params->out_idx_fname) {
@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
 
 		// 2. index the reads
 		reads_t* reads;
-		index_reads_lsh(argv[3], ref, params, &reads);
+		index_reads_lsh(argv[optind+2], ref, params, &reads);
 
 		// 3. map the hashes
 		align_reads_simhash(ref, reads, params);
@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
 			ref = load_ref_idx(params->in_idx_fname);
 			params->sparse_kmers = load_perm(params->m*params->k, sparseFname);
 		} else {
-			index_ref_lsh(argv[2], params, &ref);
+			index_ref_lsh(argv[optind+1], params, &ref);
 		}
 		// store the index
 		if(params->out_idx_fname) {
@@ -207,7 +207,7 @@ int main(int argc, char *argv[]) {
 
 		// 3. hash the reads
 		reads_t* reads;
-		index_reads_lsh(argv[3], ref, params, &reads);
+		index_reads_lsh(argv[optind+2], ref, params, &reads);
 
 		// 4. map the hashes
 		align_reads_minhash(ref, reads, params);
@@ -218,14 +218,14 @@ int main(int argc, char *argv[]) {
 		params->alg = SAMPLE;
 
 		// 1. load the reference
-		ref_t* ref = fasta2ref(argv[3]);
+		ref_t* ref = fasta2ref(argv[optind+1]);
 
 		// 2. compute valid reference windows
 		generate_ref_windows(ref, params);
 		printf("Total number of valid windows: %llu\n", ref->num_windows);
 
 		// 3. load the reads
-		reads_t* reads = fastq2reads(argv[3]);
+		reads_t* reads = fastq2reads(argv[optind+2]);
 
 		// 4. map by sampling
 		align_reads_sampling(ref, reads, params);
