@@ -12,7 +12,7 @@
 
 // --- hamming distance utils ---
 
-int hamming_dist(simhash_t h1, simhash_t h2) {
+int hamming_dist(hash_t h1, hash_t h2) {
 	return __builtin_popcountll(h1 ^ h2);
 }
 
@@ -186,7 +186,7 @@ int get_ref_kmer_weight(char* seq, int len, int* hist, index_params_t* params) {
 
 // for each bit position i in the kmer hash
 // if hash[i] is 1: increment v[i]; otherwise, decrement v[i]
-void add_kmer_hash_bits(int* v, simhash_t hash) {
+void add_kmer_hash_bits(int* v, hash_t hash) {
 	for(int b = 0; b < SIMHASH_BITLEN; b++) {
 		if(((hash >> b) & 1) == 1) {
 			v[b]++;
@@ -197,8 +197,8 @@ void add_kmer_hash_bits(int* v, simhash_t hash) {
 }
 
 // returns the simhash fingerprint
-simhash_t generate_simhash_fp(int* v) {
-	simhash_t simhash = 0;
+hash_t generate_simhash_fp(int* v) {
+	hash_t simhash = 0;
 	for (int b = 0; b < SIMHASH_BITLEN; b++) {
 		if(v[b] >= 0) {
 			simhash |= (1ULL << b);
@@ -217,7 +217,7 @@ void simhash_read_ovp(read_t* r, int* reads_hist, int* ref_hist, index_params_t*
 	for(i = 0; i <= (r->len - params->k); i++) {
 		int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
+		hash_t kmer_hash = CityHash64(&r->seq[i], params->k);
 		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
@@ -234,7 +234,7 @@ void simhash_read_novp(read_t* r, int* reads_hist, int* ref_hist, index_params_t
 	for(i = 0; i <= (r->len - params->k); i++) {
 		int weight = get_reads_kmer_weight(&r->seq[i], params->k, reads_hist, ref_hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(&r->seq[i], params->k);
+		hash_t kmer_hash = CityHash64(&r->seq[i], params->k);
 		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
@@ -252,9 +252,9 @@ void simhash_read_sparse(read_t* r, int* reads_hist, int* ref_hist, index_params
 		for(int j = 0; j < params->k; j++) {
 			kmer[j] = r->seq[ids[j]];
 		}
-		int weight = get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
+		int weight = 1;//get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(kmer, params->k);
+		hash_t kmer_hash = CityHash64(kmer, params->k);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	r->simhash = generate_simhash_fp(v);
@@ -267,7 +267,7 @@ void simhash_ref_ovp(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	for(int i = 0; i <= (params->ref_window_size - params->k); i++) {
 		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
+		hash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
 		//printf("hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
@@ -281,7 +281,7 @@ void simhash_ref_novp(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	for(int i = 0; i <= (params->ref_window_size - params->k); i += params->k) {
 		int weight = get_ref_kmer_weight(&ref->seq[window->pos + i], params->k, ref->hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
+		hash_t kmer_hash = CityHash64(&ref->seq[window->pos + i], params->k);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
 	window->simhash = generate_simhash_fp(v);
@@ -297,11 +297,10 @@ void simhash_ref_sparse(ref_t* ref, ref_win_t* window, index_params_t* params) {
 		for(int j = 0; j < params->k; j++) {
 			kmer[j] = ref->seq[window->pos + ids[j]];
 			//printf("%d", kmer[j]);
-		}
-		//printf("\n");
-		int weight = get_ref_kmer_weight(kmer, params->k, ref->hist, params);
+		} //printf("\n");
+		int weight = 1; //get_ref_kmer_weight(kmer, params->k, ref->hist, params);
 		if(weight == 0) continue;
-		simhash_t kmer_hash = CityHash64(kmer, params->k);
+		hash_t kmer_hash = CityHash64(kmer, params->k);
 		//printf("kmer hash = %llx \n", kmer_hash);
 		add_kmer_hash_bits(v, kmer_hash);
 	}
@@ -353,20 +352,20 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 	window->simhash = 0;
 	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find the kmers, hash them, and keep the min (only lowest bit)
-	for(int j = 0; j < params->h; j++) {
-		simhash_t min = LLONG_MAX; //INT_MAX; 
+	for(int h = 0; h < params->h; h++) {
+		hash_t min = LLONG_MAX; //INT_MAX; 
 		// generate all sparse kmers
 		for(int i = 0; i < params->m; i++) {
 			int* ids = &params->sparse_kmers[i*params->k]; 
 			for(int j = 0; j < params->k; j++) {
 				kmer[j] = ref->seq[window->pos + ids[j]];
 			}
-			int weight = get_ref_kmer_weight(kmer, params->k, ref->hist, params);
+			int weight = 1; //get_ref_kmer_weight(kmer, params->k, ref->hist, params);
 			if(weight == 0) continue;
 			// hash the k-mer and compare to current min
-			simhash_t kmer_hash = CityHash64(kmer, params->k);
-			if(i > 0) {
-				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
+			hash_t kmer_hash = CityHash64(kmer, params->k);
+			if(i >= 0) { // FIXME was i >0
+				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
 			}
 			if(kmer_hash < min) {
 				min = kmer_hash;
@@ -375,7 +374,7 @@ void minhash_ref(ref_t* ref, ref_win_t* window, index_params_t* params) {
 		}
 		// keep only the lowest bit of the min
 //		printf("max %llx min %llx bit %d \n", INT_MAX, min, (min & 1ULL));
-		window->simhash |= (min & 1ULL) << (1*j); 
+		window->simhash |= (min & 1ULL) << (1*h);
 	}
 	free(kmer);
 //	printf("%llx \n", window->simhash);
@@ -385,26 +384,26 @@ void minhash_read(read_t* r, int* reads_hist, int* ref_hist, index_params_t* par
 	r->simhash = 0;
 	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find the kmers, hash them, and keep the min (only lowest bit)
-	for(int j = 0; j < params->h; j++) {
-		simhash_t min = LLONG_MAX; //INT_MAX; 
+	for(int h = 0; h < params->h; h++) {
+		hash_t min = LLONG_MAX; //INT_MAX; 
 		for(int i = 0; i < params->m; i++) {
 			int* ids = &params->sparse_kmers[i*params->k]; 
 			for(int j = 0; j < params->k; j++) {
 				kmer[j] = r->seq[ids[j]];
 			}
-			int weight = get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
+			int weight = 1; //get_reads_kmer_weight(kmer, params->k, reads_hist, ref_hist, params);
 			if(weight == 0) continue;
 			// hash the k-mer and compare to current min
-			simhash_t kmer_hash = CityHash64(kmer, params->k);
-			if(i > 0) {
-				kmer_hash ^= params->rand_hash_pads[j]; // xor with the random pad 
+			hash_t kmer_hash = CityHash64(kmer, params->k);
+			if(i >= 0) {
+				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
 			}
 			if(kmer_hash < min) {
 				min = kmer_hash;
 			}
 		}
 		// keep only the lowest bit of the min
-		r->simhash |= (min & 1ULL) << (1*j); 
+		r->simhash |= (min & 1ULL) << (1*h);
 	}
 	free(kmer);
 }

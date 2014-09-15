@@ -32,7 +32,7 @@ static const unsigned char nt4_table[256] = {
 
 typedef struct {
 	seq_t pos;
-	simhash_t simhash;
+	hash_t simhash;
 } ref_win_t;
 
 typedef struct {
@@ -57,7 +57,7 @@ typedef struct {
 	char* qual;
 	
 	// simhash fingerprint
-	simhash_t simhash;
+	hash_t simhash;
 	int simhash_popc;
 
 	// original mapping information
