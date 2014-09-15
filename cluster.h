@@ -9,7 +9,7 @@
 
 // cluster of similar reads
 typedef struct {
-	simhash_t simhash; // simhash fp of the representative read 
+	hash_t simhash; // simhash fp of the representative read 
 	int size; // number of reads in the cluster
 	int alloc_size;
 	read_t** reads; // members of the cluster
@@ -29,8 +29,8 @@ typedef struct {
 	cluster_t* clusters;
 } clusters_t;
 
-void sort_windows_simhash(ref_t* ref);
-void sort_reads_simhash(reads_t* reads);
+void sort_windows_hash(ref_t* ref);
+void sort_reads_hash(reads_t* reads);
 seq_t get_num_distinct(ref_t* ref);
 void cluster_sorted_reads(reads_t* reads, clusters_t** out);
 void cluster_reads(reads_t* reads, clusters_t** out);

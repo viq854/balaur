@@ -32,7 +32,7 @@ void generate_ref_kmer_hist(ref_t* ref, index_params_t* params);
 void generate_ref_kmer_hist_sparse(ref_t* ref, index_params_t* params) ;
 
 int is_inform(char* seq, int len);
-int hamming_dist(simhash_t h1, simhash_t h2);
+int hamming_dist(hash_t h1, hash_t h2);
 
 void cityhash(read_t* r);
 

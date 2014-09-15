@@ -120,16 +120,17 @@ void align_reads_minhash(ref_t* ref, reads_t* reads, index_params_t* params) {
 	
 	// construct and search m hash tables using sampling
 	clock_t t = clock();
-	for(int i = 0; i < SIMHASH_BITLEN/MINHASH_BUCKET_SIZE; i++) {
-		printf("Bucket %d \n", i);
-		shift_bucket_ref(ref, i);
-		shift_bucket_reads(reads, i);
-		sort_windows_simhash(ref);
+	for(int i = 0; i < 1; i++) { //SIMHASH_BITLEN/MINHASH_BUCKET_SIZE; i++) {
+		//printf("Bucket %d \n", i);
+		//shift_bucket_ref(ref, i);
+		//shift_bucket_reads(reads, i);
+		//sort_windows_hash(ref);
 		
 		for(int j = 0; j < reads->count; j++) {
 			if(reads->reads[j].acc == 1) continue;		
 			// binary search to find the matching ref window(s) 
-			find_windows_exact_bucket(ref, &reads->reads[j], params, i);
+			//find_windows_exact_bucket(ref, &reads->reads[j], params, i);
+			find_windows_exact(ref, &reads->reads[j], params);
 			eval_read_hit(&reads->reads[j]);
 		}
 	}
@@ -150,7 +151,7 @@ void align_reads_simhash(ref_t* ref, reads_t* reads, index_params_t* params) {
 	
 	// 1. sort the reads by their simhash
 	clock_t t = clock();
-	sort_reads_simhash(reads);
+	sort_reads_hash(reads);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 2. split reads into "clusters" based on their simhash 
@@ -175,7 +176,7 @@ void align_reads_simhash(ref_t* ref, reads_t* reads, index_params_t* params) {
 			// generate a new permutation
 			shuffle(perm);
 			permute_ref(ref, perm);
-			sort_windows_simhash(ref);
+			sort_windows_hash(ref);
 			permute_reads(clusters, perm);
 		}
 		for(int i = 0; i < clusters->num_clusters; i++) {
@@ -269,7 +270,7 @@ void find_windows_exact(ref_t* ref, read_t* r, index_params_t* params) {
 	}
 }
 
-char get_bucket_bits(simhash_t h, int bucket) {
+char get_bucket_bits(hash_t h, int bucket) {
 	char mask = 0xFF;
 	return h & mask;
 }
@@ -336,7 +337,7 @@ void find_windows_exact_bucket(ref_t* ref, read_t* r, index_params_t* params, in
 // uses binary search
 #define D_MSBITS_MATCH	16
 
-uint32_t get_msbits32(simhash_t h) {
+uint32_t get_msbits32(hash_t h) {
 	return (h >> (SIMHASH_BITLEN - D_MSBITS_MATCH));
 }
 
@@ -424,7 +425,7 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, index_params_t* para
 // returns the idx of the matching simhash window
 // uses binary search
 int find_window_match(ref_t* ref, cluster_t* cluster, index_params_t* params) {
-	simhash_t h = cluster->simhash;
+	hash_t h = cluster->simhash;
 	seq_t low = 0;
 	seq_t high = ref->num_windows - 1;
 	
