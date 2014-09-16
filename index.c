@@ -56,7 +56,7 @@ void index_ref_lsh(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	// 3. compute valid reference windows
 	t = clock();
 	generate_ref_windows(ref, params);
-	printf("Total number of valid windows: %llu\n", ref->num_windows);
+	printf("Total number of valid windows: %llu\n", (uint64_t) ref->num_windows);
 	
 	// 4. hash each window
 	t = clock();
@@ -75,7 +75,7 @@ void index_ref_lsh(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	t = clock();
 	sort_windows_hash(ref);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	printf("Total number of distinct window hashes = %llu \n", get_num_distinct(ref));
+	printf("Total number of distinct window hashes = %llu \n", (uint64_t) get_num_distinct(ref));
 	
 	*ref_idx = ref;
 }

@@ -29,6 +29,7 @@ typedef struct {
 	uint64_t max_count;
 
 	// mapping parameters
+	uint32_t msbits_match;			// number of most significant bits to match
 	uint32_t p; 					// number of permutation tables
 	uint32_t max_hammd; 			// maximum hamming distance to
 	

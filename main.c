@@ -18,6 +18,7 @@ void set_default_index_params(index_params_t* params) {
 	params->m = 10;
 	params->max_range = params->k + 10;
 	params->p = 1;
+	params->msbits_match = 24;
 	params->h = 64;
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
@@ -102,6 +103,13 @@ int main(int argc, char *argv[]) {
 		params->kmer_dist = params->k;
 	}
 
+	printf("**********SRX**************\n");
+	printf("SRX Parameters: \n");
+	printf("k = %u \n", params->k);
+	printf("m = %u \n", params->m);
+	printf("p = %u \n", params->p);
+	printf("max_hammd = %u \n", params->max_hammd);
+
 	// generate the sparse k-mer indices
 	if(params->kmer_type == SPARSE && params->in_idx_fname == NULL) {
 		uint32_t* idx = (uint32_t*) malloc(params->ref_window_size*sizeof(uint32_t));
@@ -144,10 +152,36 @@ int main(int argc, char *argv[]) {
 		sprintf(hashFname, "%s.hash", fname);
 	}
 
-	if (strcmp(argv[1], "simh") == 0) { // SIMHASH
-		printf("LSH Algorithm: simhash \n");
+	if (strcmp(argv[1], "sample") == 0) {
+		printf("LSH Algorithm: sampling \n");
+		params->alg = SAMPLE;
 
-		params->alg = SIMH;
+		// 1. load the reference
+		ref_t* ref = fasta2ref(argv[optind+1]);
+
+		// 2. compute valid reference windows
+		generate_ref_windows(ref, params);
+		printf("Total number of valid windows: %llu\n", ref->num_windows);
+
+		// 3. load the reads
+		reads_t* reads = fastq2reads(argv[optind+2]);
+
+		// 4. map by sampling
+		align_reads_sampling(ref, reads, params);
+
+	} else if (strcmp(argv[1], "simh") == 0 || strcmp(argv[1], "minh") == 0) { // SIMHASH
+		if (strcmp(argv[1], "simh") == 0) {
+			printf("LSH Algorithm: simhash \n");
+			params->alg = SIMH;
+		} else {
+			printf("LSH Algorithm: minhash \n");
+			params->alg = MINH;
+			// generate the independent hash functions
+			params->rand_hash_pads = (hash_t*) malloc(params->h*sizeof(hash_t));
+			for(int i = 0; i < params->h; i++) {
+				params->rand_hash_pads[i] = genrand64_int64();
+			}
+		}
 
 		// 1. index the reference
 		ref_t* ref;
@@ -164,6 +198,7 @@ int main(int argc, char *argv[]) {
 			if (params->kmer_type == SPARSE) {
 				store_perm(params->sparse_kmers, params->m*params->k, sparseFname);
 			}
+			// TODO: store the hash functions
 		}
 
 		// 2. index the reads
@@ -171,59 +206,7 @@ int main(int argc, char *argv[]) {
 		index_reads_lsh(argv[optind+2], ref, params, &reads);
 
 		// 3. map the hashes
-		align_reads_simhash(ref, reads, params);
-
-	} else if (strcmp(argv[1], "minh") == 0) { // MINHASH
-		printf("LSH Algorithm: minhash \n");
-
-		params->alg = MINH;
-
-		// 1. generate the independent hash functions
-		params->rand_hash_pads = (hash_t*) malloc(params->h*sizeof(hash_t));
-		for(int i = 0; i < params->h; i++) {
-			params->rand_hash_pads[i] = genrand64_int64();
-		}
-
-		// 2. hash the reference
-		ref_t* ref;
-		// load the index
-		if(params->in_idx_fname) {
-			ref = load_ref_idx(params->in_idx_fname);
-			params->sparse_kmers = load_perm(params->m*params->k, sparseFname);
-		} else {
-			index_ref_lsh(argv[optind+1], params, &ref);
-		}
-		// store the index
-		if(params->out_idx_fname) {
-			store_ref_idx(ref, params->in_idx_fname);
-			store_perm(params->sparse_kmers, params->m*params->k, sparseFname);
-			// TODO: store the hash functions
-		}
-
-		// 3. hash the reads
-		reads_t* reads;
-		index_reads_lsh(argv[optind+2], ref, params, &reads);
-
-		// 4. map the hashes
-		align_reads_minhash(ref, reads, params);
-
-	} else if (strcmp(argv[1], "sample") == 0) {
-		printf("LSH Algorithm: sampling \n");
-
-		params->alg = SAMPLE;
-
-		// 1. load the reference
-		ref_t* ref = fasta2ref(argv[optind+1]);
-
-		// 2. compute valid reference windows
-		generate_ref_windows(ref, params);
-		printf("Total number of valid windows: %llu\n", ref->num_windows);
-
-		// 3. load the reads
-		reads_t* reads = fastq2reads(argv[optind+2]);
-
-		// 4. map by sampling
-		align_reads_sampling(ref, reads, params);
+		align_reads_lsh(ref, reads, params);
 
 	} else {
 		printf("Usage: ./srx [options] <simh|minh|sample> <ref.fa> <reads.fq> \n");
