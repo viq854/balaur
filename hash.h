@@ -14,6 +14,9 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const uint32_t* reads_hist, const uint32_t* ref_hist,
 		const index_params_t* params, const uint8_t is_ref);
+hash_t minhash_long(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+		const uint32_t* reads_hist, const uint32_t* ref_hist,
+		const index_params_t* params, const uint8_t is_ref);
 hash_t sampling(const char* seq, const seq_t seq_offset, const seq_t i,
 		const index_params_t* params);
 hash_t sampling_hash(const char* seq, const seq_t seq_offset, const seq_t i,

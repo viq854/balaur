@@ -39,6 +39,9 @@ typedef struct {
 	const char* in_idx_fname;
 	const char* out_idx_fname;
 
+	// multi-threading
+	uint32_t n_threads;
+
 } index_params_t;
 
 

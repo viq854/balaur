@@ -204,6 +204,11 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 	return fingerprint;
 }
 
+//hash_t minhash_long(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+//		const uint32_t* reads_hist, const uint32_t* ref_hist,
+//		const index_params_t* params, const uint8_t is_ref) {
+//}
+
 /////////////////////////
 // --- LSH: sampling ---
 

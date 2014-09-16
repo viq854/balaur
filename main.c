@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <getopt.h>
+#include <omp.h>
+
 #include "index.h"
 #include "align.h"
 #include "hash.h"
@@ -25,6 +27,7 @@ void set_default_index_params(index_params_t* params) {
 	params->ref_window_size = 100;
 	params->max_hammd = 10;
 	params->kmer_type = SPARSE;
+	params->n_threads = 1;
 }
 
 void generate_reads(char* fname) {
@@ -66,9 +69,12 @@ int rand_range(int n) {
 	return r / (rand_max / n);
 }
 
-void compute_hash_diff_stats(ref_t* ref, reads_t* reads) {
-	int diff_range = 30;
-	int* diff_hist = (int*) calloc(diff_range+1, sizeof(int));
+void compute_hash_diff_stats(const ref_t* ref, const reads_t* reads, const index_params_t* params) {
+	printf("**********Diff Stats**************\n");
+	int* diff_hist = (int*) calloc(SIMHASH_BITLEN, sizeof(int));
+	//omp_set_num_threads(params->n_threads);
+
+	#pragma omp parallel for
 	for(int i = 0; i < reads->count; i++) {
 		read_t r = reads->reads[i];
 		unsigned int pos_l, pos_r;
@@ -78,18 +84,16 @@ void compute_hash_diff_stats(ref_t* ref, reads_t* reads) {
 		for(seq_t k = 0; k < ref->num_windows; k++) {
 			if(true_pos == ref->windows[k].pos) {
 				int d = hamming_dist(ref->windows[k].simhash, r.simhash);
-				if(d < diff_range) {
-					diff_hist[d]++;
-				} else {
-					diff_hist[diff_range]++;
-				}
+
+				#pragma omp atomic
+				diff_hist[d]++;
+
 				break;
 			}
 		}
 	}
 
-	printf("**********Diff Stats**************\n");
-	for(int i = 0; i <= diff_range; i++) {
+	for(int i = 0; i < SIMHASH_BITLEN; i++) {
 		printf("%d: %d\n", i, diff_hist[i]);
 	}
 	free(diff_hist);
@@ -107,7 +111,7 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ON")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONDt:")) >= 0) {
 		switch (c) {
 			case 'i': params->in_idx_fname = optarg; break;
 			case 'o': params->out_idx_fname = optarg; break;
@@ -118,6 +122,7 @@ int main(int argc, char *argv[]) {
 			case 'd': params->max_hammd = atoi(optarg); break;
 			case 'L': params->min_freq = atof(optarg); break;
 			case 'H': params->max_freq = atof(optarg); break;
+			case 't': params->n_threads = atoi(optarg); break;
 			case 'O': params->kmer_type = OVERLAP; break;
 			case 'N': params->kmer_type = NON_OVERLAP; break;
 			case 'D': compute_diff_stats = 1; break;
@@ -237,7 +242,7 @@ int main(int argc, char *argv[]) {
 		index_reads_lsh(argv[optind+2], ref, params, &reads);
 
 		if(compute_diff_stats) {
-			compute_hash_diff_stats(ref, reads);
+			compute_hash_diff_stats(ref, reads, params);
 		}
 
 		// 3. map the hashes
