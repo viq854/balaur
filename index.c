@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+#include <omp.h>
+
 #include "index.h"
 #include "io.h"
 #include "hash.h"
@@ -60,6 +62,8 @@ void index_ref_lsh(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	
 	// 4. hash each window
 	t = clock();
+
+	#pragma omp parallel for
 	for(seq_t i = 0; i < ref->num_windows; i++) {
 		if(params->alg == SIMH) {
 			ref->windows[i].simhash = simhash(ref->seq, ref->windows[i].pos, params->ref_window_size,
@@ -101,6 +105,8 @@ void index_reads_lsh(char* readsFname, ref_t* ref, index_params_t* params, reads
 
 	// 3. compute the fingerprints of each read
 	t = clock();
+
+	#pragma omp parallel for
 	for(uint32_t i = 0; i < reads->count; i++) {
 		read_t* r = &reads->reads[i];
 		if(params->alg == SIMH) {
