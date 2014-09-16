@@ -25,37 +25,6 @@ void permute_reads(clusters_t* reads, int perm[]);
 void shift_bucket_ref(ref_t* ref, int bucket);
 void shift_bucket_reads(reads_t* reads, int bucket);
 
-void diff_stats(ref_t* ref, clusters_t* clusters) {
-	int diff_range = 30;
-	int* diff_hist = (int*) calloc(diff_range+1, sizeof(int));
-	for(int i = 0; i < clusters->num_clusters; i++) {
-		cluster_t c = clusters->clusters[i];
-		for(int j = 0; j < c.size; j++) {
-			read_t* r = c.reads[j];
-			unsigned int pos_l, pos_r;
-			int strand;
-			parse_read_mapping(r->name, &pos_l, &pos_r, &strand);
-			unsigned int true_pos = pos_l - 1;
-			for(seq_t k = 0; k < ref->num_windows; k++) {
-				if(true_pos == ref->windows[k].pos) {
-					int d = hamming_dist(ref->windows[k].simhash, c.simhash); 
-					if(d < diff_range) {
-						diff_hist[d]++;
-					} else {
-						diff_hist[diff_range]++;
-					}
-					break;
-				}
-			}
-		}
-	}
-	
-	for(int i = 0; i <= diff_range; i++) {
-		printf("diff = %d count = %d \n", i, diff_hist[i]);
-	}
-	free(diff_hist);
-}
-
 void get_stats(ref_t* ref, clusters_t* clusters) {
 	int printed = 0;
 	for(int i = 0; i < clusters->num_clusters; i++) {
@@ -114,35 +83,6 @@ void align_reads_sampling(ref_t* ref, reads_t* reads, const index_params_t* para
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 }
-
-//void align_reads_minhash(ref_t* ref, reads_t* reads, const index_params_t* params) {
-//	printf("**** SRX Alignment ****\n");
-//
-//	// construct and search m hash tables using sampling
-//	clock_t t = clock();
-//	for(uint32_t i = 0; i < 1; i++) { //SIMHASH_BITLEN/MINHASH_BUCKET_SIZE; i++) {
-//		//printf("Bucket %d \n", i);
-//		//shift_bucket_ref(ref, i);
-//		//shift_bucket_reads(reads, i);
-//		//sort_windows_hash(ref);
-//
-//		for(uint32_t j = 0; j < reads->count; j++) {
-//			if(reads->reads[j].acc == 1) continue;
-//			// binary search to find the matching ref window(s)
-//			//find_windows_exact_bucket(ref, &reads->reads[j], params, i);
-//			find_windows_exact(ref, &reads->reads[j], params);
-//			eval_read_hit(&reads->reads[j]);
-//		}
-//	}
-//
-//	uint32_t acc_hits = 0;
-//	for(uint32_t i = 0; i < reads->count; i++) {
-//		acc_hits += reads->reads[i].acc;
-//	}
-//	printf("Total number of accurate hits found = %u \n", acc_hits);
-//	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-//
-//}
 
 // aligns the indexed reads to the indexed reference
 // using simhash and permutation tables
@@ -270,6 +210,7 @@ int find_window_match_diffk(ref_t* ref, cluster_t* cluster, const index_params_t
 		h++;
 	}
 
+	//printf("Range %llu %llu \n", l, h);
 	if(cluster->ref_matches == NULL) {
 		cluster->alloc_matches = h-l+1;
 		cluster->ref_matches = (seq_t*) malloc(cluster->alloc_matches*sizeof(seq_t));

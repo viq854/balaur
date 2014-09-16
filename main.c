@@ -66,6 +66,35 @@ int rand_range(int n) {
 	return r / (rand_max / n);
 }
 
+void compute_hash_diff_stats(ref_t* ref, reads_t* reads) {
+	int diff_range = 30;
+	int* diff_hist = (int*) calloc(diff_range+1, sizeof(int));
+	for(int i = 0; i < reads->count; i++) {
+		read_t r = reads->reads[i];
+		unsigned int pos_l, pos_r;
+		int strand;
+		parse_read_mapping(r.name, &pos_l, &pos_r, &strand);
+		unsigned int true_pos = pos_l - 1;
+		for(seq_t k = 0; k < ref->num_windows; k++) {
+			if(true_pos == ref->windows[k].pos) {
+				int d = hamming_dist(ref->windows[k].simhash, r.simhash);
+				if(d < diff_range) {
+					diff_hist[d]++;
+				} else {
+					diff_hist[diff_range]++;
+				}
+				break;
+			}
+		}
+	}
+
+	printf("**********Diff Stats**************\n");
+	for(int i = 0; i <= diff_range; i++) {
+		printf("%d: %d\n", i, diff_hist[i]);
+	}
+	free(diff_hist);
+}
+
 
 int main(int argc, char *argv[]) {
 	if (argc < 4) {
@@ -76,6 +105,7 @@ int main(int argc, char *argv[]) {
 	index_params_t* params = (index_params_t*) calloc(1, sizeof(index_params_t));
 	set_default_index_params(params);
 
+	int compute_diff_stats = 0;
 	int c;
 	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ON")) >= 0) {
 		switch (c) {
@@ -90,6 +120,7 @@ int main(int argc, char *argv[]) {
 			case 'H': params->max_freq = atof(optarg); break;
 			case 'O': params->kmer_type = OVERLAP; break;
 			case 'N': params->kmer_type = NON_OVERLAP; break;
+			case 'D': compute_diff_stats = 1; break;
 			default: return 0;
 		}
 	}
@@ -204,6 +235,10 @@ int main(int argc, char *argv[]) {
 		// 2. index the reads
 		reads_t* reads;
 		index_reads_lsh(argv[optind+2], ref, params, &reads);
+
+		if(compute_diff_stats) {
+			compute_hash_diff_stats(ref, reads);
+		}
 
 		// 3. map the hashes
 		align_reads_lsh(ref, reads, params);
