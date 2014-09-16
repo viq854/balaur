@@ -67,7 +67,7 @@ ref_t* fasta2ref(char *fastaFname) {
 	return ref;
 }
 
-void store_perm(int* perm, int num, const char* permFname) {
+void store_perm(uint32_t* perm, const uint32_t num, const char* permFname) {
 	FILE* permFile = (FILE*) fopen(permFname, "wb");
 	if (permFname == NULL) {
 		printf("store_ref_idx: Cannot open the IDX file %s!\n", permFname);
@@ -77,13 +77,13 @@ void store_perm(int* perm, int num, const char* permFname) {
 	fclose(permFile);
 }
 
-int* load_perm(int num, const char* permFname) {
+uint32_t* load_perm(const uint32_t num, const char* permFname) {
 	FILE* permFile = (FILE*) fopen(permFname, "rb");
 	if (permFname == NULL) {
 		printf("store_ref_idx: Cannot open the IDX file %s!\n", permFname);
 		exit(1);
 	}
-	int* perm = (int*) malloc(num*sizeof(int));
+	uint32_t* perm = (uint32_t*) malloc(num*sizeof(uint32_t));
 	fread(perm, sizeof(int), num, permFile);
 	fclose(permFile);
 	return perm;
@@ -114,7 +114,7 @@ ref_t* load_ref_idx(const char* idxFname) {
 	fread(&ref->num_windows, sizeof(seq_t), 1, idxFile);
 	fread(&ref->hist_size, sizeof(seq_t), 1, idxFile);
 	ref->windows = (ref_win_t*) calloc(ref->num_windows, sizeof(ref_win_t));
-	ref->hist = (int*) calloc(ref->hist_size, sizeof(int));
+	ref->hist = (uint32_t*) calloc(ref->hist_size, sizeof(uint32_t));
 	if((ref->windows == 0) || (ref->hist == 0)) {
 		printf("Could not allocate memory for the ref index. \n");
 		exit(1);

@@ -40,24 +40,18 @@ typedef struct {
 	char* seq;
 	ref_win_t* windows;
 	seq_t num_windows;
-	int* hist;
+	uint32_t* hist;
 	seq_t hist_size;
 } ref_t;
 
 typedef struct {
-	// read length
-	int len;
-	// read name
-	char name[MAX_SEQ_NAME_LEN+1];
-	// read sequence
-	char* seq;
-	// reverse complement sequence
-	char* rc;
-	// quality scores
-	char* qual;
+	uint32_t len; 					// read length
+	char name[MAX_SEQ_NAME_LEN+1]; 	// read name
+	char* seq;						// read sequence
+	char* rc;						// reverse complement sequence
+	char* qual;						// quality scores
 	
-	// simhash fingerprint
-	hash_t simhash;
+	hash_t simhash;					// LSH fingerprint
 	int simhash_popc;
 
 	// original mapping information
@@ -65,18 +59,17 @@ typedef struct {
 	uint64_t ref_pos_l;
 	uint64_t ref_pos_r;
 	
-	seq_t* ref_matches;
+	seq_t* ref_matches; // ref match positions
 	int num_matches;
 	int alloc_matches;
-	char acc; // DEBUG: whether read matched accuretely
+	char acc; // DEBUG: whether read matched accurately
 } read_t;
 
 // collection of reads
 typedef struct {
-	// number of reads
-	unsigned int count;
-	read_t* reads;
-	int* hist;
+	uint32_t count; // number of reads
+	uint32_t* hist;	// kmer histogram
+	read_t* reads;	// read data
 } reads_t;
 
 
@@ -91,8 +84,8 @@ void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* 
 // index io
 void store_ref_idx(ref_t* ref, const char* idxFname);
 ref_t* load_ref_idx(const char* idxFname);
-void store_perm(int* perm, int num, const char* permFname);
-int* load_perm(int num, const char* permFname);
+void store_perm(uint32_t* perm, const uint32_t num, const char* permFname);
+uint32_t* load_perm(const uint32_t num, const char* permFname);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits

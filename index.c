@@ -17,7 +17,7 @@ void generate_ref_windows(ref_t* ref, index_params_t* params) {
 	ref->windows = (ref_win_t*) malloc(max_num_windows*sizeof(ref_win_t));
 	seq_t i;
 	for(i = 0; i < max_num_windows; i++) {
-		if(is_inform(&ref->seq[i], params->ref_window_size)) {
+		if(is_inform_ref_window(&ref->seq[i], params->ref_window_size)) {
 			ref_win_t* window = &ref->windows[ref->num_windows];
 			window->pos = i;
 			ref->num_windows++;
@@ -47,7 +47,9 @@ void index_ref_lsh(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	// 2. compute the frequency of each kmer and filter out windows to be discarded
 	t = clock();
 	if(params->kmer_type != SPARSE) {
-		generate_ref_kmer_hist(ref, params);
+		ref->hist_size = params->hist_size;
+		ref->hist = (uint32_t*) calloc(params->hist_size, sizeof(uint32_t));
+		compute_kmer_counts(ref->seq, ref->len, params, ref->hist);
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
 	
@@ -58,16 +60,13 @@ void index_ref_lsh(char* fastaFname, index_params_t* params, ref_t** ref_idx) {
 	
 	// 4. hash each window
 	t = clock();
-	params->max_count = (uint64_t) ceil(params->max_freq*ref->num_windows);
 	for(seq_t i = 0; i < ref->num_windows; i++) {
 		if(params->alg == SIMH) {
-			switch (params->kmer_type) {
-				case SPARSE: simhash_ref_sparse(ref, &ref->windows[i], params); break;
-				case OVERLAP: simhash_ref_ovp(ref, &ref->windows[i], params); break;
-				case NON_OVERLAP: simhash_ref_novp(ref, &ref->windows[i], params); break;
-			}
+			ref->windows[i].simhash = simhash(ref->seq, ref->windows[i].pos, params->ref_window_size,
+					NULL, ref->hist, params, 1);
 		} else if (params->alg == MINH) {
-			minhash_ref(ref, &ref->windows[i], params);
+			ref->windows[i].simhash = minhash(ref->seq, ref->windows[i].pos, params->ref_window_size,
+					NULL, ref->hist, params, 1);
 		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -92,22 +91,22 @@ void index_reads_lsh(char* readsFname, ref_t* ref, index_params_t* params, reads
 	// 2. compute the frequency of each kmer
 	t = clock();
 	if(params->kmer_type != SPARSE) {
-		generate_reads_kmer_hist(reads, params);
+		reads->hist = (uint32_t*) calloc(params->hist_size, sizeof(uint32_t));
+		for(uint32_t i = 0; i < reads->count; i++) { // add the contribution of each read
+			read_t* r = &reads->reads[i];
+			compute_kmer_counts(r->seq, r->len, params, reads->hist);
+		}
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
 
 	// 3. compute the fingerprints of each read
 	t = clock();
-	params->min_count = (int) (params->min_freq*reads->count);
-	for(int i = 0; i < reads->count; i++) {
+	for(uint32_t i = 0; i < reads->count; i++) {
+		read_t* r = &reads->reads[i];
 		if(params->alg == SIMH) {
-			switch (params->kmer_type) {
-				case SPARSE: simhash_read_sparse(&reads->reads[i], reads->hist, ref->hist, params); break;
-				case OVERLAP: simhash_read_ovp(&reads->reads[i], reads->hist, ref->hist, params); break;
-				case NON_OVERLAP: simhash_read_novp(&reads->reads[i], reads->hist, ref->hist, params); break;
-			}
+			r->simhash = simhash(r->seq, 0, r->len, reads->hist, ref->hist, params, 0);
 		} else if (params->alg == MINH) {
-			minhash_read(&reads->reads[i], reads->hist, ref->hist, params);
+			r->simhash = minhash(r->seq, 0, r->len, reads->hist, ref->hist, params, 0);
 		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -153,26 +152,26 @@ void index_reads_lsh(char* readsFname, ref_t* ref, index_params_t* params, reads
 // create hash table i 
 // - hash each window
 // - sort
-void index_ref_table_i(ref_t* ref, index_params_t* params, int i) {
+void index_ref_table_i(ref_t* ref, const index_params_t* params, const seq_t i) {
 	// hash each window using sampling ids i
 	clock_t t = clock();
 	for(seq_t j = 0; j < ref->num_windows; j++) {
-		sampling_hash_ref(ref, &ref->windows[j], params, i);
+		ref->windows[j].simhash = sampling_hash(ref->seq, ref->windows[j].pos, i, params);
 	}
-	printf("Total hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total hash table %llu computation time: %.2f sec\n", (uint64_t) i, (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// sort the hashes
 	t = clock();
 	sort_windows_hash(ref);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	printf("Total number of distinct window hashes = %llu \n", get_num_distinct(ref));
+	printf("Total number of distinct window hashes = %llu \n", (uint64_t) get_num_distinct(ref));
 }
 
-void index_reads_table_i(reads_t* reads, index_params_t* params, int i) {
+void index_reads_table_i(reads_t* reads, const index_params_t* params, const seq_t i) {
 	// hash each read using sampling ids i
 	clock_t t = clock();
-	for(int j = 0; j < reads->count; j++) {
-		sampling_hash_read(&reads->reads[j], params, i);
+	for(uint32_t j = 0; j < reads->count; j++) {
+		reads->reads[j].simhash = sampling_hash(reads->reads[j].seq, 0, i, params);
 	}
-	printf("Total read hash table %d computation time: %.2f sec\n", i, (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64_t) i, (float)(clock() - t) / CLOCKS_PER_SEC);
 }
