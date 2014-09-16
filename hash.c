@@ -81,19 +81,19 @@ uint32_t get_kmer_count(const char* kmer_seq, int kmer_len, const uint32_t* hist
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
 uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
-		const uint32_t* ref_hist, const uint32_t* read_hist,
+		const uint32_t* read_hist, const uint32_t* ref_hist,
 		const uint8_t is_ref,
 		const index_params_t* params) {
 
-	const uint32_t ref_count = get_kmer_count(kmer_seq, kmer_len, ref_hist, params);
+	//const uint32_t ref_count = get_kmer_count(kmer_seq, kmer_len, ref_hist, params);
 	//const uint32_t reads_count = get_kmer_count(kmer_seq, kmer_len, read_hist, params);
 
 	// filter out kmers if:
 	// 1. count is too low and kmer does not occur in the reference
 	// 2. count is too high
-	if(/*(max_count == 0 && min_count < params->min_count) ||*/ (ref_count > params->max_count)) {
-		return 0;
-	}
+	//if(/*(max_count == 0 && min_count < params->min_count) ||*/ (ref_count > params->max_count)) {
+		//return 0;
+	//}
 	return 1;
 
 }
