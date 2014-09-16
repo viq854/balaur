@@ -13,6 +13,7 @@
 
 void set_default_index_params(index_params_t* params) {
 	params->k = 16;
+	params->kmer_dist = 1;
 	params->hist_size = KMER_HIST_SIZE16;
 	params->m = 10;
 	params->max_range = params->k + 10;
@@ -97,20 +98,24 @@ int main(int argc, char *argv[]) {
 		params->hist_size = KMER_HIST_SIZE32;
 	}
 
+	if (params->kmer_type == NON_OVERLAP) {
+		params->kmer_dist = params->k;
+	}
+
 	// generate the sparse k-mer indices
-	if(params->in_idx_fname == NULL && params->kmer_type == SPARSE) {
-		int* idx = (int*) malloc(params->ref_window_size*sizeof(int));
-		params->sparse_kmers = (int*) malloc(params->m*params->k*sizeof(int));
-		for(int i = 0; i < params->m; i++) {
-			for(int k = 0; k < params->ref_window_size; k++) {
+	if(params->kmer_type == SPARSE && params->in_idx_fname == NULL) {
+		uint32_t* idx = (uint32_t*) malloc(params->ref_window_size*sizeof(uint32_t));
+		params->sparse_kmers = (uint32_t*) malloc(params->m*params->k*sizeof(uint32_t));
+		for(uint32_t i = 0; i < params->m; i++) {
+			for(uint32_t k = 0; k < params->ref_window_size; k++) {
 				idx[k] = k;
 			}
 			// pick random k *close-by* indices from the read
-			int offset = i*params->k;
-			int start = rand_range(params->ref_window_size - params->max_range);
+			const int32_t offset = i*params->k;
+			const int32_t start = rand_range(params->ref_window_size - params->max_range);
 			params->sparse_kmers[offset] = start;
-			int cnt = 1;
-			int len = params->max_range;
+			uint32_t cnt = 1;
+			uint32_t len = params->max_range;
 			while(cnt < params->k) {
 				int j = rand_range(len) + 1; // exclude 0
 				params->sparse_kmers[offset + cnt] = start + idx[j];
@@ -120,16 +125,6 @@ int main(int argc, char *argv[]) {
 			}
 		}
 		free(idx);
-
-#if (DEBUG)
-		for(int i = 0; i < params->m; i++) {
-			printf("m = %d \n", i);
-			for(int j = 0; j < params->k; j++) {
-				printf(" %d ", params->sparse_kmers[i*params->k + j]);
-			}
-			printf("\n");
-		}
-#endif
 	}
 
 	// prepare the input and output files
