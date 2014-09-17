@@ -1,5 +1,11 @@
 #ifndef IO_H_
 #define IO_H_
+
+#include <stdio.h>
+#include <iostream>
+#include <string.h>
+#include <vector>
+#include <map>
 #include "types.h"
 
 #define INIT_REFLEN_ALLOC			262144
@@ -32,65 +38,74 @@ static const unsigned char nt4_table[256] = {
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
 
+// reference genome window
 typedef struct {
 	seq_t pos;
 	hash_t simhash;
-	hash_t minhashes[MAX_MINHASH_NUM];
-
+	VectorMinHash minhashes;
 } ref_win_t;
 
+
+typedef std::vector<ref_win_t*> VectorWindowPtr;
+typedef std::map<seq_t, ref_win_t> MapPos2Window;
+typedef std::vector<std::map<minhash_t, VectorWindowPtr> > VectorMinHashMaps;
+
+// reference genome
 typedef struct {
+	// reference sequence data
+	std::string seq;
 	seq_t len;
-	char* seq;
-	ref_win_t* windows;
-	seq_t num_windows;
-	uint32_t* hist;
-	seq_t hist_size;
+
+	// LSH index
+	MapKmerCounts kmer_hist;			// kmer occurrence histogram
+	MapPos2Window windows_by_pos; 		// map of valid reference windows by position
+	VectorMinHashMaps minhash_maps_by_h;			// vector of minhash result maps for each hash function
 } ref_t;
 
 typedef struct {
 	uint32_t len; 					// read length
-	char name[MAX_SEQ_NAME_LEN+1]; 	// read name
-	char* seq;						// read sequence
-	char* rc;						// reverse complement sequence
-	char* qual;						// quality scores
+	std::string name; 				// read name
+	std::string seq;				// read sequence
+	std::string rc;					// reverse complement sequence
+	std::string qual;				// quality scores
 	
-	hash_t simhash;					// LSH fingerprint
-	int simhash_popc;
-	hash_t minhashes[MAX_MINHASH_NUM];
+	// LSH fingerprints
+	hash_t simhash;					// simhash / minhash (1bit)
+	VectorMinHash minhashes;		// minhash vector
 
 	// original mapping information
 	int strand;
 	uint64_t ref_pos_l;
 	uint64_t ref_pos_r;
 	
-	seq_t* ref_matches; // ref match positions
-	int num_matches;
-	int alloc_matches;
+	// found ref match positions
+	VectorSeqPos ref_matches;
+
 	char acc; // DEBUG: whether read matched accurately
 } read_t;
+typedef std::vector<read_t> VectorReads;
+typedef std::vector<read_t*> VectorPReads;
+
 
 // collection of reads
 typedef struct {
-	uint32_t count; // number of reads
-	uint32_t* hist;	// kmer histogram
-	read_t* reads;	// read data
+	VectorReads reads;		// read data
+	MapKmerCounts kmer_hist;		// kmer histogram
 } reads_t;
 
 
-ref_t* fasta2ref(char *fastaFname);
-reads_t* fastq2reads(char *readsFname);
-
+void fasta2ref(const char *fastaFname, ref_t& ref);
+void fastq2reads(const char *readsFname, reads_t& reads);
 void print_read(read_t* read);
-void free_reads(reads_t* reads);
-
-void parse_read_mapping(char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand); 
+void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
 
 // index io
-void store_ref_idx(ref_t* ref, const char* idxFname);
-ref_t* load_ref_idx(const char* idxFname);
-void store_perm(uint32_t* perm, const uint32_t num, const char* permFname);
-uint32_t* load_perm(const uint32_t num, const char* permFname);
+void store_ref_idx(const char* idxFname, ref_t& ref);
+void load_ref_idx(const char* idxFname, ref_t& ref);
+void store_perm(const char* permFname, const VectorU32& perm);
+void load_perm(const char* permFname, VectorU32& perm);
+void store_hash_pads(const char* permFname, const VectorHash& perm);
+void load_hash_pads(const char* permFname, VectorHash& perm);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits
