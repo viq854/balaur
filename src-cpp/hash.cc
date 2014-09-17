@@ -20,11 +20,11 @@ int hamming_dist(hash_t h1, hash_t h2) {
 
 // checks if the given sequence is informative or not
 // e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
-int is_inform_ref_window(char* seq, int len) {
+int is_inform_ref_window(const char* seq, const uint32_t len) {
 	char c = seq[0];
-	int count = 0; 
-	int countN = 0; 
-	for(int i = 1; i < len; i++) {
+	uint32 count = 0;
+	uint32 countN = 0;
+	for(uint32 i = 1; i < len; i++) {
 		if(seq[i] == c) {
 			count++; //return 1;
 		} 
@@ -43,45 +43,34 @@ int is_inform_ref_window(char* seq, int len) {
 
 // compute and store the frequency of each kmer in the given sequence
 void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_params_t* params,
-		uint32_t* hist) {
+		MapKmerCounts& hist) {
 	for(seq_t j = 0; j <= (seq_len - params->k); j++) {
-		if(params->hist_size == KMER_HIST_SIZE16) {
-			uint16_t kmer;
-			if(pack_16(&seq[j], params->k, &kmer) < 0) {
-				continue;
-			}
-			hist[kmer]++;
-		} else {
-			uint32_t kmer;
-			if(pack_32(&seq[j], params->k, &kmer) < 0) {
-				continue;
-			}
-			hist[kmer]++;
+		uint32_t kmer;
+		if(pack_32(&seq[j], params->k, &kmer) < 0) {
+			continue;
 		}
+		hist[kmer]++;
 	}
 }
 
-uint32_t get_kmer_count(const char* kmer_seq, int kmer_len, const uint32_t* hist,
+uint32_t get_kmer_count(const char* kmer_seq, int kmer_len, const MapKmerCounts& hist,
 		const index_params_t* params) {
-	if(params->hist_size == KMER_HIST_SIZE16) {
-		uint16_t kmer;
-		if(pack_16(kmer_seq, kmer_len, &kmer) < 0) {
-			return 0;
-		}
-		return hist[kmer];
+	uint32_t kmer;
+	if(pack_32(kmer_seq, kmer_len, &kmer) < 0) {
+		return 0;
+	}
+	MapKmerCounts::const_iterator v;
+	if((v = hist.find(kmer)) != hist.end()) {
+		return v->second;
 	} else {
-		uint32_t kmer;
-		if(pack_32(kmer_seq, kmer_len, &kmer) < 0) {
-			return 0;
-		}
-		return hist[kmer];
+		return 0;
 	}
 }
 
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
 uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
-		const uint32_t* read_hist, const uint32_t* ref_hist,
+		const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
 		const uint8_t is_ref,
 		const index_params_t* params) {
 
@@ -128,7 +117,7 @@ hash_t generate_simhash_fp(int* v) {
 // computes the simhash fingerprint of the given sequence
 // using the specified kmer generation scheme
 hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-		const uint32_t* reads_hist, const uint32_t* ref_hist,
+		const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
 		const index_params_t* params, const uint8_t is_ref) {
 
 	int v[SIMHASH_BITLEN] = { 0 };
@@ -163,9 +152,9 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 // --- LSH: minhash ---
 
 hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-			const uint32_t* reads_hist, const uint32_t* ref_hist,
+			const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
 			const index_params_t* params, const uint8_t is_ref,
-			hash_t* min_hashes) {
+			VectorMinHash& min_hashes) {
 	hash_t fingerprint = 0;
 	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find and store the min for each hash function
@@ -173,10 +162,9 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		hash_t min = LLONG_MAX;
 		if(params->kmer_type == SPARSE) {
 			// construct the kmers, hash them, and keep the min (only lowest bit)
-			for(int i = 0; i < params->m; i++) {
-				uint32_t* ids = &params->sparse_kmers[i*params->k];
-				for(int j = 0; j < params->k; j++) {
-					kmer[j] = seq[seq_offset + ids[j]];
+			for(uint32 i = 0; i < params->m; i++) {
+				for(uint32 j = 0; j < params->k; j++) {
+					kmer[j] = seq[seq_offset + params->sparse_kmers[i*params->k + j]];
 				}
 				// hash the k-mer and compare to current min
 				hash_t kmer_hash = CityHash64(kmer, params->k);
@@ -187,7 +175,7 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			}
 		}
 		else {
-			for(int i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+			for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
 				const char* kmer = &seq[seq_offset + i];
 				int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
 				if(weight == 0) continue;

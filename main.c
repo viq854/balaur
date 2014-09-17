@@ -21,7 +21,10 @@ void set_default_index_params(index_params_t* params) {
 	params->max_range = params->k + 10;
 	params->p = 1;
 	params->msbits_match = 24;
+
 	params->h = 64;
+	params->n_min_matched = 5;
+
 	params->min_freq = 0.000001;
 	params->max_freq = 0.6;
 	params->ref_window_size = 100;
@@ -205,19 +208,9 @@ int main(int argc, char *argv[]) {
 		// 4. map by sampling
 		align_reads_sampling(ref, reads, params);
 
-	} else if (strcmp(argv[1], "simh") == 0 || strcmp(argv[1], "minh") == 0) { // SIMHASH
-		if (strcmp(argv[1], "simh") == 0) {
-			printf("LSH Algorithm: simhash \n");
-			params->alg = SIMH;
-		} else {
-			printf("LSH Algorithm: minhash \n");
-			params->alg = MINH;
-			// generate the independent hash functions
-			params->rand_hash_pads = (hash_t*) malloc(params->h*sizeof(hash_t));
-			for(int i = 0; i < params->h; i++) {
-				params->rand_hash_pads[i] = genrand64_int64();
-			}
-		}
+	} else if (strcmp(argv[1], "simh") == 0) { // SIMHASH
+		printf("LSH Algorithm: simhash \n");
+		params->alg = SIMH;
 
 		// 1. index the reference
 		ref_t* ref;
@@ -248,6 +241,43 @@ int main(int argc, char *argv[]) {
 		// 3. map the hashes
 		align_reads_lsh(ref, reads, params);
 
+	} else if (strcmp(argv[1], "minh") == 0) { // MINHASH
+		printf("LSH Algorithm: minhash \n");
+		params->alg = MINH;
+		// generate the independent hash functions
+		params->rand_hash_pads = (hash_t*) malloc(params->h*sizeof(hash_t));
+		for(int i = 0; i < params->h; i++) {
+			params->rand_hash_pads[i] = genrand64_int64();
+		}
+
+		// 1. index the reference
+		ref_t* ref;
+		// load the index
+		if(params->in_idx_fname) {
+			ref = load_ref_idx(params->in_idx_fname);
+			params->sparse_kmers = load_perm(params->m*params->k, sparseFname);
+		} else {
+			index_ref_lsh(argv[optind+1], params, &ref);
+		}
+		// store the index
+		if(params->out_idx_fname) {
+			store_ref_idx(ref, params->in_idx_fname);
+			if (params->kmer_type == SPARSE) {
+				store_perm(params->sparse_kmers, params->m*params->k, sparseFname);
+			}
+			// TODO: store the hash functions
+		}
+
+		// 2. index the reads
+		reads_t* reads;
+		index_reads_lsh(argv[optind+2], ref, params, &reads);
+
+		if(compute_diff_stats) {
+			compute_hash_diff_stats(ref, reads, params);
+		}
+
+		// 3. map the hashes
+		align_reads_lsh(ref, reads, params);
 	} else {
 		printf("Usage: ./srx [options] <simh|minh|sample> <ref.fa> <reads.fq> \n");
 		exit(1);
