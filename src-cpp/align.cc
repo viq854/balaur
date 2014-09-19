@@ -117,7 +117,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 // aligns the indexed reads to the indexed reference
 // using simhash and permutation tables
 void align_reads_lsh(ref_t& ref, reads_t& reads, const index_params_t* params) {
-	printf("**** SRX Alignment ****\n");
+	printf("**** SRX Alignment: SimHash ****\n");
 	
 	// 1. sort the reads by their simhash
 	clock_t t = clock();

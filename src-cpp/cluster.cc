@@ -6,6 +6,8 @@
 #include <limits.h>
 #include <math.h>
 #include <time.h>
+#include <algorithm>
+
 #include "io.h"
 #include "cluster.h"
 #include "hash.h"
