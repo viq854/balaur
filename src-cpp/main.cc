@@ -58,6 +58,7 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 	printf("**********Diff Stats**************\n");
 
 	VectorU32 diff_hist(SIMHASH_BITLEN);
+	VectorU32 minh_hist(params->h);
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t r = reads.reads[i];
@@ -66,18 +67,41 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 		parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
 		seq_t true_pos = pos_l - 1;
 		ref_win_t ref_window = ref.windows_by_pos[true_pos];
-		if(true_pos == ref_window.pos) {
+
+		if(params->alg == MINH) {
+			// count the number of minh values shared between the read and its window
+			uint32 n_minh_shared = 0;
+			for(uint32 h = 0; h < params->h; h++) {
+				minhash_t minh = r.minhashes[h];
+				for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
+					if(ref_window.minhashes[h_ref] == minh) {
+						n_minh_shared++;
+						break;
+					}
+				}
+			}
+
+			#pragma omp atomic
+			minh_hist[n_minh_shared]++;
+
+		} else {
 			int d = hamming_dist(ref_window.simhash, r.simhash);
 			#pragma omp atomic
 			diff_hist[d]++;
 		}
 	}
 
-	for(int i = 0; i < SIMHASH_BITLEN; i++) {
-		printf("%d: %d\n", i, diff_hist[i]);
+	if(params->alg == MINH) {
+		for(int i = 0; i < params->h; i++) {
+			printf("%d: %d\n", i, minh_hist[i]);
+		}
+	}
+	else {
+		for(int i = 0; i < SIMHASH_BITLEN; i++) {
+			printf("%d: %d\n", i, diff_hist[i]);
+		}
 	}
 }
-
 
 int main(int argc, char *argv[]) {
 	if (argc < 4) {
@@ -90,13 +114,14 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONSt:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONSt:h:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
 			case 'k': params.k = atoi(optarg); break;
 			case 'm': params.m = atoi(optarg); break;
 			case 'p': params.p = atoi(optarg); break;
+			case 'h': params.h = atoi(optarg); break;
 			case 'w': params.ref_window_size = atoi(optarg); break;
 			case 'd': params.max_hammd = atoi(optarg); break;
 			case 'L': params.min_freq = atof(optarg); break;
@@ -243,7 +268,7 @@ int main(int argc, char *argv[]) {
 		index_reads_lsh(argv[optind+2], ref, &params, reads);
 
 		if(compute_diff_stats) {
-			//compute_hash_diff_stats(ref, reads, &params);
+			compute_hash_diff_stats(ref, reads, &params);
 		}
 
 		// 3. map the hashes

@@ -18,8 +18,9 @@ typedef struct {
 	VectorU32 sparse_kmers;			// indices into the read of the sparse kmers
 
 	uint32_t h; 					// number of hash functions for min-hash
-	VectorHash rand_hash_pads;			// hash functions for min-hash
+	VectorHash rand_hash_pads;		// hash functions for min-hash
 	uint32_t n_min_matched;			// minimum number of min-hashes for a match
+	char constr_minhash_tables;
 	
 	// kmer weighing
 	float min_freq;
@@ -32,8 +33,6 @@ typedef struct {
 	uint32_t p; 					// number of permutation tables
 	uint32_t max_hammd; 			// maximum hamming distance to
 	
-	uint32_t s; 					// length of the hash vector
-
 	// io
 	std::string in_index_fname;
 	std::string out_index_fname;
@@ -42,19 +41,20 @@ typedef struct {
 	uint32_t n_threads;
 
 	void set_default_index_params() {
+		kmer_type = SPARSE;
+		ref_window_size = 100;
 		k = 16;
-		kmer_dist = 1;
 		m = 10;
+		kmer_dist = 1;
 		max_range = k + 10;
-		p = 1;
-		msbits_match = 24;
 		h = 64;
 		n_min_matched = 5;
+		constr_minhash_tables = 0;
+		p = 1;
+		msbits_match = 24;
 		min_freq = 0.000001;
 		max_freq = 0.6;
-		ref_window_size = 100;
 		max_hammd = 10;
-		kmer_type = SPARSE;
 		n_threads = 1;
 	}
 
