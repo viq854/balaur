@@ -65,52 +65,57 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		read_t r = reads.reads[i];
-		unsigned int pos_l, pos_r;
-		int strand;
-		parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
-		seq_t true_pos = pos_l - 1;
+			read_t r = reads.reads[i];
+			unsigned int pos_l, pos_r;
+			int strand;
+			parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
+			seq_t true_pos = pos_l - 1;
 
-		MapPos2Window::iterator v;
-		if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
-				n_unmapped++;
-				continue;
-		}
-		ref_win_t ref_window = v->second;
+			MapPos2Window::iterator v;
+			if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
+							n_unmapped++;
+							continue;
+			}
+			ref_win_t ref_window = v->second;
 
-		if(params->alg == MINH) {
-			// count the number of minh values shared between the read and its window
-			uint32 n_minh_shared = 0;
-			for(uint32 h = 0; h < params->h; h++) {
-				minhash_t minh = r.minhashes[h];
-				for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
-					if(ref_window.minhashes[h_ref] == minh) {
-						n_minh_shared++;
-						break;
+			if(params->alg == MINH) {
+					// count the number of minh values shared between the read and its window
+					uint32 n_minh_shared = 0;
+					for(uint32 h = 0; h < params->h; h++) {
+						minhash_t minh = r.minhashes[h];
+						for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
+								if(ref_window.minhashes[h_ref] == minh) {
+										n_minh_shared++;
+										break;
+								}
+						}
 					}
-				}
+
+					#pragma omp critical
+					{
+						if(n_minh_shared == 0 && n_checked < 5) {
+								printf("%s \n", r.name.c_str());
+								print_read(&r);
+								for(uint32 p = 0; p < params->ref_window_size; p++) {
+										printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
+								} printf("\n");
+								printf("%d %llu \n", strand, true_pos);
+
+								for(uint32 h = 0; h < params->h; h++) {
+										printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
+								}
+								n_checked++;
+						}
+					}
+
+					#pragma omp atomic
+					minh_hist[n_minh_shared]++;
+
+			} else {
+					int d = hamming_dist(ref_window.simhash, r.simhash);
+					#pragma omp atomic
+					diff_hist[d]++;
 			}
-
-			if(n_minh_shared == 0 && n_checked < 5) {
-				print_read(&r);
-				for(uint32 p = 0; p < params->ref_window_size; p++) {
-					printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
-				} printf("\n");
-
-				for(uint32 h = 0; h < params->h; h++) {
-					//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
-				}
-				n_checked++;
-			}
-
-			#pragma omp atomic
-			minh_hist[n_minh_shared]++;
-
-		} else {
-			int d = hamming_dist(ref_window.simhash, r.simhash);
-			#pragma omp atomic
-			diff_hist[d]++;
-		}
 	}
 
 	if(params->alg == MINH) {

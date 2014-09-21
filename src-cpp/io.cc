@@ -249,7 +249,8 @@ void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned
     int token_index = 0;
     const char delimiters[] = "_";
     const char* read_name_dup = std::string(read_name).c_str();
-    char* token = strtok((char *) read_name_dup, delimiters);
+    char** ptr;
+    char* token = strtok_r((char *) read_name_dup, delimiters, ptr);
     while (token != NULL) {
         if(token_index == 1) {
                 sscanf(token, "%u", ref_pos_l);
@@ -260,7 +261,7 @@ void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned
         } else if(token_index > 3){
         	break;
         }
-        token = strtok(NULL, delimiters);
+        token = strtok_r(NULL, delimiters, ptr);
         token_index++;
     }
 }
