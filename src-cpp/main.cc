@@ -59,6 +59,10 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 
 	VectorU32 diff_hist(SIMHASH_BITLEN);
 	VectorU32 minh_hist(params->h);
+	uint32 n_unmapped = 0;
+
+	uint32 n_checked = 0;
+
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t r = reads.reads[i];
@@ -66,7 +70,13 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 		int strand;
 		parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
 		seq_t true_pos = pos_l - 1;
-		ref_win_t ref_window = ref.windows_by_pos[true_pos];
+
+		MapPos2Window::iterator v;
+		if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
+				n_unmapped++;
+				continue;
+		}
+		ref_win_t ref_window = v->second;
 
 		if(params->alg == MINH) {
 			// count the number of minh values shared between the read and its window
@@ -81,6 +91,18 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 				}
 			}
 
+			if(n_minh_shared == 0 && n_checked < 5) {
+				print_read(&r);
+				for(uint32 p = 0; p < params->ref_window_size; p++) {
+					printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
+				} printf("\n");
+
+				for(uint32 h = 0; h < params->h; h++) {
+					//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
+				}
+				n_checked++;
+			}
+
 			#pragma omp atomic
 			minh_hist[n_minh_shared]++;
 
@@ -92,12 +114,13 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 	}
 
 	if(params->alg == MINH) {
-		for(int i = 0; i < params->h; i++) {
+		for(uint32 i = 0; i < params->h; i++) {
 			printf("%d: %d\n", i, minh_hist[i]);
 		}
+		printf("unmapped: %d\n", n_unmapped);
 	}
 	else {
-		for(int i = 0; i < SIMHASH_BITLEN; i++) {
+		for(uint32 i = 0; i < SIMHASH_BITLEN; i++) {
 			printf("%d: %d\n", i, diff_hist[i]);
 		}
 	}
