@@ -57,9 +57,10 @@ typedef struct {
 	seq_t len;
 
 	// LSH index
-	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	MapPos2Window windows_by_pos; 		// map of valid reference windows by position
-	VectorMinHashMaps minhash_maps_by_h;			// vector of minhash result maps for each hash function
+	MapKmerCounts kmer_hist;				// kmer occurrence histogram
+	MapKmerCounts high_freq_kmer_hist;
+	MapPos2Window windows_by_pos; 			// map of valid reference windows by position
+	VectorMinHashMaps minhash_maps_by_h;	// vector of minhash result maps for each hash function
 } ref_t;
 
 typedef struct {
@@ -89,8 +90,9 @@ typedef std::vector<read_t*> VectorPReads;
 
 // collection of reads
 typedef struct {
-	VectorReads reads;		// read data
+	VectorReads reads;				// read data
 	MapKmerCounts kmer_hist;		// kmer histogram
+	MapKmerCounts low_freq_kmer_hist;
 } reads_t;
 
 

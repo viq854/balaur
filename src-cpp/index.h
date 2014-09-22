@@ -23,8 +23,6 @@ typedef struct {
 	char constr_minhash_tables;
 	
 	// kmer weighing
-	float min_freq;
-	float max_freq;
 	uint64_t min_count;
 	uint64_t max_count;
 
@@ -52,9 +50,9 @@ typedef struct {
 		constr_minhash_tables = 0;
 		p = 1;
 		msbits_match = 24;
-		min_freq = 0.000001;
-		max_freq = 0.6;
 		max_hammd = 10;
+		max_count = 1000;
+		min_count = 0;
 		n_threads = 1;
 	}
 

@@ -69,12 +69,61 @@ uint32_t get_kmer_count(const char* kmer_seq, int kmer_len, const MapKmerCounts&
 	}
 }
 
+void find_high_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& high_freq_hist,
+		const index_params_t* params) {
+
+	for(MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
+		seq_t count = it->second;
+		if(count > params->max_count) {
+			high_freq_hist[it->first]++;
+		}
+	}
+}
+
+void find_low_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& low_freq_hist,
+		const index_params_t* params) {
+
+	for(MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
+		seq_t count = it->second;
+		if(count < params->min_count) {
+			low_freq_hist[it->first]++;
+		}
+	}
+}
+
+// returns true if the kmer occurs with high frequency in the reference
+bool contains_kmer(const uint32_t kmer, const MapKmerCounts& freq_hist) {
+
+	MapKmerCounts::const_iterator v;
+	if((v = freq_hist.find(kmer)) != freq_hist.end()) {
+		return true;
+	}
+	return false;
+}
+
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
 uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
-		const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
+		const MapKmerCounts& ref_high_freq_hist,
+		const MapKmerCounts& reads_low_freq_hist,
 		const uint8_t is_ref,
 		const index_params_t* params) {
+
+	uint32_t kmer;
+	if(pack_32(kmer_seq, kmer_len, &kmer) < 0) {
+		return 0; // contains ambiguous bases
+	}
+
+	if(contains_kmer(kmer, ref_high_freq_hist)) {
+		return 0;
+	}
+
+	if(!is_ref) {
+		if(contains_kmer(kmer, reads_low_freq_hist)) {
+			return 0;
+		}
+	}
+	return 1;
 
 	//const uint32_t ref_count = get_kmer_count(kmer_seq, kmer_len, ref_hist, params);
 	//const uint32_t reads_count = get_kmer_count(kmer_seq, kmer_len, read_hist, params);
@@ -85,8 +134,6 @@ uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
 	//if(/*(max_count == 0 && min_count < params->min_count) ||*/ (ref_count > params->max_count)) {
 		//return 0;
 	//}
-	return 1;
-
 }
 
 /////////////////////////
@@ -119,7 +166,7 @@ hash_t generate_simhash_fp(int* v) {
 // computes the simhash fingerprint of the given sequence
 // using the specified kmer generation scheme
 hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-		const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
+		const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
 		const index_params_t* params, const uint8_t is_ref) {
 
 	int v[SIMHASH_BITLEN] = { 0 };
@@ -132,7 +179,7 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			for(uint32_t j = 0; j < params->k; j++) {
 				kmer[j] = seq[seq_offset + ids[j]];
 			}
-			if(get_kmer_weight(kmer, params->k, reads_hist, ref_hist, is_ref, params) == 0) {
+			if(get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params) == 0) {
 				continue;
 			}
 			hash_t kmer_hash = CityHash64(kmer, params->k);
@@ -140,7 +187,7 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		}
 	} else {
 		for(uint32_t i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
-			if(get_kmer_weight(&seq[seq_offset + i], params->k, reads_hist, ref_hist, is_ref, params) == 0) {
+			if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params) == 0) {
 				continue;
 			}
 			hash_t kmer_hash = CityHash64(&seq[seq_offset + i], params->k);
@@ -154,7 +201,7 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 // --- LSH: minhash ---
 
 hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-			const MapKmerCounts& reads_hist, const MapKmerCounts& ref_hist,
+			const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
 			const index_params_t* params, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
 	hash_t fingerprint = 0;
