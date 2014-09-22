@@ -152,8 +152,8 @@ int main(int argc, char *argv[]) {
 			case 'h': params.h = atoi(optarg); break;
 			case 'w': params.ref_window_size = atoi(optarg); break;
 			case 'd': params.max_hammd = atoi(optarg); break;
-			case 'L': params.min_freq = atof(optarg); break;
-			case 'H': params.max_freq = atof(optarg); break;
+			case 'L': params.min_count = atoi(optarg); break;
+			case 'H': params.max_count = atoi(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'O': params.kmer_type = OVERLAP; break;
 			case 'N': params.kmer_type = NON_OVERLAP; break;

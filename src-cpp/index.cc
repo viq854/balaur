@@ -47,9 +47,12 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// 2. compute the frequency of each kmer
+	//	  and collect high-frequency kmers
 	t = clock();
 	if(params->kmer_type != SPARSE) {
 		compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+		find_high_freq_kmers(ref.kmer_hist, ref.high_freq_kmer_hist, params);
+		ref.kmer_hist = MapKmerCounts(); // free memory
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
 	
@@ -77,11 +80,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		ref_win_t* w = &ref.windows_by_pos[valid_positions[i]];
 		if(params->alg == SIMH) {
 			w->simhash = simhash(ref.seq.c_str(), w->pos, params->ref_window_size,
-					ref.kmer_hist, ref.kmer_hist, params, 1);
+					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1);
 		} else if (params->alg == MINH) {
 			w->minhashes.resize(params->h);
 			w->simhash = minhash(ref.seq.c_str(), w->pos, params->ref_window_size,
-					ref.kmer_hist, ref.kmer_hist, params, 1, w->minhashes);
+					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, w->minhashes);
 
 			// insert window into the minhash maps based on its minhash value for each hash function
 			for(uint32 h = 0; h < params->h; h++) {
@@ -127,6 +130,8 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 			read_t r = reads.reads[i];
 			compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
+		find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
+		reads.kmer_hist = MapKmerCounts(); // free memory
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
 
@@ -137,13 +142,17 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	for(uint32_t i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(params->alg == SIMH) {
-			r->simhash = simhash(r->seq.c_str(), 0, r->len, reads.kmer_hist, ref.kmer_hist, params, 0);
+			r->simhash = simhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0);
 		} else if (params->alg == MINH) {
 			r->minhashes.resize(params->h);
-			r->simhash = minhash(r->seq.c_str(), 0, r->len, reads.kmer_hist, ref.kmer_hist, params, 0, r->minhashes);
+			r->simhash = minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0, r->minhashes);
 		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+
+	// free memory
+	ref.high_freq_kmer_hist = MapKmerCounts();
+	reads.low_freq_kmer_hist = MapKmerCounts();
 
 	// 4. sort the reads by their hash
 	/*sort_reads_hash(reads);
@@ -173,10 +182,6 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	printf("Total number of clusters remaining = %d \n", clusters->num_clusters - num_collapsed);
 	printf("Total clustering collapse time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	*/
-
-	// free memory
-	ref.kmer_hist = MapKmerCounts();
-	reads.kmer_hist = MapKmerCounts();
 }
 
 // --- Sampling ---
