@@ -73,8 +73,9 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 
 			MapPos2Window::iterator v;
 			if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
-							n_unmapped++;
-							continue;
+				print_read(&r);
+				n_unmapped++;
+				continue;
 			}
 			ref_win_t ref_window = v->second;
 
@@ -94,15 +95,15 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 					#pragma omp critical
 					{
 						if(n_minh_shared == 0 && n_checked < 5) {
-								printf("%s \n", r.name.c_str());
-								print_read(&r);
-								for(uint32 p = 0; p < params->ref_window_size; p++) {
-										printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
-								} printf("\n");
-								printf("%d %llu \n", strand, true_pos);
+								//printf("%s \n", r.name.c_str());
+								//print_read(&r);
+								//for(uint32 p = 0; p < params->ref_window_size; p++) {
+								///		printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
+								//} printf("\n");
+								//printf("%d %llu \n", strand, true_pos);
 
 								for(uint32 h = 0; h < params->h; h++) {
-										printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
+									//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
 								}
 								n_checked++;
 						}

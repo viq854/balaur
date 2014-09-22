@@ -23,23 +23,26 @@ int hamming_dist(hash_t h1, hash_t h2) {
 // checks if the given sequence is informative or not
 // e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
 int is_inform_ref_window(const char* seq, const uint32_t len) {
-	char c = seq[0];
-	uint32 count = 0;
-	uint32 countN = 0;
-	for(uint32 i = 1; i < len; i++) {
-		if(seq[i] == c) {
-			count++; //return 1;
-		} 
-		if(seq[i] == 4) {
-			countN++;
-		}
-		if(count > len/2) {
-			return 0;
-		}
-		if(countN > 5) {
-			return 0;
+	uint32 base_counts[5] = { 0 };
+	for(uint32 i = 0; i < len; i++) {
+		base_counts[(int) seq[i]]++;
+	}
+	if(base_counts[4] > 10) { // N ambiguous bases
+		return 0;
+	}
+	uint32 n_empty = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] == 0) {
+			n_empty++;
 		}
 	}
+	if(n_empty > 1) { // repetitions of 2 or 1 base
+		//for(uint32 p = 0; p < len; p++) {
+		//	printf("%c", iupacChar[(int) seq[p]]);
+		//} printf("\n");
+		return 0;
+	}
+
 	return 1;
 }
 
@@ -73,16 +76,26 @@ void find_high_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& high_freq_hi
 		const index_params_t* params) {
 
 	seq_t total_counts = 0;
+	seq_t max_count = 0;
+	seq_t filt_count = 0;
 	for(MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
 		seq_t count = it->second;
-		total_counts += count;
 		if(count > params->max_count) {
 			high_freq_hist[it->first]++;
+			filt_count++;
+		}
+
+		total_counts += count;
+		if(count > max_count) {
+			max_count = count;
 		}
 	}
 
 	float avg_count = (float) total_counts/hist.size();
+	printf("Total count %llu %zu \n", total_counts, hist.size());
 	printf("Avg count %.4f \n", avg_count);
+	printf("Max count %llu \n", max_count);
+	printf("Count above cutoff %llu \n", filt_count);
 }
 
 void find_low_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& low_freq_hist,
