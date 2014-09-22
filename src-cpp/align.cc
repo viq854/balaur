@@ -87,6 +87,8 @@ void align_reads_sampling(ref_t& ref, reads_t& reads, const index_params_t* para
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
+	uint32 max_windows_matched = 0;
+	uint32 total_windows_matched = 0;
 	clock_t t = clock();
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
@@ -100,15 +102,32 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 			}
 
-			eval_read_hit(r);
-			if(r->acc == 1) break; // testing only
+			//eval_read_hit(r);
+			//if(r->acc == 1) break; // testing only
 		}
+
+		// process the collected windows
+		for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
+			seq_t pos = r->ref_matches[idx];
+			r->matched_window_counts[pos]++;
+		}
+
+		uint32 n_matched = r->matched_window_counts.size();
+		total_windows_matched += n_matched;
+		if(n_matched > max_windows_matched) {
+			max_windows_matched = n_matched;
+		}
+
 	}
 
 	int acc_hits = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		eval_read_hit(&reads.reads[i]);
 		acc_hits += reads.reads[i].acc;
 	}
+
+	printf("Max number of windows matched by read %u \n", max_windows_matched);
+	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/reads.reads.size());
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
