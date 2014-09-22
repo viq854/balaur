@@ -51,7 +51,7 @@ typedef struct {
 		p = 1;
 		msbits_match = 24;
 		max_hammd = 10;
-		max_count = 1000;
+		max_count = 100;
 		min_count = 0;
 		n_threads = 1;
 	}
