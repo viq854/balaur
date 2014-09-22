@@ -72,12 +72,17 @@ uint32_t get_kmer_count(const char* kmer_seq, int kmer_len, const MapKmerCounts&
 void find_high_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& high_freq_hist,
 		const index_params_t* params) {
 
+	seq_t total_counts = 0;
 	for(MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
 		seq_t count = it->second;
+		total_counts += count;
 		if(count > params->max_count) {
 			high_freq_hist[it->first]++;
 		}
 	}
+
+	float avg_count = (float) total_counts/hist.size();
+	printf("Avg count %.4f \n", avg_count);
 }
 
 void find_low_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& low_freq_hist,
@@ -208,7 +213,7 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 	char* kmer = (char*) malloc(params->k*sizeof(char));
 	// find and store the min for each hash function
 	for(uint32_t h = 0; h < params->h; h++) {
-		hash_t min = LLONG_MAX;
+		minhash_t min = UINT_MAX;
 		if(params->kmer_type == SPARSE) {
 			// construct the kmers, hash them, and keep the min (only lowest bit)
 			for(uint32 i = 0; i < params->m; i++) {
@@ -216,7 +221,7 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 					kmer[j] = seq[seq_offset + params->sparse_kmers[i*params->k + j]];
 				}
 				// hash the k-mer and compare to current min
-				hash_t kmer_hash = CityHash64(kmer, params->k);
+				minhash_t kmer_hash = CityHash32(kmer, params->k);
 				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
 				if(kmer_hash < min) {
 					min = kmer_hash;
@@ -228,12 +233,15 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 				const char* kmer = &seq[seq_offset + i];
 				int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
 				if(weight == 0) continue;
-				hash_t kmer_hash = CityHash64(kmer, params->k);
+				minhash_t kmer_hash = CityHash32(kmer, params->k);
 				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
 				if(kmer_hash < min) {
 					min = kmer_hash;
 				}
 			}
+		}
+		if(min == UINT_MAX) {
+			printf("Warning: 0 valid kmers found in read!\n");
 		}
 		min_hashes[h] = min;
 
