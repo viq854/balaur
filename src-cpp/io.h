@@ -49,6 +49,7 @@ typedef struct {
 typedef std::vector<ref_win_t*> VectorWindowPtr;
 typedef std::map<seq_t, ref_win_t> MapPos2Window;
 typedef std::vector<std::map<minhash_t, VectorWindowPtr> > VectorMinHashMaps;
+typedef std::map<seq_t, uint32> MapPos2MinCount;
 
 // reference genome
 typedef struct {
@@ -81,6 +82,7 @@ typedef struct {
 	
 	// found ref match positions
 	VectorSeqPos ref_matches;
+	MapPos2MinCount matched_window_counts;
 
 	char acc; // DEBUG: whether read matched accurately
 } read_t;
