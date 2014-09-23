@@ -115,10 +115,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		read_t* r = &reads.reads[i];
 		uint32 n_matches = 0;
 
-		for(uint32 band = 0; band < params->h/params->band_size; band++) {
+		for(uint32 band = 0; band < params->h - params->band_size + 1; band++) {
 			std::string band_entries;
 			for(uint32 v = 0; v < params->band_size; v++) {
-				band_entries += std::to_string(r->minhashes[band*params->band_size + v]);
+				band_entries += std::to_string(r->minhashes[band + v]);
 				band_entries += std::string(".");
 			}
 			minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
@@ -148,11 +148,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 //			if(r->acc != 1) {
 //				eval_read_hit(r);
 //			}
-//			if(n_matches > max_windows_matched) {
-//				max_windows_matched = n_matches;
-//			}
-//			total_windows_matched += n_matches;
-//
+			if(n_matches > max_windows_matched) {
+				max_windows_matched = n_matches;
+			}
+			total_windows_matched += n_matches;
+
 //			//if(r->acc == 1) break; // testing only
 //		}
 

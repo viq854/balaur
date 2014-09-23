@@ -67,8 +67,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	if (params->alg == MINH) {
 		// initialize the hash tables
 		//ref.minhash_maps_by_h.resize(params->h);
-		ref.hash_buckets.resize(params->h/params->band_size);
-		printf("Total number of buckets: %u \n", params->h/params->band_size);
+		ref.hash_buckets.resize(params->h - params->band_size + 1);
+		printf("Total number of buckets: %u \n", params->h - params->band_size + 1);
 	}
 
 	// collect the valid reference positions for parallel iteration
@@ -89,10 +89,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			w->simhash = minhash(ref.seq.c_str(), w->pos, params->ref_window_size,
 					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, w->minhashes);
 
-			for(uint32 band = 0; band < params->h/params->band_size; band++) {
+			for(uint32 band = 0; (band < params->h - params->band_size + 1); band++) {
 				std::string band_entries;
 				for(uint32 v = 0; v < params->band_size; v++) {
-					band_entries += std::to_string(w->minhashes[params->band_size*band + v]);
+					band_entries += std::to_string(w->minhashes[band + v]);
 					band_entries += std::string(".");
 				}
 				minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
