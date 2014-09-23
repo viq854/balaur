@@ -223,11 +223,12 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			const index_params_t* params, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
 	hash_t fingerprint = 0;
-	char* kmer = (char*) malloc(params->k*sizeof(char));
-	// find and store the min for each hash function
-	for(uint32_t h = 0; h < params->h; h++) {
-		minhash_t min = UINT_MAX;
-		if(params->kmer_type == SPARSE) {
+
+	if(params->kmer_type == SPARSE) {
+		char* kmer = (char*) malloc(params->k*sizeof(char));
+		// find and store the min for each hash function
+		for(uint32_t h = 0; h < params->h; h++) {
+			minhash_t min = UINT_MAX;
 			// construct the kmers, hash them, and keep the min (only lowest bit)
 			for(uint32 i = 0; i < params->m; i++) {
 				for(uint32 j = 0; j < params->k; j++) {
@@ -240,28 +241,37 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 					min = kmer_hash;
 				}
 			}
+			min_hashes[h] = min;
 		}
-		else {
+		free(kmer);
+	}
+	else {
+		std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
+		for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+			const char* kmer = &seq[seq_offset + i];
+			int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
+			if(weight == 0) continue;
+			kmer_hashes[i] = CityHash32(kmer, params->k);
+		}
+		for(uint32_t h = 0; h < params->h; h++) {
+			minhash_t min = UINT_MAX;
 			for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
-				const char* kmer = &seq[seq_offset + i];
-				int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
-				if(weight == 0) continue;
-				minhash_t kmer_hash = CityHash32(kmer, params->k);
+				minhash_t kmer_hash = kmer_hashes[i];
+				if(kmer_hash == 0) continue;
 				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
 				if(kmer_hash < min) {
 					min = kmer_hash;
 				}
 			}
-		}
-		if(min == UINT_MAX) {
-			printf("Warning: 0 valid kmers found in read!\n");
-		}
-		min_hashes[h] = min;
 
-		// keep only the lowest bit of the min
-		fingerprint |= (min & 1ULL) << (1*h);
+			if(min == UINT_MAX) {
+				printf("Warning: 0 valid kmers found in read!\n");
+			}
+			min_hashes[h] = min;
+			// keep only the lowest bit of the min
+			//fingerprint |= (min & 1ULL) << (1*h);
+		}
 	}
-	free(kmer);
 	return fingerprint;
 }
 
