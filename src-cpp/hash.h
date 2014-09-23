@@ -5,6 +5,7 @@
 #include "types.h"
 #include "io.h"
 #include "index.h"
+#include "city.h"
 
 #define SIMHASH_BITLEN 64
 #define MINHASH_BUCKET_SIZE 8
