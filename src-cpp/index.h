@@ -22,6 +22,8 @@ typedef struct {
 	uint32_t n_min_matched;			// minimum number of min-hashes for a match
 	char constr_minhash_tables;
 	
+	uint32_t band_size;
+
 	// kmer weighing
 	uint64_t min_count;
 	uint64_t max_count;
@@ -54,6 +56,8 @@ typedef struct {
 		max_count = 100;
 		min_count = 0;
 		n_threads = 1;
+
+		band_size = 4;
 	}
 
 } index_params_t;

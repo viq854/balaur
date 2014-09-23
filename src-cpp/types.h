@@ -7,7 +7,7 @@ typedef unsigned int uint32;
 typedef unsigned long long int uint64;
 typedef uint64 hash_t;
 typedef uint32 minhash_t;
-typedef uint64 seq_t;
+typedef uint32 seq_t;
 
 typedef std::vector<uint32> VectorU32;
 typedef std::vector<hash_t> VectorHash;
