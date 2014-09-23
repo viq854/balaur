@@ -46,7 +46,7 @@ typedef struct {
 		kmer_dist = 1;
 		max_range = k + 10;
 		h = 64;
-		n_min_matched = 5;
+		n_min_matched = 1;
 		constr_minhash_tables = 0;
 		p = 1;
 		msbits_match = 24;

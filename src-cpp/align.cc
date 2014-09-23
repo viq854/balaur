@@ -84,6 +84,27 @@ void align_reads_sampling(ref_t& ref, reads_t& reads, const index_params_t* para
 	
 }
 
+int eval_minhash_hits(read_t* r, const index_params_t* params) {
+   unsigned int pos_l, pos_r;
+   int strand;
+   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
+
+   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
+	   MapPos2MinCount::const_iterator v;
+	   if((v = r->matched_window_counts.find(j)) != r->matched_window_counts.end()) {
+		  if(v->second > params->n_min_matched) {
+			  r->acc = 1;
+			  break;
+		  }
+	   }
+
+    	if(r->acc == 1) {
+    		break;
+    	}
+    }
+    return (r->acc == 1);
+}
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
@@ -92,31 +113,41 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	clock_t t = clock();
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
+		uint32 n_matches = 0;
 		// search each minhash table to find the matching ref window(s)
 		for(uint32 h = 0; h < params->h; h++) {
 			minhash_t minh = r->minhashes[h];
 			std::map<minhash_t, VectorWindowPtr>::iterator v;
 			if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
-				for(uint32 match = 0; match < v->second.size(); match++) {
-					r->ref_matches.push_back(v->second[match]->pos);
+				if(r->acc != 1) {
+					for(uint32 match = 0; match < v->second.size(); match++) {
+						r->ref_matches.push_back(v->second[match]->pos);
+					}
 				}
+				n_matches += v->second.size();
 			}
+			if(r->acc == 1) {
+				eval_read_hit(r);
+			}
+			if(n_matches > max_windows_matched) {
+				max_windows_matched = n_matches;
+			}
+			total_windows_matched += n_matches;
 
-			//eval_read_hit(r);
 			//if(r->acc == 1) break; // testing only
 		}
 
 		// process the collected windows
-		for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
-			seq_t pos = r->ref_matches[idx];
-			r->matched_window_counts[pos]++;
-		}
+		//for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
+		//	seq_t pos = r->ref_matches[idx];
+		//	r->matched_window_counts[pos]++;
+		//}
 
-		uint32 n_matched = r->matched_window_counts.size();
-		total_windows_matched += n_matched;
-		if(n_matched > max_windows_matched) {
-			max_windows_matched = n_matched;
-		}
+		//uint32 n_matched = r->matched_window_counts.size();
+		//total_windows_matched += n_matched;
+		//if(n_matched > max_windows_matched) {
+			//max_windows_matched = n_matched;
+		//}
 
 	}
 
@@ -473,6 +504,7 @@ int eval_read_hit(read_t* r) {
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
    for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
+
 	   for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
 		   seq_t hit_pos = r->ref_matches[idx];
 		   if(hit_pos == j) {

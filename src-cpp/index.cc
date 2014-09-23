@@ -7,6 +7,7 @@
 #include <time.h>
 #include <omp.h>
 
+#include <time.h>
 #include <vector>
 #include <string.h>
 
@@ -59,7 +60,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	// 3. compute valid reference windows
 	t = clock();
 	generate_ref_windows(ref, params);
-	printf("Total number of valid windows: %llu\n", (uint64_t) ref.windows_by_pos.size());
+	printf("Total number of valid windows: %zu\n", ref.windows_by_pos.size());
 	
 	// 4. hash each window
 
@@ -101,7 +102,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					}
 				}
 			}
-
+			w->minhashes = VectorMinHash();
 		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -111,7 +112,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		t = clock();
 		sort_windows_hash(ref);
 		printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-		printf("Total number of distinct window hashes = %llu \n", (uint64_t) get_num_distinct(ref));
+		printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
 	}
 }
 
@@ -126,7 +127,7 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	// 2. compute the frequency of each kmer
 	t = clock();
 	if(params->kmer_type != SPARSE) {
-		for(uint32_t i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
+		for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
 			read_t r = reads.reads[i];
 			compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
@@ -139,7 +140,7 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	t = clock();
 
 	#pragma omp parallel for
-	for(uint32_t i = 0; i < reads.reads.size(); i++) {
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(params->alg == SIMH) {
 			r->simhash = simhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0);
@@ -195,20 +196,20 @@ void index_ref_table_i(ref_t& ref, const index_params_t* params, const seq_t i) 
 	for(seq_t j = 0; j < ref.windows_by_pos.size(); j++) {
 		ref.windows_by_pos[j].simhash = sampling_hash(ref.seq.c_str(), ref.windows_by_pos[j].pos, i, params);
 	}
-	printf("Total hash table %llu computation time: %.2f sec\n", (uint64_t) i, (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	// sort the hashes
 	t = clock();
 	sort_windows_hash(ref);
 	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	printf("Total number of distinct window hashes = %llu \n", (uint64_t) get_num_distinct(ref));
+	printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
 }
 
 void index_reads_table_i(reads_t& reads, const index_params_t* params, const seq_t i) {
 	// hash each read using sampling ids i
 	clock_t t = clock();
-	for(uint32_t j = 0; j < reads.reads.size(); j++) {
+	for(uint32 j = 0; j < reads.reads.size(); j++) {
 		reads.reads[j].simhash = sampling_hash(reads.reads[j].seq.c_str(), 0, i, params);
 	}
-	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64_t) i, (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
 }

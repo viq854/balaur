@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONSt:h:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONSt:h:x:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
@@ -155,6 +155,7 @@ int main(int argc, char *argv[]) {
 			case 'd': params.max_hammd = atoi(optarg); break;
 			case 'L': params.min_count = atoi(optarg); break;
 			case 'H': params.max_count = atoi(optarg); break;
+			case 'x': params.n_min_matched = atoi(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'O': params.kmer_type = OVERLAP; break;
 			case 'N': params.kmer_type = NON_OVERLAP; break;
