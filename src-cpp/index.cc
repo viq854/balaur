@@ -66,7 +66,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	if (params->alg == MINH) {
 		// initialize the hash tables
-		ref.minhash_maps_by_h.resize(params->h);
+		//ref.minhash_maps_by_h.resize(params->h);
+		ref.hash_buckets.resize(params->h/params->band_size);
 	}
 
 	// collect the valid reference positions for parallel iteration
@@ -87,21 +88,41 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			w->simhash = minhash(ref.seq.c_str(), w->pos, params->ref_window_size,
 					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, w->minhashes);
 
-			// insert window into the minhash maps based on its minhash value for each hash function
-			for(uint32 h = 0; h < params->h; h++) {
-				minhash_t minh = w->minhashes[h];
+			for(uint32 band = 0; band < params->h; band += params->band_size) {
+				std::string band_entries;
+				for(uint32 v = 0; v < params->band_size; v++) {
+					band_entries += std::to_string(w->minhashes[band + v]);
+					band_entries += std::string(".");
+				}
+				minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
 
 				#pragma omp critical
 				{
-					std::map<minhash_t, VectorWindowPtr>::iterator v;
-					if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
-						v->second.push_back(w);
+					std::map<minhash_t, VectorSeqPos>::iterator v;
+					if((v = ref.hash_buckets[band].find(hash)) != ref.hash_buckets[band].end()) {
+						v->second.push_back(w->pos);
 					} else {
-						ref.minhash_maps_by_h[h].insert(std::pair<minhash_t, VectorWindowPtr>(minh, VectorWindowPtr()));
-						ref.minhash_maps_by_h[h][minh].push_back(w);
+						ref.hash_buckets[band].insert(std::pair<minhash_t, VectorSeqPos>(hash, VectorSeqPos()));
+						ref.hash_buckets[band][hash].push_back(w->pos);
 					}
 				}
 			}
+
+			// insert window into the minhash maps based on its minhash value for each hash function
+//			for(uint32 h = 0; h < params->h; h++) {
+//				minhash_t minh = w->minhashes[h];
+//
+//				#pragma omp critical
+//				{
+//					std::map<minhash_t, VectorWindowPtr>::iterator v;
+//					if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
+//						v->second.push_back(w);
+//					} else {
+//						ref.minhash_maps_by_h[h].insert(std::pair<minhash_t, VectorWindowPtr>(minh, VectorWindowPtr()));
+//						ref.minhash_maps_by_h[h][minh].push_back(w);
+//					}
+//				}
+//			}
 			w->minhashes = VectorMinHash();
 		}
 	}

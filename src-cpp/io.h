@@ -50,6 +50,7 @@ typedef std::vector<ref_win_t*> VectorWindowPtr;
 typedef std::map<seq_t, ref_win_t> MapPos2Window;
 typedef std::vector<std::map<minhash_t, VectorWindowPtr> > VectorMinHashMaps;
 typedef std::map<seq_t, uint32> MapPos2MinCount;
+typedef std::vector<std::map<minhash_t, VectorSeqPos> > VectorBucketTables;
 
 // reference genome
 typedef struct {
@@ -62,6 +63,8 @@ typedef struct {
 	MapKmerCounts high_freq_kmer_hist;
 	MapPos2Window windows_by_pos; 			// map of valid reference windows by position
 	VectorMinHashMaps minhash_maps_by_h;	// vector of minhash result maps for each hash function
+	VectorBucketTables hash_buckets;
+
 } ref_t;
 
 typedef struct {

@@ -84,7 +84,7 @@ void align_reads_sampling(ref_t& ref, reads_t& reads, const index_params_t* para
 	
 }
 
-int eval_minhash_hits(read_t* r, const index_params_t* params) {
+int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
    unsigned int pos_l, pos_r;
    int strand;
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
@@ -114,28 +114,47 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		uint32 n_matches = 0;
-		// search each minhash table to find the matching ref window(s)
-		for(uint32 h = 0; h < params->h; h++) {
-			minhash_t minh = r->minhashes[h];
-			std::map<minhash_t, VectorWindowPtr>::iterator v;
-			if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
-				if(r->acc != 1) {
-					for(uint32 match = 0; match < v->second.size(); match++) {
-						r->ref_matches.push_back(v->second[match]->pos);
-					}
+
+		for(uint32 band = 0; band < params->h; band += params->band_size) {
+			std::string band_entries;
+			for(uint32 v = 0; v < params->band_size; v++) {
+				band_entries += std::to_string(r->minhashes[band + v]);
+				band_entries += std::string(".");
+			}
+			minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
+
+			// collect the hits from each band bucket
+			std::map<minhash_t, VectorSeqPos>::iterator v;
+			if((v = ref.hash_buckets[band].find(hash)) != ref.hash_buckets[band].end()) {
+				for(uint32 match = 0; match < v->second.size(); match++) {
+					r->ref_matches.push_back(v->second[match]);
 				}
 				n_matches += v->second.size();
 			}
-			if(r->acc == 1) {
-				eval_read_hit(r);
-			}
-			if(n_matches > max_windows_matched) {
-				max_windows_matched = n_matches;
-			}
-			total_windows_matched += n_matches;
-
-			//if(r->acc == 1) break; // testing only
 		}
+
+		// search each minhash table to find the matching ref window(s)
+//		for(uint32 h = 0; h < params->h; h++) {
+//			minhash_t minh = r->minhashes[h];
+//			std::map<minhash_t, VectorWindowPtr>::iterator v;
+//			if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
+//				if(r->acc != 1) {
+//					for(uint32 match = 0; match < v->second.size(); match++) {
+//						r->ref_matches.push_back(v->second[match]->pos);
+//					}
+//				}
+//				n_matches += v->second.size();
+//			}
+//			if(r->acc != 1) {
+//				eval_read_hit(r);
+//			}
+//			if(n_matches > max_windows_matched) {
+//				max_windows_matched = n_matches;
+//			}
+//			total_windows_matched += n_matches;
+//
+//			//if(r->acc == 1) break; // testing only
+//		}
 
 		// process the collected windows
 		//for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
