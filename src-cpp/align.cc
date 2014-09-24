@@ -105,6 +105,39 @@ int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
     return (r->acc == 1);
 }
 
+int eval_read_hit(ref_t& ref, read_t* r) {
+   unsigned int pos_l, pos_r;
+   int strand;
+   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
+
+   for(seq_t j = pos_l - 20; j <= pos_r + 20; j++) {
+	   for(uint32 t = 0; t < r->ref_bucket_id_matches.size(); t++) {
+		   buckets_t* buckets = &ref.hash_tables[t];
+		   for(seq_t idx = 0; idx < r->ref_bucket_id_matches[t].size(); idx++) {
+			   uint32 bucket_index = r->ref_bucket_id_matches[t][idx];
+			   VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+			   for(uint32 match = 0; match < bucket.size(); match++) {
+				   seq_t hit_pos = bucket[match];
+				   if(hit_pos == j) {
+					   r->acc = 1;
+					   break;
+				   }
+			   }
+			   if(r->acc == 1) {
+				   break;
+			   }
+		   }
+		   if(r->acc == 1) {
+		       	break;
+		   }
+        }
+    	if(r->acc == 1) {
+    		break;
+    	}
+    }
+    return (r->acc == 1);
+}
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
@@ -482,39 +515,6 @@ void shuffle(int *perm) {
 }
 
 /* ---- Hit Evaluation ----- */
-
-int eval_read_hit(ref_t& ref, read_t* r) {
-   unsigned int pos_l, pos_r;
-   int strand;
-   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-
-   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
-	   for(uint32 t = 0; t < r->ref_bucket_id_matches.size(); t++) {
-		   buckets_t* buckets = &ref.hash_tables[t];
-		   for(seq_t idx = 0; idx < r->ref_bucket_id_matches[t].size(); idx++) {
-			   uint32 bucket_index = r->ref_bucket_id_matches[t][idx];
-			   VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-			   for(uint32 match = 0; match < bucket.size(); match++) {
-				   seq_t hit_pos = bucket[match];
-				   if(hit_pos == j) {
-					   r->acc = 1;
-					   break;
-				   }
-			   }
-			   if(r->acc == 1) {
-				   break;
-			   }
-		   }
-		   if(r->acc == 1) {
-		       	break;
-		   }
-        }
-    	if(r->acc == 1) {
-    		break;
-    	}
-    }
-    return (r->acc == 1);
-}
 
 // check how many reads in this cluster match the window positions
 int eval_cluster_hit(cluster_t* cluster) {
