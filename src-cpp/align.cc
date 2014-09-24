@@ -165,6 +165,9 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		buckets_t* buckets = &ref.hash_tables[t];
 		uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
+		if(bucket_index == buckets->n_buckets) {
+			continue;
+		}
 		VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 		for(uint32 match = 0; match < bucket.size(); match++) {
 			pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
@@ -216,7 +219,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		uint32 n_matches = 0;
-		r->ref_bucket_id_matches_by_table.resize(params->n_tables);
+		//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
 		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 			VectorMinHash sketch_proj(params->sketch_proj_len);
 			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
@@ -226,8 +229,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 			buckets_t* buckets = &ref.hash_tables[t];
 			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+			r->ref_bucket_id_matches_by_table.push_back(bucket_index);
 			if(bucket_index != buckets->n_buckets) {
-				r->ref_bucket_id_matches_by_table.push_back(bucket_index);
 				n_matches += buckets->buckets_data_vectors[bucket_index].size();
 			}
 		}
