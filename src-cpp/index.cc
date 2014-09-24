@@ -66,14 +66,18 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
 
+	uint32 n_valid_windows = 0;
+	uint32 n_sampled_out = 0;
+
 	t = clock();
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
 		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
 			continue; // discard windows with low information content
 		}
-		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
+		n_valid_windows++;
 
+		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
 		// get the min-hash signature for the window
 		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, minhashes);
 
@@ -108,6 +112,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 							seq_t H = pos + params->bucket_entry_coverage;
 							seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
 							if((epos <= H) && (epos >= L)) {
+								n_sampled_out++;
 								store_pos = false;
 								break;
 							}
@@ -121,6 +126,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			}
 		}
 	}
+	printf("Total number of valid reference windows: %u \n", n_valid_windows);
+	printf("Total number of window bucket entries filtered: %u \n", n_sampled_out);
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 
