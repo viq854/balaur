@@ -139,12 +139,13 @@ int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
 //    return (r->acc == 1);
 //}
 
-int eval_read_hit(ref_t& ref, read_t* r) {
+int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    unsigned int pos_l, pos_r;
    int strand;
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
-   for(uint32 i = 0; i < r->ref_matches.size(); i++) {
+   char first_found = false;
+   for(uint32 i = params->n_tables - 1; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
 		   if(pos_l >= match.pos - match.len - 20 && pos_l <= match.pos + 20) {
@@ -152,12 +153,28 @@ int eval_read_hit(ref_t& ref, read_t* r) {
 			   break;
 		   }
 	   }
+	   if(r->acc == 1) {
+		   if(!first_found) {
+			   r->top_hit_acc = 1;
+		   }
+		   break;
+	   }
+	   if(r->ref_matches[i].size() != 0) {
+		   first_found = true;
+	   }
    }
    return (r->acc == 1);
 }
 
-#define GAP_LENGTH 100
 
+void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
+
+	// find the contig with most hits
+
+	// find the contig with second most hits
+}
+
+#define GAP_LENGTH 100
 void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// collect all the hits and their table ids
@@ -202,10 +219,11 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 			}
 			len += pos - last_pos;
 		} else {
-			int n_occ = std::count(occ.begin(), occ.end(), 1);
+			int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
 			r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
 			len = 0;
 			std::fill(occ.begin(), occ.end(), 0);
+			occ[tid] = 1;
 		}
 		last_pos = pos;
 		last_tid = tid;
@@ -217,10 +235,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	uint32 max_windows_matched = 0;
 	uint32 total_windows_matched = 0;
+	uint32 diff_num_top_hits = 0;
 	clock_t t = clock();
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		uint32 n_matches = 0;
 		//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
 		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 			VectorMinHash sketch_proj(params->sketch_proj_len);
@@ -228,30 +246,50 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				sketch_proj[p] = r->minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
 			}
 			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(sketch_proj);
-
-			buckets_t* buckets = &ref.hash_tables[t];
-			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+			uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 			r->ref_bucket_id_matches_by_table.push_back(bucket_index);
-			if(bucket_index != buckets->n_buckets) {
-				n_matches += buckets->buckets_data_vectors[bucket_index].size();
+		}
+
+		collect_read_hits(ref, r, params);
+
+		// stats
+		uint32 n_contigs = 0;
+		for(uint32 t = 0; t < params->n_tables; t++) {
+			n_contigs += r->ref_matches[t].size();
+		}
+		if(n_contigs > max_windows_matched) {
+			max_windows_matched = n_contigs;
+		}
+		total_windows_matched += n_contigs;
+
+		uint32 f = params->n_tables;
+		uint32 s = params->n_tables;
+		for(uint32 t = params->n_tables-1; t >=0; t++) {
+			if(r->ref_matches[t].size() != 0) {
+				if(f != params->n_tables) {
+					if(s != params->n_tables) {
+						break;
+					}
+					else {
+						s = t;
+					}
+				} else {
+					f = t;
+				}
 			}
 		}
-
-		if(n_matches > max_windows_matched) {
-			max_windows_matched = n_matches;
-		}
-		total_windows_matched += n_matches;
+		diff_num_top_hits += f - s;
 	}
 
 	int acc_hits = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		collect_read_hits(ref, &reads.reads[i], params);
 		eval_read_hit(ref, &reads.reads[i]);
 		acc_hits += reads.reads[i].acc;
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/reads.reads.size());
+	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
