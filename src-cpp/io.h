@@ -8,13 +8,6 @@
 #include <map>
 #include "types.h"
 
-#define INIT_REFLEN_ALLOC			262144
-#define INIT_READLEN_ALLOC			100
-#define MAX_SEQ_NAME_LEN 			256
-#define MAX_NUM_READS 				1000000
-
-#define MAX_MINHASH_NUM				1024
-
 static const unsigned char iupacChar[5] =  {'A', 'G', 'C', 'T', 'N'};
 static const unsigned char nt4_complement[5] = {3/*A*/, 2/*G*/, 1/*C*/, 0/*T*/, 4/*N*/};
 
@@ -44,27 +37,31 @@ typedef struct {
 	hash_t simhash;
 	VectorMinHash minhashes;
 } ref_win_t;
-
-
 typedef std::vector<ref_win_t*> VectorWindowPtr;
 typedef std::map<seq_t, ref_win_t> MapPos2Window;
 typedef std::vector<std::map<minhash_t, VectorWindowPtr> > VectorMinHashMaps;
 typedef std::map<seq_t, uint32> MapPos2MinCount;
-typedef std::vector<std::map<minhash_t, VectorSeqPos> > VectorBucketTables;
+
+typedef std::vector<VectorSeqPos> VectorBuckets;
+struct buckets_t {
+	uint32 n_buckets;
+	uint32 next_free_bucket_index;
+	VectorU32 bucket_indices;
+	VectorU32 bucket_sizes;
+	VectorBuckets buckets_data_vectors;
+};
+typedef std::vector<buckets_t> VectorBucketTables;
+
 
 // reference genome
 typedef struct {
-	// reference sequence data
-	std::string seq;
-	seq_t len;
-
-	// LSH index
+	std::string seq; 	// reference sequence data
+	seq_t len;			// reference sequence length
 	MapKmerCounts kmer_hist;				// kmer occurrence histogram
 	MapKmerCounts high_freq_kmer_hist;
-	MapPos2Window windows_by_pos; 			// map of valid reference windows by position
-	VectorMinHashMaps minhash_maps_by_h;	// vector of minhash result maps for each hash function
-	VectorBucketTables hash_buckets;
 
+	// LSH index
+	VectorBucketTables hash_tables;
 } ref_t;
 
 typedef struct {

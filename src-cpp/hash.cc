@@ -37,9 +37,6 @@ int is_inform_ref_window(const char* seq, const uint32_t len) {
 		}
 	}
 	if(n_empty > 1) { // repetitions of 2 or 1 base
-		//for(uint32 p = 0; p < len; p++) {
-		//	printf("%c", iupacChar[(int) seq[p]]);
-		//} printf("\n");
 		return 0;
 	}
 
@@ -92,10 +89,10 @@ void find_high_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& high_freq_hi
 	}
 
 	float avg_count = (float) total_counts/hist.size();
-	printf("Total count %llu %zu \n", total_counts, hist.size());
+	printf("Total count %u %zu \n", total_counts, hist.size());
 	printf("Avg count %.4f \n", avg_count);
-	printf("Max count %llu \n", max_count);
-	printf("Count above cutoff %llu \n", filt_count);
+	printf("Max count %u \n", max_count);
+	printf("Count above cutoff %u \n", filt_count);
 }
 
 void find_low_freq_kmers(const MapKmerCounts& hist, MapKmerCounts& low_freq_hist,
@@ -183,37 +180,37 @@ hash_t generate_simhash_fp(int* v) {
 
 // computes the simhash fingerprint of the given sequence
 // using the specified kmer generation scheme
-hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-		const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
-		const index_params_t* params, const uint8_t is_ref) {
-
-	int v[SIMHASH_BITLEN] = { 0 };
-
-	// generate the kmers, hash them, and add the hash to V
-	if(params->kmer_type == SPARSE) {
-		char* kmer = (char*) malloc(params->k*sizeof(char));
-		for(uint32_t i = 0; i < params->m; i++) {
-			const uint32_t* ids = &params->sparse_kmers[i*params->k];
-			for(uint32_t j = 0; j < params->k; j++) {
-				kmer[j] = seq[seq_offset + ids[j]];
-			}
-			if(get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params) == 0) {
-				continue;
-			}
-			hash_t kmer_hash = CityHash64(kmer, params->k);
-			add_kmer_hash_bits(v, kmer_hash);
-		}
-	} else {
-		for(uint32_t i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
-			if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params) == 0) {
-				continue;
-			}
-			hash_t kmer_hash = CityHash64(&seq[seq_offset + i], params->k);
-			add_kmer_hash_bits(v, kmer_hash);
-		}
-	}
-	return generate_simhash_fp(v);
-}
+//hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+//		const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
+//		const index_params_t* params, const uint8_t is_ref) {
+//
+//	int v[SIMHASH_BITLEN] = { 0 };
+//
+//	// generate the kmers, hash them, and add the hash to V
+//	if(params->kmer_type == SPARSE) {
+//		char* kmer = (char*) malloc(params->k*sizeof(char));
+//		for(uint32_t i = 0; i < params->m; i++) {
+//			const uint32_t* ids = &params->sparse_kmers[i*params->k];
+//			for(uint32_t j = 0; j < params->k; j++) {
+//				kmer[j] = seq[seq_offset + ids[j]];
+//			}
+//			if(get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params) == 0) {
+//				continue;
+//			}
+//			hash_t kmer_hash = CityHash64(kmer, params->k);
+//			add_kmer_hash_bits(v, kmer_hash);
+//		}
+//	} else {
+//		for(uint32_t i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+//			if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params) == 0) {
+//				continue;
+//			}
+//			hash_t kmer_hash = CityHash64(&seq[seq_offset + i], params->k);
+//			add_kmer_hash_bits(v, kmer_hash);
+//		}
+//	}
+//	return generate_simhash_fp(v);
+//}
 
 /////////////////////////
 // --- LSH: minhash ---
@@ -224,54 +221,56 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			VectorMinHash& min_hashes) {
 	hash_t fingerprint = 0;
 
-	if(params->kmer_type == SPARSE) {
-		char* kmer = (char*) malloc(params->k*sizeof(char));
-		// find and store the min for each hash function
-		for(uint32_t h = 0; h < params->h; h++) {
-			minhash_t min = UINT_MAX;
-			// construct the kmers, hash them, and keep the min (only lowest bit)
-			for(uint32 i = 0; i < params->m; i++) {
-				for(uint32 j = 0; j < params->k; j++) {
-					kmer[j] = seq[seq_offset + params->sparse_kmers[i*params->k + j]];
-				}
-				// hash the k-mer and compare to current min
-				minhash_t kmer_hash = CityHash32(kmer, params->k);
-				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
-				if(kmer_hash < min) {
-					min = kmer_hash;
-				}
-			}
-			min_hashes[h] = min;
-		}
-		free(kmer);
-	}
-	else {
-		std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
-		for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
-			const char* kmer = &seq[seq_offset + i];
-			int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
-			if(weight == 0) continue;
-			kmer_hashes[i] = CityHash32(kmer, params->k);
-		}
-		for(uint32_t h = 0; h < params->h; h++) {
-			minhash_t min = UINT_MAX;
-			for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
-				minhash_t kmer_hash = kmer_hashes[i];
-				if(kmer_hash == 0) continue;
-				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
-				if(kmer_hash < min) {
-					min = kmer_hash;
-				}
-			}
+//	if(params->kmer_type == SPARSE) {
+//		char* kmer = (char*) malloc(params->k*sizeof(char));
+//		// find and store the min for each hash function
+//		for(uint32_t h = 0; h < params->h; h++) {
+//			minhash_t min = UINT_MAX;
+//			// construct the kmers, hash them, and keep the min (only lowest bit)
+//			for(uint32 i = 0; i < params->m; i++) {
+//				for(uint32 j = 0; j < params->k; j++) {
+//					kmer[j] = seq[seq_offset + params->sparse_kmers[i*params->k + j]];
+//				}
+//				// hash the k-mer and compare to current min
+//				minhash_t kmer_hash = CityHash32(kmer, params->k);
+//				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
+//				if(kmer_hash < min) {
+//					min = kmer_hash;
+//				}
+//			}
+//			min_hashes[h] = min;
+//		}
+//		free(kmer);
+//	}
 
-			if(min == UINT_MAX) {
-				printf("Warning: 0 valid kmers found in read!\n");
-			}
-			min_hashes[h] = min;
-			// keep only the lowest bit of the min
-			//fingerprint |= (min & 1ULL) << (1*h);
-		}
+	std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
+	for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+		const char* kmer = &seq[seq_offset + i];
+		int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
+		if(weight == 0) continue;
+		kmer_hashes[i] = CityHash32(kmer, params->k);
 	}
+	for(uint32_t h = 0; h < params->h; h++) {
+		minhash_t min = UINT_MAX;
+		for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+			minhash_t kmer_hash = kmer_hashes[i];
+			if(kmer_hash == 0) continue;
+			//kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
+			const rand_hash_function_t* f = &params->minhash_functions[h];
+			kmer_hash = f->apply(kmer_hash);
+			if(kmer_hash < min) {
+				min = kmer_hash;
+			}
+		}
+
+		if(min == UINT_MAX) {
+			printf("Warning: 0 valid kmers found in read!\n");
+		}
+		min_hashes[h] = min;
+		// keep only the lowest bit of the min
+		//fingerprint |= (min & 1ULL) << (1*h);
+	}
+
 	return fingerprint;
 }
 
@@ -283,23 +282,23 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 /////////////////////////
 // --- LSH: sampling ---
 
-hash_t sampling(const char* seq, const seq_t seq_offset, const seq_t i, const index_params_t* params) {
-	hash_t fingerprint = 0;
-	const uint32_t* idxs = &params->sparse_kmers[i*params->k];
-	for(uint32_t j = 0; j < params->k; j++) {
-		const char c = seq[seq_offset + idxs[j]];
-		fingerprint |= (c & 1ULL) << j; // 1st ls bit
-	}
-	return fingerprint;
-}
-
-hash_t sampling_hash(const char* seq, const seq_t seq_offset, const seq_t i, const index_params_t* params) {
-	const uint32_t* idxs = &params->sparse_kmers[i*params->k];
-	char* kmer = (char*) malloc(params->k*sizeof(char));
-	for(uint32_t j = 0; j < params->k; j++) {
-		kmer[j] = seq[seq_offset + idxs[j]];
-	}
-	return CityHash64(kmer, params->k);
-}
+//hash_t sampling(const char* seq, const seq_t seq_offset, const seq_t i, const index_params_t* params) {
+//	hash_t fingerprint = 0;
+//	const uint32_t* idxs = &params->sparse_kmers[i*params->k];
+//	for(uint32_t j = 0; j < params->k; j++) {
+//		const char c = seq[seq_offset + idxs[j]];
+//		fingerprint |= (c & 1ULL) << j; // 1st ls bit
+//	}
+//	return fingerprint;
+//}
+//
+//hash_t sampling_hash(const char* seq, const seq_t seq_offset, const seq_t i, const index_params_t* params) {
+//	const uint32_t* idxs = &params->sparse_kmers[i*params->k];
+//	char* kmer = (char*) malloc(params->k*sizeof(char));
+//	for(uint32_t j = 0; j < params->k; j++) {
+//		kmer[j] = seq[seq_offset + idxs[j]];
+//	}
+//	return CityHash64(kmer, params->k);
+//}
 
 

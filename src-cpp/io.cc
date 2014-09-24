@@ -54,82 +54,82 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 
 // store the reference index
 void store_ref_idx(const char* idxFname, ref_t& ref) {
-	std::ofstream file;
-	file.open(idxFname, std::ios::out | std::ios::app | std::ios::binary);
-	if (!file.is_open()) {
-		printf("store_ref_idx: Cannot open the IDX file %s!\n", idxFname);
-		exit(1);
-	}
-
-	// write the map
-	uint32 map_size = ref.windows_by_pos.size();
-	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-	for (MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); ++it) {
-		seq_t pos = it->first;
-		ref_win_t window = it->second;
-		uint32 n_minhashes = window.minhashes.size();
-
-	    file.write(reinterpret_cast<char*>(&pos), sizeof(pos));
-	    file.write(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
-	    file.write(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
-
-	    for(uint32 i = 0; i < n_minhashes; i++) {
-	    	hash_t minh = window.minhashes[i];
-	    	file.write(reinterpret_cast<char*>(&minh), sizeof(minh));
-	    }
-	}
-
-	// write the histogram
-	map_size = ref.kmer_hist.size();
-	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-	for (MapKmerCounts::iterator it = ref.kmer_hist.begin(); it != ref.kmer_hist.end(); ++it) {
-		uint32 kmer = it->first;
-		seq_t count = it->second;
-		file.write(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-		file.write(reinterpret_cast<char*>(&count), sizeof(count));
-	}
-	file.close();
+//	std::ofstream file;
+//	file.open(idxFname, std::ios::out | std::ios::app | std::ios::binary);
+//	if (!file.is_open()) {
+//		printf("store_ref_idx: Cannot open the IDX file %s!\n", idxFname);
+//		exit(1);
+//	}
+//
+//	// write the map
+//	uint32 map_size = ref.windows_by_pos.size();
+//	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+//	for (MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); ++it) {
+//		seq_t pos = it->first;
+//		ref_win_t window = it->second;
+//		uint32 n_minhashes = window.minhashes.size();
+//
+//	    file.write(reinterpret_cast<char*>(&pos), sizeof(pos));
+//	    file.write(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
+//	    file.write(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
+//
+//	    for(uint32 i = 0; i < n_minhashes; i++) {
+//	    	hash_t minh = window.minhashes[i];
+//	    	file.write(reinterpret_cast<char*>(&minh), sizeof(minh));
+//	    }
+//	}
+//
+//	// write the histogram
+//	map_size = ref.kmer_hist.size();
+//	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+//	for (MapKmerCounts::iterator it = ref.kmer_hist.begin(); it != ref.kmer_hist.end(); ++it) {
+//		uint32 kmer = it->first;
+//		seq_t count = it->second;
+//		file.write(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+//		file.write(reinterpret_cast<char*>(&count), sizeof(count));
+//	}
+//	file.close();
 }
 
 // store the reference index
 void load_ref_idx(const char* idxFname, ref_t& ref) {
-	std::ifstream file;
-	file.open(idxFname, std::ios::in | std::ios::binary);
-	if (!file.is_open()) {
-		printf("load_ref_idx: Cannot open the IDX file %s!\n", idxFname);
-		exit(1);
-	}
-
-	// read the windows map
-	uint32 map_size;
-	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-	for (uint32 i = 0; i < map_size; i++) {
-		seq_t pos;
-		ref_win_t window;
-		uint32 n_minhashes;
-		file.read(reinterpret_cast<char*>(&pos), sizeof(pos));
-		file.read(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
-		file.read(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
-
-		window.minhashes.resize(n_minhashes);
-		for(uint32 j = 0; j < n_minhashes; j++) {
-			hash_t minh;
-			file.read(reinterpret_cast<char*>(&minh), sizeof(minh));
-			window.minhashes[j] = minh;
-		}
-		ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(pos, window));
-	}
-
-	// read the histogram
-	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-	for (uint32 i = 0; i < map_size; i++) {
-		uint32 kmer;
-		seq_t count;
-		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-		file.read(reinterpret_cast<char*>(&count), sizeof(count));
-		ref.kmer_hist.insert(std::pair<uint32, seq_t> (kmer, count));
-	}
-	file.close();
+//	std::ifstream file;
+//	file.open(idxFname, std::ios::in | std::ios::binary);
+//	if (!file.is_open()) {
+//		printf("load_ref_idx: Cannot open the IDX file %s!\n", idxFname);
+//		exit(1);
+//	}
+//
+//	// read the windows map
+//	uint32 map_size;
+//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+//	for (uint32 i = 0; i < map_size; i++) {
+//		seq_t pos;
+//		ref_win_t window;
+//		uint32 n_minhashes;
+//		file.read(reinterpret_cast<char*>(&pos), sizeof(pos));
+//		file.read(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
+//		file.read(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
+//
+//		window.minhashes.resize(n_minhashes);
+//		for(uint32 j = 0; j < n_minhashes; j++) {
+//			hash_t minh;
+//			file.read(reinterpret_cast<char*>(&minh), sizeof(minh));
+//			window.minhashes[j] = minh;
+//		}
+//		ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(pos, window));
+//	}
+//
+//	// read the histogram
+//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+//	for (uint32 i = 0; i < map_size; i++) {
+//		uint32 kmer;
+//		seq_t count;
+//		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+//		file.read(reinterpret_cast<char*>(&count), sizeof(count));
+//		ref.kmer_hist.insert(std::pair<uint32, seq_t> (kmer, count));
+//	}
+//	file.close();
 }
 
 void store_perm( const char* permFname, const VectorU32& perm) {
@@ -225,7 +225,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		if(feof(readsFile)) fastq_error(readsFname);
 
 		// line 4 (quality values)
-		int qualLen = 0;
+		uint32 qualLen = 0;
 		c = (char) getc(readsFile);
 		while(c != '\n' && !feof(readsFile)) {
 			qualLen++;
