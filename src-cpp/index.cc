@@ -101,8 +101,20 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 					// add to the existing hash bucket
 					if(bucket.size() + 1 < params->bucket_size) {
-						// TODO: sample positions here
-						bucket.push_back(pos);
+						// don't store if near-by sequence present
+						bool store_pos = true;
+						for(uint32 e = 0; e < bucket.size(); e++) {
+							seq_t epos = bucket[e];
+							seq_t H = pos + params->bucket_entry_coverage;
+							seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+							if((epos <= H) && (epos >= L)) {
+								store_pos = false;
+								break;
+							}
+						}
+						if(store_pos) {
+							bucket.push_back(pos);
+						}
 						//buckets->bucket_sizes[bucket_hash]++;
 					}
 				}

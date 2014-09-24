@@ -67,6 +67,7 @@ typedef struct {
 	uint32 n_buckets_pow2;  		// n_buckets in a hash table = 2^n_buckets_pow2
 	uint32 bucket_size;				// max number of entries to keep per bucket
 	rand_hash_function_t sketch_proj_hash_func; // hash function for sketch projection vector hashing
+	uint32 bucket_entry_coverage;
 
 	// sim-hash mapping parameters
 	uint32 p; 					// number of permutation tables
@@ -93,6 +94,7 @@ typedef struct {
 		sketch_proj_len = 4;
 		n_buckets_pow2 = 16;
 		bucket_size = 1000;
+		bucket_entry_coverage = 10;
 
 		p = 1;
 		msbits_match = 24;
