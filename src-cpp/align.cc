@@ -189,24 +189,26 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// # diff buckets can be found by checking bucket ids
 
 	seq_t last_pos = pos_tid[0].first;
-	uint32 last_bucketid = pos_tid[0].second;
+	uint32 last_tid = pos_tid[0].second;
 	uint32 len = 0;
-	uint32 occ = 1;
+	VectorU32 occ(params->n_tables);
+	occ[last_tid] = 1;
 	for(uint32 i = 1; i < pos_tid.size(); i++) {
 		seq_t pos = pos_tid[i].first;
 		uint32 tid = pos_tid[i].second;
 		if(pos <= last_pos + GAP_LENGTH) { // look for contigs not separated by more than GAP_LEN
-			if(tid != last_bucketid) {
-				occ++;
+			if(tid != last_tid) {
+				occ[tid] = 1; // mark
 			}
 			len += pos - last_pos;
 		} else {
-			r->ref_matches[occ].push_back(ref_match_t(last_pos, len));
+			int n_occ = std::count(occ.begin(), occ.end(), 1);
+			r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
 			len = 0;
-			occ = 1;
+			std::fill(occ.begin(), occ.end(), 0);
 		}
 		last_pos = pos;
-		last_bucketid = tid;
+		last_tid = tid;
 	}
 }
 
