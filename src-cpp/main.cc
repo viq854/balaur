@@ -13,39 +13,6 @@
 #include "index.h"
 #include "align.h"
 #include "hash.h"
-#include "mt64.h"
-
-void generate_reads(char* fname) {
-	FILE* readsFile = (FILE*) fopen(fname, "w");
-	if (readsFile == NULL) {
-		printf("Cannot open reads file!\n");
-		exit(1);
-	}
-	
-	int readlen = 100;
-	int readnum = 100;
-	int pos = 0;
-	for(int i = 0; i < readnum; i++) {
-		fprintf(readsFile, "@r%d\n", i);
-		for(int j = 0; j < readlen; j++) {
-			if(j == pos) {
-				fprintf(readsFile, "%c", 'C');
-			} else {
-				fprintf(readsFile, "%c", 'A');
-			}
-		}
-		fprintf(readsFile, "\n+\n");
-		for(int j = 0; j < readlen; j++) {
-			fprintf(readsFile, "%d", 2);		
-		}
-		fprintf(readsFile, "\n");
-		pos++;
-		if(pos == readnum) {
-			pos = 0;
-		}
-	}
-	fclose(readsFile);
-}
 
 
 int rand_range(int n) {
@@ -65,58 +32,58 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-			read_t r = reads.reads[i];
-			unsigned int pos_l, pos_r;
-			int strand;
-			parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
-			seq_t true_pos = pos_l - 1;
-
-			MapPos2Window::iterator v;
-			if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
-				print_read(&r);
-				n_unmapped++;
-				continue;
-			}
-			ref_win_t ref_window = v->second;
-
-			if(params->alg == MINH) {
-					// count the number of minh values shared between the read and its window
-					uint32 n_minh_shared = 0;
-					for(uint32 h = 0; h < params->h; h++) {
-						minhash_t minh = r.minhashes[h];
-						for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
-								if(ref_window.minhashes[h_ref] == minh) {
-										n_minh_shared++;
-										break;
-								}
-						}
-					}
-
-					#pragma omp critical
-					{
-						if(n_minh_shared == 0 && n_checked < 5) {
-								//printf("%s \n", r.name.c_str());
-								//print_read(&r);
-								//for(uint32 p = 0; p < params->ref_window_size; p++) {
-								///		printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
-								//} printf("\n");
-								//printf("%d %llu \n", strand, true_pos);
-
-								for(uint32 h = 0; h < params->h; h++) {
-									//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
-								}
-								n_checked++;
-						}
-					}
-
-					#pragma omp atomic
-					minh_hist[n_minh_shared]++;
-
-			} else {
-					int d = hamming_dist(ref_window.simhash, r.simhash);
-					#pragma omp atomic
-					diff_hist[d]++;
-			}
+//			read_t r = reads.reads[i];
+//			unsigned int pos_l, pos_r;
+//			int strand;
+//			parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
+//			seq_t true_pos = pos_l - 1;
+//
+//			MapPos2Window::iterator v;
+//			if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
+//				print_read(&r);
+//				n_unmapped++;
+//				continue;
+//			}
+//			ref_win_t ref_window = v->second;
+//
+//			if(params->alg == MINH) {
+//					// count the number of minh values shared between the read and its window
+//					uint32 n_minh_shared = 0;
+//					for(uint32 h = 0; h < params->h; h++) {
+//						minhash_t minh = r.minhashes[h];
+//						for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
+//								if(ref_window.minhashes[h_ref] == minh) {
+//										n_minh_shared++;
+//										break;
+//								}
+//						}
+//					}
+//
+//					#pragma omp critical
+//					{
+//						if(n_minh_shared == 0 && n_checked < 5) {
+//								//printf("%s \n", r.name.c_str());
+//								//print_read(&r);
+//								//for(uint32 p = 0; p < params->ref_window_size; p++) {
+//								///		printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
+//								//} printf("\n");
+//								//printf("%d %llu \n", strand, true_pos);
+//
+//								for(uint32 h = 0; h < params->h; h++) {
+//									//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
+//								}
+//								n_checked++;
+//						}
+//					}
+//
+//					#pragma omp atomic
+//					minh_hist[n_minh_shared]++;
+//
+//			} else {
+//					int d = hamming_dist(ref_window.simhash, r.simhash);
+//					#pragma omp atomic
+//					diff_hist[d]++;
+//			}
 	}
 
 	if(params->alg == MINH) {
@@ -134,7 +101,7 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 
 int main(int argc, char *argv[]) {
 	if (argc < 4) {
-		printf("Usage: ./srx [options] <simh|minh|sample> <ref.fa> <reads.fq> \n");
+		printf("Usage: ./rx [options] <align|cluster> <ref.fa> <reads.fq> \n");
 		exit(1);
 	}
 
@@ -143,155 +110,85 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:k:w:d:L:H:m:p:ONSt:h:x:b:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:St:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
-			case 'k': params.k = atoi(optarg); break;
-			case 'm': params.m = atoi(optarg); break;
-			case 'p': params.p = atoi(optarg); break;
-			case 'h': params.h = atoi(optarg); break;
 			case 'w': params.ref_window_size = atoi(optarg); break;
-			case 'd': params.max_hammd = atoi(optarg); break;
-			case 'L': params.min_count = atoi(optarg); break;
+			case 'k': params.k = atoi(optarg); break;
+			case 'h': params.h = atoi(optarg); break;
 			case 'H': params.max_count = atoi(optarg); break;
-			case 'x': params.n_min_matched = atoi(optarg); break;
-			case 'b': params.band_size = atoi(optarg); break;
+			case 'L': params.min_count = atoi(optarg); break;
+			case 'T': params.n_tables = atoi(optarg); break;
+			case 'b': params.sketch_proj_len = atoi(optarg); break;
+			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
-			case 'O': params.kmer_type = OVERLAP; break;
-			case 'N': params.kmer_type = NON_OVERLAP; break;
 			case 'S': compute_diff_stats = 1; break;
 			default: return 0;
 		}
 	}
 
-	printf("**********SRX**************\n");
-	printf("SRX Parameters: \n");
+	printf("**********RX**************\n");
+	printf("Configuration: \n");
+	printf("w = %u \n", params.ref_window_size);
 	printf("k = %u \n", params.k);
-	printf("m = %u \n", params.m);
-	printf("p = %u \n", params.p);
-	printf("max_hammd = %u \n", params.max_hammd);
+	printf("h = %u \n", params.h);
+	printf("T = %u \n", params.n_tables);
+	printf("b = %u \n", params.sketch_proj_len);
+	printf("n_buckets = %f \n", pow(2, params.n_buckets_pow2));
 
 
-	if (params.kmer_type == NON_OVERLAP) {
-		params.kmer_dist = params.k;
-	}
+	if (strcmp(argv[1], "align") == 0) {
+		printf("Mode: Alignment \n");
+		params.alg = MINH; // only min-hash enabled for now
 
-	// generate the sparse k-mer indices
-	if(params.kmer_type == SPARSE && params.in_index_fname.empty()) {
-		VectorU32 idx(params.ref_window_size);
-		params.sparse_kmers.resize(params.m * params.k);
+		// prepare the input/output reference index files
+		index_files_t index_files;
+		index_files.prep_index_files(params.in_index_fname.empty() ? params.out_index_fname : params.in_index_fname);
 
-		for(uint32 i = 0; i < params.m; i++) {
-			for(uint32 k = 0; k < params.ref_window_size; k++) {
-				idx[k] = k;
-			}
-			// pick random k *close-by* indices from the read
-			const int32_t offset = i*params.k;
-			const int32_t start = rand_range(params.ref_window_size - params.max_range);
-			params.sparse_kmers[offset] = start;
-			uint32 cnt = 1;
-			uint32 len = params.max_range;
-			while(cnt < params.k) {
-				int j = rand_range(len) + 1; // exclude 0
-				params.sparse_kmers[offset + cnt] = start + idx[j];
-				idx[j] = idx[len-1];
-				cnt++;
-				len--;
-			}
+		// generate random hash functions for min-hash sketches
+		for(uint32 h = 0; h < params.h; h++) {
+			params.minhash_functions.push_back(rand_hash_function_t());
 		}
-	}
 
-	// prepare the input and output files
-	std::string histFname;
-	std::string sparseFname;
-	std::string hashFname;
-	if(!params.in_index_fname.empty() || !params.out_index_fname.empty()) {
-		std::string fname = params.in_index_fname;
+		// generate random vector hash function sketch buckets
+		params.sketch_proj_hash_func = rand_hash_function_t(params.n_buckets_pow2, params.sketch_proj_len);
+
+		// generate the sparse sketch projections
 		if(params.in_index_fname.empty()) {
-			fname = params.out_index_fname;
-		}
-		histFname += fname + std::string(".hst");
-		sparseFname += fname + std::string(".sparse");
-		hashFname += fname + std::string(".hash");
-	}
+			VectorU32 idx(params.h); // sketch length
+			params.sketch_proj_indices.resize(params.sketch_proj_len * params.n_tables);
 
-	if (strcmp(argv[1], "sample") == 0) {
-		printf("LSH Algorithm: sampling \n");
-		params.alg = SAMPLE;
-
-		// 1. load the reference
-		ref_t ref;
-		fasta2ref(argv[optind+1], ref);
-
-		// 2. compute valid reference windows
-		generate_ref_windows(ref, &params);
-		printf("Total number of valid windows: %zu\n", ref.windows_by_pos.size());
-
-		// 3. load the reads
-		reads_t reads;
-		fastq2reads(argv[optind+2], reads);
-
-		// 4. map by sampling
-		align_reads_sampling(ref, reads, &params);
-
-	} else if (strcmp(argv[1], "simh") == 0) { // SIMHASH
-		printf("LSH Algorithm: simhash \n");
-		params.alg = SIMH;
-
-		// 1. index the reference
-		ref_t ref;
-		if(!params.in_index_fname.empty()) { // load the index
-			load_ref_idx(params.in_index_fname.c_str(), ref);
-			load_perm(sparseFname.c_str(), params.sparse_kmers);
-		} else {
-			index_ref_lsh(argv[optind+1], &params, ref);
-		}
-		// store the index
-		if(!params.out_index_fname.empty()) {
-			store_ref_idx(params.out_index_fname.c_str(), ref);
-			if (params.kmer_type == SPARSE) {
-				store_perm(sparseFname.c_str(), params.sparse_kmers);
+			for(uint32 i = 0; i < params.n_tables; i++) {
+				for(uint32 k = 0; k < params.h; k++) {
+					idx[k] = k;
+				}
+				// pick random indices from the sketch
+				const int32_t offset = i*params.sketch_proj_len;
+				const int32_t start = rand_range(params.h);
+				params.sketch_proj_indices[offset] = start;
+				uint32 cnt = 0;
+				uint32 len = params.h;
+				while(cnt < params.sketch_proj_len) {
+					int j = rand_range(len); // exclude 0
+					params.sketch_proj_indices[offset + cnt] = idx[j];
+					idx[j] = idx[len-1];
+					cnt++;
+					len--;
+				}
 			}
-		}
-
-		// 2. index the reads
-		reads_t reads;
-		index_reads_lsh(argv[optind+2], ref, &params, reads);
-
-		if(compute_diff_stats) {
-			compute_hash_diff_stats(ref, reads, &params);
-		}
-
-		// 3. map the hashes
-		//align_reads_lsh(ref, reads, &params);
-
-	} else if (strcmp(argv[1], "minh") == 0) { // MINHASH
-		printf("LSH Algorithm: minhash \n");
-		params.alg = MINH;
-
-		// generate the independent hash functions
-		params.rand_hash_pads.resize(params.h);
-		for(uint32 i = 0; i < params.h; i++) {
-			params.rand_hash_pads[i] = genrand64_int64();
-			//printf("Hash %llx \n", params.rand_hash_pads[i]);
 		}
 
 		// 1. index the reference
 		ref_t ref;
 		if(!params.in_index_fname.empty()) {
 			load_ref_idx(params.in_index_fname.c_str(), ref);
-			load_perm(sparseFname.c_str(), params.sparse_kmers);
 		} else {
 			index_ref_lsh(argv[optind+1], &params, ref);
 		}
 		// store the index
 		if(!params.out_index_fname.empty()) {
 			store_ref_idx(params.in_index_fname.c_str(), ref);
-			if (params.kmer_type == SPARSE) {
-				store_perm(sparseFname.c_str(), params.sparse_kmers);
-			}
-			// TODO: store the hash functions
 		}
 
 		// 2. index the reads
@@ -304,8 +201,11 @@ int main(int argc, char *argv[]) {
 
 		// 3. map the hashes
 		align_reads_minhash(ref, reads, &params);
+
+	} else if (strcmp(argv[1], "cluster") == 0) {
+
 	} else {
-		printf("Usage: ./srx [options] <simh|minh|sample> <ref.fa> <reads.fq> \n");
+		printf("Usage: ./rx [options] <align|cluster> <ref.fa> <reads.fq> \n");
 		exit(1);
 	}
 

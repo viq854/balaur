@@ -50,15 +50,15 @@ void sort_reads_hash(reads_t& reads) {
 
 // finds the number of windows with a different simhash
 seq_t get_num_distinct(ref_t& ref) {
-	hash_t prev;
+	//hash_t prev;
 	seq_t num_diff = 0;
-	for(MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); ++it) {
-		ref_win_t w = it->second;
-		if((it == ref.windows_by_pos.begin()) || (w.simhash != prev)) {
-			num_diff++;
-			prev = w.simhash;
-		} 
-	}
+//	for(MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); ++it) {
+//		ref_win_t w = it->second;
+//		if((it == ref.windows_by_pos.begin()) || (w.simhash != prev)) {
+//			num_diff++;
+//			prev = w.simhash;
+//		}
+//	}
 	return num_diff;
 }
 

@@ -1,66 +1,120 @@
 #ifndef INDEX_H_
 #define INDEX_H_
 #include "io.h"
+#include "mt64.h"
 
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
 typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
+
+
+// universal hash function:
+// single value: a*x mod n_buckets
+// vector value: sum(a[i]*x[i]) mod n_buckets
+struct rand_hash_function_t {
+	const static uint32 w = 32; // bits per word
+	minhash_t a; // odd a < 2^w
+	std::vector<uint64> a_vec;
+	minhash_t M; // n_butckets = 2^M
+
+	// single int hashing
+	rand_hash_function_t() {
+		a = rand() + 1;
+		M = w;
+	}
+
+	// vector hashing
+	rand_hash_function_t(minhash_t _M, const uint32 vec_len) {
+		a = 0;
+		for(uint32 i = 0; i < vec_len; i++) {
+			a_vec.push_back(genrand64_int64() + 1);
+		}
+		M = _M;
+	}
+
+	minhash_t apply(minhash_t x) const {
+		return (minhash_t) a*x >> (w - M);
+	}
+
+	minhash_t apply_vector(const VectorMinHash& x) const {
+		uint64 s = 0;
+		for(uint32 i = 0; i < a_vec.size(); i++) {
+			s += a_vec[i]*x[i];
+		}
+		return (minhash_t) s >> (w - M);
+	}
+};
+typedef std::vector<rand_hash_function_t> VectorHashFunctions;
 
 typedef struct {	
 	algorithm alg; 					// LSH scheme to use
 	kmer_selection kmer_type; 		// scheme for extracting the kmer features
 
-	// hashing parameters
-	uint32_t ref_window_size;		// length of the reference windows to hash
-	uint32_t k; 					// length of the kmers
-	uint32_t kmer_dist;				// shift between consecutive kmers (non-sparse type only)
-	uint32_t m; 					// number of kmers to extract for the sparse kmers type
-	uint32_t max_range; 			// range from which to locally generate sparse kmers
-	VectorU32 sparse_kmers;			// indices into the read of the sparse kmers
+	// sequence hashing parameters => to produce sequence sketches
+	uint32 ref_window_size;			// length of the reference windows to hash
+	uint32 k; 						// length of the sequence kmers
+	uint32 kmer_dist;				// shift between consecutive kmers
+	uint32 h; 						// number of hash functions for min-hash skethes
+	VectorHashFunctions minhash_functions;	// hash functions for min-hash
 
-	uint32_t h; 					// number of hash functions for min-hash
-	VectorHash rand_hash_pads;		// hash functions for min-hash
-	uint32_t n_min_matched;			// minimum number of min-hashes for a match
-	char constr_minhash_tables;
-	
-	uint32_t band_size;
+	// sequence kmer filtering
+	uint64 max_count;				// upper bound on kmer occurrence in the reference
+	uint64 min_count;				// lower bound on kmer occurrence in the read set
 
-	// kmer weighing
-	uint64_t min_count;
-	uint64_t max_count;
+	// min-hash sketch hashing
+	uint32 n_tables; 				// number of hash tables for the sketches
+	uint32 sketch_proj_len;			// length of the sketch projection
+	VectorU32 sketch_proj_indices;	// indices into the sketch for the sparse projections
+	uint32 n_buckets_pow2;  		// n_buckets in a hash table = 2^n_buckets_pow2
+	uint32 bucket_size;				// max number of entries to keep per bucket
+	rand_hash_function_t sketch_proj_hash_func; // hash function for sketch projection vector hashing
 
-	// mapping parameters
-	uint32_t msbits_match;			// number of most significant bits to match
-	uint32_t p; 					// number of permutation tables
-	uint32_t max_hammd; 			// maximum hamming distance to
+	// sim-hash mapping parameters
+	uint32 p; 					// number of permutation tables
+	uint32 msbits_match;			// number of most significant bits to match
+	uint32 max_hammd; 			// maximum hamming distance to
+
+	// multi-threading
+	uint32_t n_threads;
 	
 	// io
 	std::string in_index_fname;
 	std::string out_index_fname;
 
-	// multi-threading
-	uint32_t n_threads;
-
 	void set_default_index_params() {
-		kmer_type = SPARSE;
-		ref_window_size = 100;
+		kmer_type = OVERLAP;
+		ref_window_size = 150;
 		k = 16;
-		m = 10;
 		kmer_dist = 1;
-		max_range = k + 10;
 		h = 64;
-		n_min_matched = 1;
-		constr_minhash_tables = 0;
+		max_count = 200;
+		min_count = 0;
+
+		n_tables = 1;
+		sketch_proj_len = 4;
+		n_buckets_pow2 = 16;
+		bucket_size = 1000;
+
 		p = 1;
 		msbits_match = 24;
 		max_hammd = 10;
-		max_count = 100;
-		min_count = 0;
-		n_threads = 1;
 
-		band_size = 4;
+		n_threads = 1;
 	}
 
 } index_params_t;
+
+
+typedef struct {
+	std::string freq_kmer_hist_fname;
+	std::string hash_func_fname;
+	std::string sparse_ind_fname;
+
+	void prep_index_files(std::string& fname) {
+		freq_kmer_hist_fname += fname + std::string(".freq");
+		hash_func_fname += fname + std::string(".hash");
+		sparse_ind_fname += fname + std::string(".sparse");
+	}
+} index_files_t;
 
 
 void generate_ref_windows(ref_t& ref, index_params_t* params);

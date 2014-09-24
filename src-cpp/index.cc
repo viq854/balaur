@@ -24,15 +24,12 @@ void generate_ref_windows(ref_t& ref, index_params_t* params) {
 		if(is_inform_ref_window(&ref.seq.c_str()[i], params->ref_window_size)) {
 			ref_win_t window;
 			window.pos = i;
-			ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(i, window));
-		} else {
-			// skip until at least 1 potential valid kmer
-			//i += params->k;
+			//ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(i, window));
 		}
 	}
 }
 
-// --- Simhash / Minhash ---
+// --- Minhash ---
 
 // index reference:
 // - load fasta
@@ -47,8 +44,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	fasta2ref(fastaFname, ref);
 	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 2. compute the frequency of each kmer
-	//	  and collect high-frequency kmers
+	// 2. compute the frequency of each kmer and collect high-frequency kmers
 	t = clock();
 	if(params->kmer_type != SPARSE) {
 		compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
@@ -57,85 +53,63 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
 	
-	// 3. compute valid reference windows
-	t = clock();
-	generate_ref_windows(ref, params);
-	printf("Total number of valid windows: %zu\n", ref.windows_by_pos.size());
-	
-	// 4. hash each window
+	// 3. hash each valid window
 
-	if (params->alg == MINH) {
-		// initialize the hash tables
-		//ref.minhash_maps_by_h.resize(params->h);
-		ref.hash_buckets.resize(params->h - params->band_size + 1);
-		printf("Total number of buckets: %u \n", params->h - params->band_size + 1);
-	}
-
-	// collect the valid reference positions for parallel iteration
-	VectorSeqPos valid_positions;
-	for(MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); it++) {
-		valid_positions.push_back(it->first);
+	// initialize the hash tables
+	ref.hash_tables.resize(params->n_tables);
+	for(uint32 t = 0; t < params->n_tables; t++) {
+		buckets_t* buckets = &ref.hash_tables[t];
+		buckets->n_buckets = pow(2, params->n_buckets_pow2);
+		buckets->next_free_bucket_index = 0;
+		buckets->bucket_sizes.resize(buckets->n_buckets);
+		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
+		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
 
 	t = clock();
 	#pragma omp parallel for
-	for(seq_t i = 0; i < valid_positions.size(); i++) {
-		ref_win_t* w = &ref.windows_by_pos[valid_positions[i]];
-		if(params->alg == SIMH) {
-			w->simhash = simhash(ref.seq.c_str(), w->pos, params->ref_window_size,
-					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1);
-		} else if (params->alg == MINH) {
-			w->minhashes.resize(params->h);
-			w->simhash = minhash(ref.seq.c_str(), w->pos, params->ref_window_size,
-					ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, w->minhashes);
+	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
+		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
+			continue; // discard windows with low information content
+		}
+		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
 
-			for(uint32 band = 0; (band < params->h - params->band_size + 1); band++) {
-				std::string band_entries;
-				for(uint32 v = 0; v < params->band_size; v++) {
-					band_entries += std::to_string(w->minhashes[band + v]);
-					band_entries += std::string(".");
-				}
-				minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
+		// get the min-hash signature for the window
+		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, minhashes);
 
-				#pragma omp critical
-				{
-					std::map<minhash_t, VectorSeqPos>::iterator v;
-					if((v = ref.hash_buckets[band].find(hash)) != ref.hash_buckets[band].end()) {
-						v->second.push_back(w->pos);
-					} else {
-						ref.hash_buckets[band].insert(std::pair<minhash_t, VectorSeqPos>(hash, VectorSeqPos()));
-						ref.hash_buckets[band][hash].push_back(w->pos);
+		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+			VectorMinHash sketch_proj(params->sketch_proj_len);
+			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
+				sketch_proj[p] = minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
+			}
+			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(sketch_proj);
+
+			#pragma omp critical
+			{
+				buckets_t* buckets = &ref.hash_tables[t];
+				uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+				if(bucket_index == buckets->n_buckets) {
+					// this is the first entry in the bucket
+					buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
+					buckets->next_free_bucket_index++;
+
+					VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
+					bucket.resize(params->bucket_size);
+					bucket[0] = pos; // store the window position in the bucket
+					buckets->bucket_sizes[bucket_hash]++;
+				} else {
+					// add to the existing hash bucket
+					if(buckets->bucket_sizes[bucket_hash] + 1 < params->bucket_size) {
+						// TODO: sample positions here
+						VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+						bucket[buckets->bucket_sizes[bucket_hash]] = pos;
+						buckets->bucket_sizes[bucket_hash]++;
 					}
 				}
 			}
-
-			// insert window into the minhash maps based on its minhash value for each hash function
-//			for(uint32 h = 0; h < params->h; h++) {
-//				minhash_t minh = w->minhashes[h];
-//
-//				#pragma omp critical
-//				{
-//					std::map<minhash_t, VectorWindowPtr>::iterator v;
-//					if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
-//						v->second.push_back(w);
-//					} else {
-//						ref.minhash_maps_by_h[h].insert(std::pair<minhash_t, VectorWindowPtr>(minh, VectorWindowPtr()));
-//						ref.minhash_maps_by_h[h][minh].push_back(w);
-//					}
-//				}
-//			}
-			w->minhashes = VectorMinHash();
 		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-	if (params->alg == SIMH) {
-		// 6. sort
-		t = clock();
-		sort_windows_hash(ref);
-		printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-		printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
-	}
 }
 
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& reads) {
@@ -164,12 +138,8 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		if(params->alg == SIMH) {
-			r->simhash = simhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0);
-		} else if (params->alg == MINH) {
-			r->minhashes.resize(params->h);
-			r->simhash = minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0, r->minhashes);
-		}
+		r->minhashes.resize(params->h);
+		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0, r->minhashes);
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
@@ -212,26 +182,26 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 // create hash table i 
 // - hash each window
 // - sort
-void index_ref_table_i(ref_t& ref, const index_params_t* params, const seq_t i) {
-	// hash each window using sampling ids i
-	clock_t t = clock();
-	for(seq_t j = 0; j < ref.windows_by_pos.size(); j++) {
-		ref.windows_by_pos[j].simhash = sampling_hash(ref.seq.c_str(), ref.windows_by_pos[j].pos, i, params);
-	}
-	printf("Total hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-	// sort the hashes
-	t = clock();
-	sort_windows_hash(ref);
-	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
-}
-
-void index_reads_table_i(reads_t& reads, const index_params_t* params, const seq_t i) {
-	// hash each read using sampling ids i
-	clock_t t = clock();
-	for(uint32 j = 0; j < reads.reads.size(); j++) {
-		reads.reads[j].simhash = sampling_hash(reads.reads[j].seq.c_str(), 0, i, params);
-	}
-	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
-}
+//void index_ref_table_i(ref_t& ref, const index_params_t* params, const seq_t i) {
+//	// hash each window using sampling ids i
+//	clock_t t = clock();
+//	for(seq_t j = 0; j < ref.windows_by_pos.size(); j++) {
+//		ref.windows_by_pos[j].simhash = sampling_hash(ref.seq.c_str(), ref.windows_by_pos[j].pos, i, params);
+//	}
+//	printf("Total hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
+//
+//	// sort the hashes
+//	t = clock();
+//	sort_windows_hash(ref);
+//	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+//	printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
+//}
+//
+//void index_reads_table_i(reads_t& reads, const index_params_t* params, const seq_t i) {
+//	// hash each read using sampling ids i
+//	clock_t t = clock();
+//	for(uint32 j = 0; j < reads.reads.size(); j++) {
+//		reads.reads[j].simhash = sampling_hash(reads.reads[j].seq.c_str(), 0, i, params);
+//	}
+//	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
+//}

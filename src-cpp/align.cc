@@ -60,48 +60,48 @@ void get_stats(const ref_t& ref, const VectorClusters& clusters) {
 void align_reads_sampling(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: Sampling ****\n");
 	
-	// construct and search m hash tables using sampling
-	clock_t t = clock();
-	for(uint32 i = 0; i < params->m; i++) {
-		printf("Table %d \n", i);
-		index_ref_table_i(ref, params, i);
-		index_reads_table_i(reads, params, i);
-		
-		for(uint32 j = 0; j < reads.reads.size(); j++) {
-			if(reads.reads[j].acc == 1) continue;
-			// binary search to find the matching ref window(s) 
-			find_windows_exact(ref, &reads.reads[j], params);
-			eval_read_hit(&reads.reads[j]);
-		}
-	}
-	
-	int acc_hits = 0;
-	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		acc_hits += reads.reads[i].acc;
-	}
-	printf("Total number of accurate hits found = %d \n", acc_hits);
-	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+//	// construct and search m hash tables using sampling
+//	clock_t t = clock();
+//	for(uint32 i = 0; i < params->m; i++) {
+//		printf("Table %d \n", i);
+//		index_ref_table_i(ref, params, i);
+//		index_reads_table_i(reads, params, i);
+//
+//		for(uint32 j = 0; j < reads.reads.size(); j++) {
+//			if(reads.reads[j].acc == 1) continue;
+//			// binary search to find the matching ref window(s)
+//			find_windows_exact(ref, &reads.reads[j], params);
+//			eval_read_hit(&reads.reads[j]);
+//		}
+//	}
+//
+//	int acc_hits = 0;
+//	for(uint32 i = 0; i < reads.reads.size(); i++) {
+//		acc_hits += reads.reads[i].acc;
+//	}
+//	printf("Total number of accurate hits found = %d \n", acc_hits);
+//	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 }
 
 int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
-   unsigned int pos_l, pos_r;
-   int strand;
-   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-
-   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
-	   MapPos2MinCount::const_iterator v;
-	   if((v = r->matched_window_counts.find(j)) != r->matched_window_counts.end()) {
-		  if(v->second > params->n_min_matched) {
-			  r->acc = 1;
-			  break;
-		  }
-	   }
-
-    	if(r->acc == 1) {
-    		break;
-    	}
-    }
+//   unsigned int pos_l, pos_r;
+//   int strand;
+//   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
+//
+//   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
+//	   MapPos2MinCount::const_iterator v;
+//	   if((v = r->matched_window_counts.find(j)) != r->matched_window_counts.end()) {
+//		  if(v->second > params->n_min_matched) {
+//			  r->acc = 1;
+//			  break;
+//		  }
+//	   }
+//
+//    	if(r->acc == 1) {
+//    		break;
+//    	}
+//    }
     return (r->acc == 1);
 }
 
@@ -115,59 +115,28 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		read_t* r = &reads.reads[i];
 		uint32 n_matches = 0;
 
-		for(uint32 band = 0; band < params->h - params->band_size + 1; band++) {
-			std::string band_entries;
-			for(uint32 v = 0; v < params->band_size; v++) {
-				band_entries += std::to_string(r->minhashes[band + v]);
-				band_entries += std::string(".");
+		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+			VectorMinHash sketch_proj(params->sketch_proj_len);
+			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
+				sketch_proj[p] = r->minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
 			}
-			minhash_t hash = CityHash32(band_entries.c_str(), band_entries.size());
+			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(sketch_proj);
 
-			// collect the hits from each band bucket
-			std::map<minhash_t, VectorSeqPos>::iterator v;
-			if((v = ref.hash_buckets[band].find(hash)) != ref.hash_buckets[band].end()) {
-				for(uint32 match = 0; match < v->second.size(); match++) {
-					r->ref_matches.push_back(v->second[match]);
+			buckets_t* buckets = &ref.hash_tables[t];
+			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+			if(bucket_index != buckets->n_buckets) {
+				VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+				for(uint32 match = 0; match < buckets->bucket_sizes[bucket_hash]; match++) {
+					r->ref_matches.push_back(bucket[match]);
 				}
-				n_matches += v->second.size();
+				n_matches += buckets->bucket_sizes[bucket_hash];
 			}
 		}
 
-		// search each minhash table to find the matching ref window(s)
-//		for(uint32 h = 0; h < params->h; h++) {
-//			minhash_t minh = r->minhashes[h];
-//			std::map<minhash_t, VectorWindowPtr>::iterator v;
-//			if((v = ref.minhash_maps_by_h[h].find(minh)) != ref.minhash_maps_by_h[h].end()) {
-//				if(r->acc != 1) {
-//					for(uint32 match = 0; match < v->second.size(); match++) {
-//						r->ref_matches.push_back(v->second[match]->pos);
-//					}
-//				}
-//				n_matches += v->second.size();
-//			}
-//			if(r->acc != 1) {
-//				eval_read_hit(r);
-//			}
-			if(n_matches > max_windows_matched) {
-				max_windows_matched = n_matches;
-			}
-			total_windows_matched += n_matches;
-
-//			//if(r->acc == 1) break; // testing only
-//		}
-
-		// process the collected windows
-		//for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
-		//	seq_t pos = r->ref_matches[idx];
-		//	r->matched_window_counts[pos]++;
-		//}
-
-		//uint32 n_matched = r->matched_window_counts.size();
-		//total_windows_matched += n_matched;
-		//if(n_matched > max_windows_matched) {
-			//max_windows_matched = n_matched;
-		//}
-
+		if(n_matches > max_windows_matched) {
+			max_windows_matched = n_matches;
+		}
+		total_windows_matched += n_matches;
 	}
 
 	int acc_hits = 0;
@@ -186,66 +155,66 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 // aligns the indexed reads to the indexed reference
 // using simhash and permutation tables
 void align_reads_lsh(ref_t& ref, reads_t& reads, const index_params_t* params) {
-	printf("**** SRX Alignment: SimHash ****\n");
-	
-	// 1. sort the reads by their simhash
-	clock_t t = clock();
-	sort_reads_hash(reads);
-	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-	// 2. split reads into "clusters" based on their simhash 
-	t = clock();
-	VectorClusters clusters;
-	cluster_sorted_reads(reads, clusters);
-	printf("Total number of read clusters = %zu \n", clusters.size());
-	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-
-	// 3. for each cluster simhash, find the neighbors in the reference
-	static int perm[SIMHASH_BITLEN] = { 0 };
-	for(int i = 0; i < SIMHASH_BITLEN; i++) {
-		perm[i] = i;
-	}
-	t = clock();
-	for(uint32 p = 0; p < params->p; p++) {
-		printf("Permutation %d \n", p);
-		if(p > 0) {
-			// generate a new permutation
-			shuffle(perm);
-			permute_ref(ref, perm);
-			sort_windows_hash(ref);
-			permute_reads(clusters, perm);
-		}
-		for(uint32 i = 0; i < clusters.size(); i++) {
-			if(clusters[i].acc == 1) continue;
-			
-			// binary search to find the matching ref window(s) 
-			find_window_match_diffk(ref, &clusters[i], params);
-			//if(p < params->p - 1) {
-				//clusters->clusters[i].best_hamd = INT_MAX;
-			//}
-			eval_cluster_hit(&clusters[i]);
-		}
-	}
-	
-	int hits = 0;
-	int acc_hits = 0;
-	int matched = 0;
-	for(uint32 i = 0; i < clusters.size(); i++) {
-		hits += clusters[i].ref_matches.size();
-		if(clusters[i].ref_matches.size() == 0) continue;
-		matched++;
-		acc_hits += eval_cluster_hit(&clusters[i]);
-		if(clusters[i].acc == 0) {
-			//printf("hash = %llx \n", clusters->clusters[i].simhash);
-			//print_read(clusters->clusters[i].reads[0]);
-			//printf("best diff = %d \n", clusters->clusters[i].best_hamd);
-			//printf("best pos = %llu \n", clusters->clusters[i].ref_matches[clusters->clusters[i].best_pos]);
-		}	
-	}
-	printf("Total number of clusters matched = %d \n", matched);
-	printf("Total number of hits found = %d \n", hits);
-	printf("Total number of accurate hits found = %d \n", acc_hits);
-	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+//	printf("**** SRX Alignment: SimHash ****\n");
+//
+//	// 1. sort the reads by their simhash
+//	clock_t t = clock();
+//	sort_reads_hash(reads);
+//	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+//
+//	// 2. split reads into "clusters" based on their simhash
+//	t = clock();
+//	VectorClusters clusters;
+//	cluster_sorted_reads(reads, clusters);
+//	printf("Total number of read clusters = %zu \n", clusters.size());
+//	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+//
+//	// 3. for each cluster simhash, find the neighbors in the reference
+//	static int perm[SIMHASH_BITLEN] = { 0 };
+//	for(int i = 0; i < SIMHASH_BITLEN; i++) {
+//		perm[i] = i;
+//	}
+//	t = clock();
+//	for(uint32 p = 0; p < params->p; p++) {
+//		printf("Permutation %d \n", p);
+//		if(p > 0) {
+//			// generate a new permutation
+//			shuffle(perm);
+//			permute_ref(ref, perm);
+//			sort_windows_hash(ref);
+//			permute_reads(clusters, perm);
+//		}
+//		for(uint32 i = 0; i < clusters.size(); i++) {
+//			if(clusters[i].acc == 1) continue;
+//
+//			// binary search to find the matching ref window(s)
+//			find_window_match_diffk(ref, &clusters[i], params);
+//			//if(p < params->p - 1) {
+//				//clusters->clusters[i].best_hamd = INT_MAX;
+//			//}
+//			eval_cluster_hit(&clusters[i]);
+//		}
+//	}
+//
+//	int hits = 0;
+//	int acc_hits = 0;
+//	int matched = 0;
+//	for(uint32 i = 0; i < clusters.size(); i++) {
+//		hits += clusters[i].ref_matches.size();
+//		if(clusters[i].ref_matches.size() == 0) continue;
+//		matched++;
+//		acc_hits += eval_cluster_hit(&clusters[i]);
+//		if(clusters[i].acc == 0) {
+//			//printf("hash = %llx \n", clusters->clusters[i].simhash);
+//			//print_read(clusters->clusters[i].reads[0]);
+//			//printf("best diff = %d \n", clusters->clusters[i].best_hamd);
+//			//printf("best pos = %llu \n", clusters->clusters[i].ref_matches[clusters->clusters[i].best_pos]);
+//		}
+//	}
+//	printf("Total number of clusters matched = %d \n", matched);
+//	printf("Total number of hits found = %d \n", hits);
+//	printf("Total number of accurate hits found = %d \n", acc_hits);
+//	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
 	//get_stats(ref, clusters);
 }
