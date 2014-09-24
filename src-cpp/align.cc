@@ -283,7 +283,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	int acc_hits = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		eval_read_hit(ref, &reads.reads[i]);
+		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 	}
 

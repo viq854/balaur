@@ -76,6 +76,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
 			continue; // discard windows with low information content
 		}
+
+		#pragma omp atomic
 		n_valid_windows++;
 
 		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
