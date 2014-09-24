@@ -63,6 +63,13 @@ typedef struct {
 	VectorBucketTables hash_tables;		// LSH min-hash index
 } ref_t;
 
+struct ref_match_t {
+	const seq_t pos;
+	const uint32 len;
+	ref_match_t(seq_t _pos, uint32 _len) : pos(_pos), len(_len) {}
+};
+typedef std::vector<ref_match_t> VectorRefMatches;
+
 typedef struct {
 	uint32_t len; 					// read length
 	std::string name; 				// read name
@@ -80,9 +87,8 @@ typedef struct {
 	uint64_t ref_pos_r;
 	
 	// found ref match positions
-	VectorBucketIndices ref_bucket_id_matches;
-	VectorSeqPos ref_matches;
-	MapPos2MinCount matched_window_counts;
+	VectorU32 ref_bucket_id_matches_by_table;
+	std::vector<VectorRefMatches> ref_matches;
 
 	char acc; // DEBUG: whether read matched accurately
 } read_t;

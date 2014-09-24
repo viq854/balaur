@@ -113,7 +113,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 							seq_t H = pos + params->bucket_entry_coverage;
 							seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
 							if((epos <= H) && (epos >= L)) {
-								n_filtered++;
 								store_pos = false;
 								break;
 							}
@@ -121,6 +120,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 						if(store_pos) {
 							bucket.push_back(pos);
 							n_bucket_entries++;
+						} else {
+							n_filtered++;
 						}
 						//buckets->bucket_sizes[bucket_hash]++;
 					}
