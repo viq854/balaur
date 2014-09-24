@@ -47,21 +47,20 @@ struct buckets_t {
 	uint32 n_buckets;
 	uint32 next_free_bucket_index;
 	VectorU32 bucket_indices;
-	VectorU32 bucket_sizes;
+	//VectorU32 bucket_sizes;
 	VectorBuckets buckets_data_vectors;
 };
 typedef std::vector<buckets_t> VectorBucketTables;
+typedef std::vector<VectorU32> VectorBucketIndices;
 
 
 // reference genome
 typedef struct {
-	std::string seq; 	// reference sequence data
-	seq_t len;			// reference sequence length
-	MapKmerCounts kmer_hist;				// kmer occurrence histogram
-	MapKmerCounts high_freq_kmer_hist;
-
-	// LSH index
-	VectorBucketTables hash_tables;
+	std::string seq; 					// reference sequence data
+	seq_t len;							// reference sequence length
+	MapKmerCounts kmer_hist;			// kmer occurrence histogram
+	MapKmerCounts high_freq_kmer_hist;	// high frequency kmers
+	VectorBucketTables hash_tables;		// LSH min-hash index
 } ref_t;
 
 typedef struct {
@@ -81,6 +80,7 @@ typedef struct {
 	uint64_t ref_pos_r;
 	
 	// found ref match positions
+	VectorBucketIndices ref_bucket_id_matches;
 	VectorSeqPos ref_matches;
 	MapPos2MinCount matched_window_counts;
 

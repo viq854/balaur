@@ -17,7 +17,7 @@ void find_windows_exact(ref_t& ref, read_t* r, const index_params_t* params);
 void find_windows_exact_bucket(ref_t& ref, read_t* r, const index_params_t* params, int bucket);
 
 int eval_cluster_hit(cluster_t* cluster);
-int eval_read_hit(read_t* r);
+int eval_read_hit(ref_t& ref, read_t* r);
 
 void shuffle(int* perm);
 void permute_ref(ref_t& ref, int perm[]);
@@ -114,7 +114,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		uint32 n_matches = 0;
-
+		r->ref_bucket_id_matches.resize(params->n_tables);
 		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 			VectorMinHash sketch_proj(params->sketch_proj_len);
 			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
@@ -125,11 +125,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			buckets_t* buckets = &ref.hash_tables[t];
 			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
 			if(bucket_index != buckets->n_buckets) {
-				VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-				for(uint32 match = 0; match < buckets->bucket_sizes[bucket_hash]; match++) {
-					r->ref_matches.push_back(bucket[match]);
-				}
-				n_matches += buckets->bucket_sizes[bucket_hash];
+				r->ref_bucket_id_matches[t].push_back(bucket_index);
+				n_matches += buckets->buckets_data_vectors[bucket_index].size();
 			}
 		}
 
@@ -141,7 +138,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	int acc_hits = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		eval_read_hit(&reads.reads[i]);
+		eval_read_hit(ref, &reads.reads[i]);
 		acc_hits += reads.reads[i].acc;
 	}
 
@@ -486,19 +483,31 @@ void shuffle(int *perm) {
 
 /* ---- Hit Evaluation ----- */
 
-int eval_read_hit(read_t* r) {
+int eval_read_hit(ref_t& ref, read_t* r) {
    unsigned int pos_l, pos_r;
    int strand;
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
    for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
-
-	   for(seq_t idx = 0; idx < r->ref_matches.size(); idx++) {
-		   seq_t hit_pos = r->ref_matches[idx];
-		   if(hit_pos == j) {
-			   r->acc = 1;
-               break;
-           }
+	   for(uint32 t = 0; t < r->ref_bucket_id_matches.size(); t++) {
+		   buckets_t* buckets = &ref.hash_tables[t];
+		   for(seq_t idx = 0; idx < r->ref_bucket_id_matches[t].size(); idx++) {
+			   uint32 bucket_index = r->ref_bucket_id_matches[t][idx];
+			   VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+			   for(uint32 match = 0; match < bucket.size(); match++) {
+				   seq_t hit_pos = bucket[match];
+				   if(hit_pos == j) {
+					   r->acc = 1;
+					   break;
+				   }
+			   }
+			   if(r->acc == 1) {
+				   break;
+			   }
+		   }
+		   if(r->acc == 1) {
+		       	break;
+		   }
         }
     	if(r->acc == 1) {
     		break;
