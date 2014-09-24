@@ -91,6 +91,8 @@ typedef struct {
 	std::vector<VectorRefMatches> ref_matches;
 
 	char acc; // DEBUG: whether read matched accurately
+	char top_hit_acc;
+
 } read_t;
 typedef std::vector<read_t> VectorReads;
 typedef std::vector<read_t*> VectorPReads;
