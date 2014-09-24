@@ -67,7 +67,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 
 	uint32 n_valid_windows = 0;
-	uint32 n_sampled_out = 0;
+	uint32 n_bucket_entries = 0;
+	uint32 n_filtered = 0;
 
 	t = clock();
 	#pragma omp parallel for
@@ -112,13 +113,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 							seq_t H = pos + params->bucket_entry_coverage;
 							seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
 							if((epos <= H) && (epos >= L)) {
-								n_sampled_out++;
+								n_filtered++;
 								store_pos = false;
 								break;
 							}
 						}
 						if(store_pos) {
 							bucket.push_back(pos);
+							n_bucket_entries++;
 						}
 						//buckets->bucket_sizes[bucket_hash]++;
 					}
@@ -127,7 +129,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 	}
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
-	printf("Total number of window bucket entries filtered: %u \n", n_sampled_out);
+	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
+	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 
