@@ -61,7 +61,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
 		buckets->next_free_bucket_index = 0;
-		buckets->bucket_sizes.resize(buckets->n_buckets);
+		//buckets->bucket_sizes.resize(buckets->n_buckets);
 		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
@@ -94,16 +94,16 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					buckets->next_free_bucket_index++;
 
 					VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-					bucket.resize(params->bucket_size);
-					bucket[0] = pos; // store the window position in the bucket
-					buckets->bucket_sizes[bucket_hash]++;
+					bucket.reserve(params->bucket_size);
+					bucket.push_back(pos); // store the window position in the bucket
+					//buckets->bucket_sizes[bucket_hash]++;
 				} else {
+					VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 					// add to the existing hash bucket
-					if(buckets->bucket_sizes[bucket_hash] + 1 < params->bucket_size) {
+					if(bucket.size() + 1 < params->bucket_size) {
 						// TODO: sample positions here
-						VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-						bucket[buckets->bucket_sizes[bucket_hash]] = pos;
-						buckets->bucket_sizes[bucket_hash]++;
+						bucket.push_back(pos);
+						//buckets->bucket_sizes[bucket_hash]++;
 					}
 				}
 			}
