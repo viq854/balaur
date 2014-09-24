@@ -99,7 +99,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					buckets->next_free_bucket_index++;
 
 					VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-					bucket.reserve(params->bucket_size);
+					//bucket.reserve(params->bucket_size);
 					bucket.push_back(pos); // store the window position in the bucket
 					//buckets->bucket_sizes[bucket_hash]++;
 				} else {
@@ -147,10 +147,10 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	t = clock();
 	if(params->kmer_type != SPARSE) {
 		for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
-			read_t r = reads.reads[i];
-			compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
+			//read_t r = reads.reads[i];
+			//compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
-		find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
+		//find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
 		reads.kmer_hist = MapKmerCounts(); // free memory
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
