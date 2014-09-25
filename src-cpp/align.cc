@@ -144,6 +144,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    int strand;
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
+   r->top_hit_acc = 0;
    char first_found = false;
    for(int i = params->n_tables - 1; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
@@ -174,7 +175,6 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// find the contig with second most hits
 }
 
-#define GAP_LENGTH 100
 void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// collect all the hits and their table ids
@@ -213,7 +213,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	for(uint32 i = 1; i < pos_tid.size(); i++) {
 		seq_t pos = pos_tid[i].first;
 		uint32 tid = pos_tid[i].second;
-		if(pos <= last_pos + GAP_LENGTH) { // look for contigs not separated by more than GAP_LEN
+		if(pos <= last_pos + params->contig_gap) { // look for contigs not separated by more than GAP_LEN
 			if(tid != last_tid) {
 				occ[tid] = 1; // mark
 			}

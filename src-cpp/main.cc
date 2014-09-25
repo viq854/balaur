@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:St:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
@@ -122,6 +122,8 @@ int main(int argc, char *argv[]) {
 			case 'T': params.n_tables = atoi(optarg); break;
 			case 'b': params.sketch_proj_len = atoi(optarg); break;
 			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
+			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
+			case 'g': params.contig_gap = atoi(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'S': compute_diff_stats = 1; break;
 			default: return 0;
