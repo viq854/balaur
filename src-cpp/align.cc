@@ -282,14 +282,17 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	}
 
 	int acc_hits = 0;
+	int acc_top = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
+		acc_top += reads.reads[i].top_hit_acc;
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/reads.reads.size());
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
+	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
