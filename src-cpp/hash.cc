@@ -264,7 +264,7 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		}
 
 		if(min == UINT_MAX) {
-			printf("Warning: 0 valid kmers found in read!\n");
+			//printf("Warning: 0 valid kmers found in read!\n");
 		}
 		min_hashes[h] = min;
 		// keep only the lowest bit of the min

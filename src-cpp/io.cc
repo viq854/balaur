@@ -52,6 +52,89 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 	fclose(fastaFile);
 }
 
+#define NUM_HIST_BUCKETS 1000000
+void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist) {
+	std::string fname(refFname);
+	fname += std::string(".kmer_hist_stats");
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::app);
+
+	if (!file.is_open()) {
+		printf("store_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	VectorU32 freq_buckets(NUM_HIST_BUCKETS);
+	for (MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
+		uint32 kmer = it->first;
+		seq_t count = it->second;
+		if(count >= NUM_HIST_BUCKETS) {
+			freq_buckets[NUM_HIST_BUCKETS-1]++;
+		} else {
+			freq_buckets[count]++;
+		}
+	}
+
+	for(uint32 i = 0; i < NUM_HIST_BUCKETS; i++) {
+		file << i << "\t" << freq_buckets[i] << "\n";
+	}
+
+	file.close();
+}
+
+void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
+	std::string fname(refFname);
+	fname += std::string(".kmer_hist");
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+
+	if (!file.is_open()) {
+		printf("store_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	uint32 map_size = hist.size();
+	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+	for (MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
+		uint32 kmer = it->first;
+		seq_t count = it->second;
+		file.write(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+		file.write(reinterpret_cast<char*>(&count), sizeof(count));
+	}
+	file.close();
+}
+
+void load_kmer_hist(const char* refFname, MapKmerCounts& hist) {
+	std::string fname(refFname);
+	fname += std::string(".kmer_hist");
+
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+
+	if (!file.is_open()) {
+		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	// read the histogram
+	uint32 map_size;
+	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+	for (uint32 i = 0; i < map_size; i++) {
+		uint32 kmer;
+		seq_t count;
+		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+		file.read(reinterpret_cast<char*>(&count), sizeof(count));
+		hist.insert(std::pair<uint32, seq_t> (kmer, count));
+	}
+	file.close();
+}
+
+void store_freq_kmers(const MapKmerCounts& hist) {
+	// store sorted frequent kmers
+}
+
 // store the reference index
 void store_ref_idx(const char* idxFname, ref_t& ref) {
 //	std::ofstream file;

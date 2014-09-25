@@ -48,6 +48,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	t = clock();
 	if(params->kmer_type != SPARSE) {
 		compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+		store_kmer_hist(fastaFname, ref.kmer_hist);
+		store_kmer_hist_stat(fastaFname, ref.kmer_hist);
 		find_high_freq_kmers(ref.kmer_hist, ref.high_freq_kmer_hist, params);
 		ref.kmer_hist = MapKmerCounts(); // free memory
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);

@@ -110,6 +110,10 @@ void fasta2ref(const char *fastaFname, ref_t& ref);
 void fastq2reads(const char *readsFname, reads_t& reads);
 void print_read(read_t* read);
 void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
+void load_kmer_hist(const char* refFname, MapKmerCounts& hist);
+void store_kmer_hist(const char* refFname, const MapKmerCounts& hist);
+void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
+void store_freq_kmers(const MapKmerCounts& hist);
 
 // index io
 void store_ref_idx(const char* idxFname, ref_t& ref);
