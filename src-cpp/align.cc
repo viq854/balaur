@@ -145,7 +145,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
    char first_found = false;
-   for(uint32 i = params->n_tables - 1; i >= 0; i--) {
+   for(int i = params->n_tables - 1; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
 		   if(pos_l >= match.pos - match.len - 20 && pos_l <= match.pos + 20) {
@@ -264,7 +264,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 		uint32 f = params->n_tables;
 		uint32 s = params->n_tables;
-		for(uint32 t = params->n_tables-1; t >=0; t++) {
+		for(int t = params->n_tables-1; t >=0; t--) {
 			if(r->ref_matches[t].size() != 0) {
 				if(f != params->n_tables) {
 					if(s != params->n_tables) {
