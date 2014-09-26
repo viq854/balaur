@@ -3,10 +3,12 @@
 
 #include <stdio.h>
 #include <iostream>
-#include <string.h>
+#include <string>
 #include <vector>
 #include <map>
 #include "types.h"
+
+#include <marisa.h>
 
 static const unsigned char iupacChar[5] =  {'A', 'G', 'C', 'T', 'N'};
 static const unsigned char nt4_complement[5] = {3/*A*/, 2/*G*/, 1/*C*/, 0/*T*/, 4/*N*/};
@@ -60,6 +62,9 @@ typedef struct {
 	seq_t len;							// reference sequence length
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
 	MapKmerCounts high_freq_kmer_hist;	// high frequency kmers
+
+	marisa::Trie high_freq_kmer_trie;
+
 	VectorBucketTables hash_tables;		// LSH min-hash index
 } ref_t;
 
@@ -110,10 +115,11 @@ void fasta2ref(const char *fastaFname, ref_t& ref);
 void fastq2reads(const char *readsFname, reads_t& reads);
 void print_read(read_t* read);
 void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
-void load_kmer_hist(const char* refFname, MapKmerCounts& hist);
+void load_kmer_hist(const char* refFname, MapKmerCounts& hist, const uint32 max_count);
 void store_kmer_hist(const char* refFname, const MapKmerCounts& hist);
 void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
 void store_freq_kmers(const MapKmerCounts& hist);
+void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold);
 
 // index io
 void store_ref_idx(const char* idxFname, ref_t& ref);
@@ -135,5 +141,6 @@ void load_hash_pads(const char* permFname, VectorHash& perm);
 
 int pack_16(const char *seq, const int length, uint16_t *ret);
 int pack_32(const char *seq, const int length, uint32_t *ret); 
+void unpack_32(uint32 w, unsigned char *seq, const uint32 length);
 
 #endif /*IO_H_*/

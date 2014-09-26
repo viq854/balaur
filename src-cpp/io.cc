@@ -67,7 +67,7 @@ void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist) {
 
 	VectorU32 freq_buckets(NUM_HIST_BUCKETS);
 	for (MapKmerCounts::const_iterator it = hist.begin(); it != hist.end(); ++it) {
-		uint32 kmer = it->first;
+		//uint32 kmer = it->first;
 		seq_t count = it->second;
 		if(count >= NUM_HIST_BUCKETS) {
 			freq_buckets[NUM_HIST_BUCKETS-1]++;
@@ -106,28 +106,41 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
-void load_kmer_hist(const char* refFname, MapKmerCounts& hist) {
+void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 
 	std::ifstream file;
-	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	file.open(fname.c_str(), std::ios::in); // | std::ios::binary);
 
 	if (!file.is_open()) {
 		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
 		exit(1);
 	}
 
-	// read the histogram
-	uint32 map_size;
-	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-	for (uint32 i = 0; i < map_size; i++) {
-		uint32 kmer;
-		seq_t count;
-		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-		file.read(reinterpret_cast<char*>(&count), sizeof(count));
-		hist.insert(std::pair<uint32, seq_t> (kmer, count));
+	marisa::Keyset keys;
+	//std::vector<std::string> keys;
+	//std::vector<marisa::UInt32> key_ids;
+	uint32 kmer, count;
+	while (file >> kmer >> count) {
+		if(count < max_count_threshold) {
+			unsigned char* seq = (unsigned char*) malloc(16*sizeof(char));
+			unpack_32(kmer, seq, 16);
+			keys.push_back((const char*) seq);
+		}
 	}
+	freq_trie.build(keys, 0);
+
+	// read the histogram
+//	uint32 map_size;
+//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+//	for (uint32 i = 0; i < map_size; i++) {
+//		uint32 kmer;
+//		seq_t count;
+//		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+//		file.read(reinterpret_cast<char*>(&count), sizeof(count));
+//		hist.insert(std::pair<uint32, seq_t> (kmer, count));
+//	}
 	file.close();
 }
 
@@ -372,6 +385,13 @@ int pack_16(const char *seq, const int length, uint16_t* ret) {
 	
 	*ret = c;
 	return 0;
+}
+
+void unpack_32(uint32 w, unsigned char *seq, const uint32 length) {
+	for (uint32 k = 0; k < length; k++) {
+		seq[k] = w >> (BITS_IN_WORD - BITS_PER_CHAR);
+		w <<= BITS_PER_CHAR;
+	}
 }
 
 int pack_32(const char *seq, const int length, uint32_t *ret) {

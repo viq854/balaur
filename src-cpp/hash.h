@@ -1,6 +1,9 @@
 #ifndef HASH_H_
 #define HASH_H_
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <vector>
 #include "types.h"
 #include "io.h"
@@ -14,8 +17,8 @@
 hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
 		const index_params_t* params, const uint8_t is_ref);
-hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-		const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
+bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+		const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
 		const index_params_t* params, const uint8_t is_ref, VectorMinHash& min_hashes);
 hash_t sampling(const char* seq, const seq_t seq_offset, const seq_t i,
 		const index_params_t* params);

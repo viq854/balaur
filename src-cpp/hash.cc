@@ -119,8 +119,8 @@ bool contains_kmer(const uint32_t kmer, const MapKmerCounts& freq_hist) {
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
 uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
-		const MapKmerCounts& ref_high_freq_hist,
-		const MapKmerCounts& reads_low_freq_hist,
+		const marisa::Trie& ref_high_freq_hist,
+		const marisa::Trie& reads_low_freq_hist,
 		const uint8_t is_ref,
 		const index_params_t* params) {
 
@@ -129,15 +129,19 @@ uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
 		return 0; // contains ambiguous bases
 	}
 
-	if(contains_kmer(kmer, ref_high_freq_hist)) {
+	marisa::Agent agent;
+	agent.set_query(kmer_seq);
+	bool contains = ref_high_freq_hist.lookup(agent);
+
+	if(ref_high_freq_hist.lookup(agent)) {
 		return 0;
 	}
 
-	if(!is_ref) {
-		if(contains_kmer(kmer, reads_low_freq_hist)) {
-			return 0;
-		}
-	}
+//	if(!is_ref) {
+//		if(contains_kmer(kmer, reads_low_freq_hist)) {
+//			return 0;
+//		}
+//	}
 	return 1;
 
 	//const uint32_t ref_count = get_kmer_count(kmer_seq, kmer_len, ref_hist, params);
@@ -215,8 +219,8 @@ hash_t generate_simhash_fp(int* v) {
 /////////////////////////
 // --- LSH: minhash ---
 
-hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-			const MapKmerCounts& ref_hist, const MapKmerCounts& reads_hist,
+bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+			const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
 			const index_params_t* params, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
 	hash_t fingerprint = 0;
@@ -264,14 +268,14 @@ hash_t minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		}
 
 		if(min == UINT_MAX) {
-			//printf("Warning: 0 valid kmers found in read!\n");
+			return false;
 		}
 		min_hashes[h] = min;
 		// keep only the lowest bit of the min
 		//fingerprint |= (min & 1ULL) << (1*h);
 	}
 
-	return fingerprint;
+	return true;
 }
 
 //hash_t minhash_long(const char* seq, const seq_t seq_offset, const seq_t seq_len,

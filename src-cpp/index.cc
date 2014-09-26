@@ -44,13 +44,15 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	fasta2ref(fastaFname, ref);
 	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	
-	// 2. compute the frequency of each kmer and collect high-frequency kmers
+	// 2. load the frequency of each kmer and collect high-frequency kmers
 	t = clock();
-	if(params->kmer_type != SPARSE) {
-		compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
-		store_kmer_hist(fastaFname, ref.kmer_hist);
-		store_kmer_hist_stat(fastaFname, ref.kmer_hist);
-		find_high_freq_kmers(ref.kmer_hist, ref.high_freq_kmer_hist, params);
+	if(params->max_count != 0) {
+		//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+		//store_kmer_hist(fastaFname, ref.kmer_hist);
+		//load_kmer_hist(ref.seq.c_str(), ref.kmer_hist, params->max_count);
+		//find_high_freq_kmers(ref.kmer_hist, ref.high_freq_kmer_hist, params);
+
+		load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
 		ref.kmer_hist = MapKmerCounts(); // free memory
 		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 	}
@@ -84,7 +86,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
 		// get the min-hash signature for the window
-		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_hist, MapKmerCounts(), params, 1, minhashes);
+		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, 1, minhashes);
 
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 			VectorMinHash sketch_proj(params->sketch_proj_len);
@@ -166,12 +168,12 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes.resize(params->h);
-		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_hist, reads.low_freq_kmer_hist, params, 0, r->minhashes);
+		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, 0, r->minhashes);
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// free memory
-	ref.high_freq_kmer_hist = MapKmerCounts();
+//	ref.high_freq_kmer_trie =  marisa::Trie();
 	reads.low_freq_kmer_hist = MapKmerCounts();
 
 	// 4. sort the reads by their hash
