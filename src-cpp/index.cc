@@ -74,28 +74,35 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
 
+	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
+	for(uint32 i = 0; i < params->n_threads; i++) {
+		minhash_thread_vectors[i].resize(params->h);
+	}
+
 	t = clock();
+	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
 		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
 			continue; // discard windows with low information content
 		}
 
-		#pragma omp atomic
+		//#pragma omp atomic
 		n_valid_windows++;
 
-		VectorMinHash minhashes(params->h); // TODO: each thread should index into its pre-allocated buffer
+		int tid = omp_get_thread_num();
+		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
 		// get the min-hash signature for the window
 		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, 1, minhashes);
 
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
-			VectorMinHash sketch_proj(params->sketch_proj_len);
-			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
-				sketch_proj[p] = minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
-			}
-			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(sketch_proj);
+//			VectorMinHash sketch_proj(params->sketch_proj_len);
+//			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
+//				sketch_proj[p] = minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
+//			}
+			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 
-			#pragma omp critical
+			/*#pragma omp critical
 			{
 				buckets_t* buckets = &ref.hash_tables[t];
 				uint32 bucket_index = buckets->bucket_indices[bucket_hash];
@@ -132,7 +139,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 						//buckets->bucket_sizes[bucket_hash]++;
 					}
 				}
-			}
+			}*/
 		}
 	}
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
