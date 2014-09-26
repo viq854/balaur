@@ -35,10 +35,10 @@ struct rand_hash_function_t {
 		return (minhash_t) a*x >> (w - M);
 	}
 
-	minhash_t apply_vector(const VectorMinHash& x) const {
+	minhash_t apply_vector(const VectorMinHash& x, const VectorU32& indices, const uint32 vec_offset) const {
 		uint64 s = 0;
 		for(uint32 i = 0; i < a_vec.size(); i++) {
-			s += a_vec[i]*x[i];
+			s += a_vec[i]*x[indices[vec_offset + i]];
 		}
 		return (minhash_t) s >> (w - M);
 	}
