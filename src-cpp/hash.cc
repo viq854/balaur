@@ -220,17 +220,17 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		kmer_hasher->eat(c);
 	}
 
-	std::fill(min_hashes.begin(), min_hashes.end(), UINT32_MAX);
+	//std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
+	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if the kmer should be discarded
-		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params)) continue;
+		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params) == 0) continue;
 		minhash_t kmer_hash = kmer_hasher->hashvalue;
-
 		// update the mins
 		for(uint32_t h = 0; h < params->h; h++) {
 			const rand_hash_function_t* f = &params->minhash_functions[h];
 			minhash_t min = f->apply(kmer_hash);
-			if(min < min_hashes[h]) {
+			if(min < min_hashes[h] || i == 0) {
 				min_hashes[h] = min;
 			}
 		}
@@ -241,8 +241,9 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			unsigned char c_in = seq[seq_offset + i + params->k];
 			kmer_hasher->update(c_out, c_in);
 		}
+		any_valid_kmers = true;
 	}
-	return !(min_hashes[0] == UINT32_MAX);
+	return any_valid_kmers;
 }
 
 

@@ -97,7 +97,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		n_valid_windows++;
 
 		int tid = omp_get_thread_num();
-
 		if(tid == 0 && n_valid_windows % 1000000 == 0) {
 			printf("Processed ~ %u windows \n", n_valid_windows);
 		}
@@ -111,10 +110,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		n_valid_hashes++;
 
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
-//			VectorMinHash sketch_proj(params->sketch_proj_len);
-//			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
-//				sketch_proj[p] = minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
-//			}
 			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 
 			/*#pragma omp critical
