@@ -19,7 +19,7 @@ hash_t simhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const index_params_t* params, const uint8_t is_ref);
 bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
-		const index_params_t* params, const uint8_t is_ref, VectorMinHash& min_hashes);
+		const index_params_t* params, CyclicHash* hasher, const uint8_t is_ref, VectorMinHash& min_hashes);
 hash_t sampling(const char* seq, const seq_t seq_offset, const seq_t i,
 		const index_params_t* params);
 hash_t sampling_hash(const char* seq, const seq_t seq_offset, const seq_t i,

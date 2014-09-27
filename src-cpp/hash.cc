@@ -211,9 +211,8 @@ hash_t generate_simhash_fp(int* v) {
 
 bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
-			const index_params_t* params, const uint8_t is_ref,
+			const index_params_t* params, CyclicHash* kmer_hasher, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
-	hash_t fingerprint = 0;
 
 //	if(params->kmer_type == SPARSE) {
 //		char* kmer = (char*) malloc(params->k*sizeof(char));
@@ -238,32 +237,32 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 //	}
 
 	std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
-
+	kmer_hasher->hashvalue = 0;
 	for(uint32 i = 0; i < params->k; i++) {
 		unsigned char c = seq[seq_offset + i];
-		params->kmer_hasher->eat(c);
+		kmer_hasher->eat(c);
 	}
 
 	if(get_kmer_weight(&seq[seq_offset], params->k, ref_hist, reads_hist, is_ref, params) != 0) {
-		kmer_hashes[0] = params->kmer_hasher->hashvalue;
+		kmer_hashes[0] = kmer_hasher->hashvalue;
 	}
 
 	for(uint32 i = 1; i <= (seq_len - params->k); i++) {
-		unsigned char c_in = seq[seq_offset + i];
+		unsigned char c_in = seq[seq_offset + i + params->k - 1];
 		unsigned char c_out = seq[seq_offset + i - 1];
-		params->kmer_hasher->update(c_out, c_in);
+		kmer_hasher->update(c_out, c_in);
 
+		// check if the kmer should be discarded
 		const char* kmer = &seq[seq_offset + i];
 		int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
 		if(weight == 0) continue;
-
-		kmer_hashes[i] = params->kmer_hasher->hashvalue;
+		kmer_hashes[i] = kmer_hasher->hashvalue;
 		//kmer_hashes[i] = CityHash32(kmer, params->k);
 	}
 
 	for(uint32_t h = 0; h < params->h; h++) {
 		minhash_t min = UINT_MAX;
-		for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+		for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 			minhash_t kmer_hash = kmer_hashes[i];
 			if(kmer_hash == 0) continue;
 			//kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
@@ -285,10 +284,6 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 	return true;
 }
 
-//hash_t minhash_long(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-//		const uint32_t* reads_hist, const uint32_t* ref_hist,
-//		const index_params_t* params, const uint8_t is_ref) {
-//}
 
 /////////////////////////
 // --- LSH: sampling ---

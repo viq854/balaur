@@ -32,6 +32,7 @@ class CharacterHash {
  public:
   CharacterHash(uint32 maxval) {
   	mersenneRNG randomgenerator(maxval);
+  	randomgenerator.seed(0); //VIQ
   	for(uint32 k =0; k<nbrofchars; ++k) 
   	  hashvalues[k] = randomgenerator();
   }

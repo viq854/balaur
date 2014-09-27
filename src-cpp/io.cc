@@ -123,7 +123,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 	//std::vector<marisa::UInt32> key_ids;
 	uint32 kmer, count;
 	while (file >> kmer >> count) {
-		if(count < max_count_threshold) {
+		if(count >= max_count_threshold) {
 			unsigned char* seq = (unsigned char*) malloc(16*sizeof(char));
 			unpack_32(kmer, seq, 16);
 			keys.push_back((const char*) seq);

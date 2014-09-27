@@ -68,7 +68,6 @@ class CyclicHash {
     const hashvaluetype mask1;
     const int myr;
     const hashvaluetype maskn;
-
 };
 
 
