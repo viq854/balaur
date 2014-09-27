@@ -3,6 +3,8 @@
 #include "io.h"
 #include "mt64.h"
 
+#include "../rollinghashcpp/cyclichash.h"
+
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
 typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 
@@ -53,6 +55,7 @@ typedef struct {
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 k; 						// length of the sequence kmers
 	uint32 kmer_dist;				// shift between consecutive kmers
+	CyclicHash* kmer_hasher;			// function used to generate kmer hashes for the sequence set
 	uint32 h; 						// number of hash functions for min-hash skethes
 	VectorHashFunctions minhash_functions;	// hash functions for min-hash
 

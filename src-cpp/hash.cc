@@ -124,15 +124,15 @@ uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
 		const uint8_t is_ref,
 		const index_params_t* params) {
 
-	uint32_t kmer;
-	if(pack_32(kmer_seq, kmer_len, &kmer) < 0) {
-		return 0; // contains ambiguous bases
+	for (uint32 k = 0; k < kmer_len; k++) {
+		if(kmer_seq[k] == BASE_IGNORE) {
+			return 0; // contains ambiguous bases
+		}
 	}
 
+	// lookup high frequency kmer trie
 	marisa::Agent agent;
 	agent.set_query(kmer_seq);
-	bool contains = ref_high_freq_hist.lookup(agent);
-
 	if(ref_high_freq_hist.lookup(agent)) {
 		return 0;
 	}
@@ -143,16 +143,6 @@ uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
 //		}
 //	}
 	return 1;
-
-	//const uint32_t ref_count = get_kmer_count(kmer_seq, kmer_len, ref_hist, params);
-	//const uint32_t reads_count = get_kmer_count(kmer_seq, kmer_len, read_hist, params);
-
-	// filter out kmers if:
-	// 1. count is too low and kmer does not occur in the reference
-	// 2. count is too high
-	//if(/*(max_count == 0 && min_count < params->min_count) ||*/ (ref_count > params->max_count)) {
-		//return 0;
-	//}
 }
 
 /////////////////////////
@@ -248,12 +238,29 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 //	}
 
 	std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
-	for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
+
+	for(uint32 i = 0; i < params->k; i++) {
+		unsigned char c = seq[seq_offset + i];
+		params->kmer_hasher->eat(c);
+	}
+
+	if(get_kmer_weight(&seq[seq_offset], params->k, ref_hist, reads_hist, is_ref, params) != 0) {
+		kmer_hashes[0] = params->kmer_hasher->hashvalue;
+	}
+
+	for(uint32 i = 1; i <= (seq_len - params->k); i++) {
+		unsigned char c_in = seq[seq_offset + i];
+		unsigned char c_out = seq[seq_offset + i - 1];
+		params->kmer_hasher->update(c_out, c_in);
+
 		const char* kmer = &seq[seq_offset + i];
 		int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
 		if(weight == 0) continue;
-		kmer_hashes[i] = CityHash32(kmer, params->k);
+
+		kmer_hashes[i] = params->kmer_hasher->hashvalue;
+		//kmer_hashes[i] = CityHash32(kmer, params->k);
 	}
+
 	for(uint32_t h = 0; h < params->h; h++) {
 		minhash_t min = UINT_MAX;
 		for(uint32 i = 0; i <= (seq_len - params->k); i += params->kmer_dist) {
