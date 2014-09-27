@@ -214,74 +214,35 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			const index_params_t* params, CyclicHash* kmer_hasher, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
 
-//	if(params->kmer_type == SPARSE) {
-//		char* kmer = (char*) malloc(params->k*sizeof(char));
-//		// find and store the min for each hash function
-//		for(uint32_t h = 0; h < params->h; h++) {
-//			minhash_t min = UINT_MAX;
-//			// construct the kmers, hash them, and keep the min (only lowest bit)
-//			for(uint32 i = 0; i < params->m; i++) {
-//				for(uint32 j = 0; j < params->k; j++) {
-//					kmer[j] = seq[seq_offset + params->sparse_kmers[i*params->k + j]];
-//				}
-//				// hash the k-mer and compare to current min
-//				minhash_t kmer_hash = CityHash32(kmer, params->k);
-//				kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
-//				if(kmer_hash < min) {
-//					min = kmer_hash;
-//				}
-//			}
-//			min_hashes[h] = min;
-//		}
-//		free(kmer);
-//	}
-
-	std::vector<minhash_t> kmer_hashes((seq_len - params->k) + 1);
 	kmer_hasher->hashvalue = 0;
 	for(uint32 i = 0; i < params->k; i++) {
 		unsigned char c = seq[seq_offset + i];
 		kmer_hasher->eat(c);
 	}
 
-	if(get_kmer_weight(&seq[seq_offset], params->k, ref_hist, reads_hist, is_ref, params) != 0) {
-		kmer_hashes[0] = kmer_hasher->hashvalue;
-	}
-
-	for(uint32 i = 1; i <= (seq_len - params->k); i++) {
-		unsigned char c_in = seq[seq_offset + i + params->k - 1];
-		unsigned char c_out = seq[seq_offset + i - 1];
-		kmer_hasher->update(c_out, c_in);
-
+	std::fill(min_hashes.begin(), min_hashes.end(), UINT32_MAX);
+	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if the kmer should be discarded
-		const char* kmer = &seq[seq_offset + i];
-		int weight = get_kmer_weight(kmer, params->k, ref_hist, reads_hist, is_ref, params);
-		if(weight == 0) continue;
-		kmer_hashes[i] = kmer_hasher->hashvalue;
-		//kmer_hashes[i] = CityHash32(kmer, params->k);
-	}
+		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params)) continue;
+		minhash_t kmer_hash = kmer_hasher->hashvalue;
 
-	for(uint32_t h = 0; h < params->h; h++) {
-		minhash_t min = UINT_MAX;
-		for(uint32 i = 0; i <= (seq_len - params->k); i++) {
-			minhash_t kmer_hash = kmer_hashes[i];
-			if(kmer_hash == 0) continue;
-			//kmer_hash ^= params->rand_hash_pads[h]; // xor with the random pad
+		// update the mins
+		for(uint32_t h = 0; h < params->h; h++) {
 			const rand_hash_function_t* f = &params->minhash_functions[h];
-			kmer_hash = f->apply(kmer_hash);
-			if(kmer_hash < min) {
-				min = kmer_hash;
+			minhash_t min = f->apply(kmer_hash);
+			if(min < min_hashes[h]) {
+				min_hashes[h] = min;
 			}
 		}
 
-		if(min == UINT_MAX) {
-			return false;
+		// roll the hash
+		if(i < seq_len - params->k) {
+			unsigned char c_out = seq[seq_offset + i];
+			unsigned char c_in = seq[seq_offset + i + params->k];
+			kmer_hasher->update(c_out, c_in);
 		}
-		min_hashes[h] = min;
-		// keep only the lowest bit of the min
-		//fingerprint |= (min & 1ULL) << (1*h);
 	}
-
-	return true;
+	return !(min_hashes[0] == UINT32_MAX);
 }
 
 
