@@ -83,13 +83,14 @@ typedef struct {
 	std::string qual;				// quality scores
 	
 	// LSH fingerprints
-	hash_t simhash;					// simhash / minhash (1bit)
+	//hash_t simhash;					// simhash / minhash (1bit)
 	VectorMinHash minhashes;		// minhash vector
+	char valid_minhash;
 
 	// original mapping information
 	int strand;
-	uint64_t ref_pos_l;
-	uint64_t ref_pos_r;
+	uint32_t ref_pos_l;
+	uint32_t ref_pos_r;
 	
 	// found ref match positions
 	VectorU32 ref_bucket_id_matches_by_table;
@@ -122,7 +123,7 @@ void store_freq_kmers(const MapKmerCounts& hist);
 void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold);
 
 // index io
-void store_ref_idx(const char* idxFname, ref_t& ref);
+void store_ref_idx(const char* idxFname, const ref_t& ref);
 void load_ref_idx(const char* idxFname, ref_t& ref);
 void store_perm(const char* permFname, const VectorU32& perm);
 void load_perm(const char* permFname, VectorU32& perm);

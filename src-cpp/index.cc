@@ -71,6 +71,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 
 	uint32 n_valid_windows = 0;
+	uint32 n_valid_hashes = 0;
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
 
@@ -88,17 +89,26 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
-		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
-			continue; // discard windows with low information content
-		}
+//		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
+//			continue; // discard windows with low information content
+//		}
 
 		//#pragma omp atomic
 		n_valid_windows++;
 
 		int tid = omp_get_thread_num();
+
+		if(tid == 0 && n_valid_windows % 1000000 == 0) {
+			printf("Processed ~ %u windows \n", n_valid_windows);
+		}
+
 		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
 		// get the min-hash signature for the window
-		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, hasher_thread_vectors[tid], 1, minhashes);
+		bool valid_hash = minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, hasher_thread_vectors[tid], 1, minhashes);
+		if(!valid_hash) {
+			continue;
+		}
+		n_valid_hashes++;
 
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 //			VectorMinHash sketch_proj(params->sketch_proj_len);
@@ -148,6 +158,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 	}
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
+	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
@@ -175,15 +186,16 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 
 	// 3. compute the fingerprints of each read
 	t = clock();
-
 	//#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes.resize(params->h);
-		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, params->kmer_hasher, 0, r->minhashes);
+		r->valid_minhash = 0;
+		if(minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, params->kmer_hasher, 0, r->minhashes)) {
+			r->valid_minhash = 1;
+		}
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-
 	// free memory
 //	ref.high_freq_kmer_trie =  marisa::Trie();
 	reads.low_freq_kmer_hist = MapKmerCounts();

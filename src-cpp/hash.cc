@@ -118,7 +118,7 @@ bool contains_kmer(const uint32_t kmer, const MapKmerCounts& freq_hist) {
 
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
-uint32_t get_kmer_weight(const char* kmer_seq, int kmer_len,
+uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 		const marisa::Trie& ref_high_freq_hist,
 		const marisa::Trie& reads_low_freq_hist,
 		const uint8_t is_ref,

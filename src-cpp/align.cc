@@ -239,6 +239,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	clock_t t = clock();
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash) continue;
 		//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
 		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 //			VectorMinHash sketch_proj(params->sketch_proj_len);
@@ -281,12 +282,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		diff_num_top_hits += f - s;
 	}
 
+	int valid_hash = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
+		valid_hash += reads.reads[i].valid_minhash;
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
