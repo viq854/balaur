@@ -79,6 +79,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		minhash_thread_vectors[i].resize(params->h);
 	}
 
+	std::vector<CyclicHash*> hasher_thread_vectors(params->n_threads);
+	for(uint32 i = 0; i < params->n_threads; i++) {
+		hasher_thread_vectors[i] = new CyclicHash(params->k, 32);
+	}
+
 	t = clock();
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
@@ -93,7 +98,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		int tid = omp_get_thread_num();
 		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
 		// get the min-hash signature for the window
-		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, 1, minhashes);
+		minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, hasher_thread_vectors[tid], 1, minhashes);
 
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 //			VectorMinHash sketch_proj(params->sketch_proj_len);
@@ -171,11 +176,11 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	// 3. compute the fingerprints of each read
 	t = clock();
 
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes.resize(params->h);
-		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, 0, r->minhashes);
+		minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, params->kmer_hasher, 0, r->minhashes);
 	}
 	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
