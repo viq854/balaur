@@ -21,7 +21,7 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const marisa::Trie& ref_freq_kmer_trie,
 		const VectorBool& ref_freq_kmers_bitmask,
 		const marisa::Trie& reads_hist,
-		const index_params_t* params, CyclicHash* hasher, const uint8_t is_ref,
+		const index_params_t* params, CyclicHash* hasher, const bool is_ref,
 		VectorMinHash& min_hashes);
 bool minhash_rolling(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
