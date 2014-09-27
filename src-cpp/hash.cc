@@ -132,7 +132,7 @@ uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 
 	// lookup high frequency kmer trie
 	marisa::Agent agent;
-	agent.set_query(kmer_seq);
+	agent.set_query(kmer_seq, kmer_len);
 	if(ref_high_freq_hist.lookup(agent)) {
 		return 0;
 	}
@@ -210,7 +210,9 @@ hash_t generate_simhash_fp(int* v) {
 // --- LSH: minhash ---
 
 bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-			const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
+			const marisa::Trie& ref_freq_kmer_trie,
+			const VectorBool& ref_freq_kmer_bitmask,
+			const marisa::Trie& reads_hist,
 			const index_params_t* params, CyclicHash* kmer_hasher, const uint8_t is_ref,
 			VectorMinHash& min_hashes) {
 
@@ -220,21 +222,91 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		kmer_hasher->eat(c);
 	}
 
-	//std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
 	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if the kmer should be discarded
-		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, reads_hist, is_ref, params) == 0) continue;
-		minhash_t kmer_hash = kmer_hasher->hashvalue;
-		// update the mins
-		for(uint32_t h = 0; h < params->h; h++) {
-			const rand_hash_function_t* f = &params->minhash_functions[h];
-			minhash_t min = f->apply(kmer_hash);
-			if(min < min_hashes[h] || i == 0) {
-				min_hashes[h] = min;
+		char weight = 0;
+		if(is_ref) {
+			weight = ref_freq_kmer_bitmask[seq_offset + i];
+		} else {
+			weight = get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, is_ref, params);
+		}
+		if(weight != 0) {
+			minhash_t kmer_hash = kmer_hasher->hashvalue;
+			for(uint32_t h = 0; h < params->h; h++) { // update the min values
+				const rand_hash_function_t* f = &params->minhash_functions[h];
+				minhash_t min = f->apply(kmer_hash);
+				if(min < min_hashes[h] || i == 0) {
+					min_hashes[h] = min;
+				}
 			}
 		}
 
+		// roll the hash
+		if(i < seq_len - params->k) {
+			unsigned char c_out = seq[seq_offset + i];
+			unsigned char c_in = seq[seq_offset + i + params->k];
+			kmer_hasher->update(c_out, c_in);
+		}
+		any_valid_kmers = true;
+	}
+	return any_valid_kmers;
+}
+
+bool minhash_rolling(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+					const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
+					const index_params_t* params, CyclicHash* kmer_hasher, const uint8_t is_ref,
+					VectorMinHash& min_hashes) {
+
+	// optimization: if the new kmer is smaller than the current minimum,
+	// update the min without recomputing
+	VectorU8 h_recompute;
+	uint32 n = 0;
+	if(get_kmer_weight(&seq[seq_offset + seq_len - params->k], params->k, ref_hist, ref_hist, 1, params) != 0) {
+		// hash the last kmer
+		kmer_hasher->hashvalue = 0;
+		for(uint32 i = seq_len - params->k; i < seq_len; i++) { // new kmer
+			unsigned char c = seq[seq_offset + seq_len - params->k + i];
+			kmer_hasher->eat(c);
+		}
+		minhash_t kmer_hash = kmer_hasher->hashvalue;
+		for(uint32_t h = 0; h < params->h; h++) {
+			const rand_hash_function_t* f = &params->minhash_functions[h];
+			minhash_t min = f->apply(kmer_hash);
+			if(min < min_hashes[h]) {
+				min_hashes[h] = min;
+				n++;
+			} else {
+				h_recompute.push_back(h);
+			}
+		}
+		if(n == params->h) {
+			// no functions need to be recomputed, we're done
+			return true;
+		}
+	}
+
+	// the sequence needs to be hashed at least under some functions
+	kmer_hasher->hashvalue = 0;
+	for(uint32 i = 0; i < params->k; i++) {
+		unsigned char c = seq[seq_offset + i];
+		kmer_hasher->eat(c);
+	}
+
+	bool any_valid_kmers = false;
+	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
+		// check if the kmer should be discarded
+		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, ref_hist, 1, params) != 0) {
+			minhash_t kmer_hash = kmer_hasher->hashvalue;
+			for(uint32_t j = 0; j < n; j++) {
+				uint32 h = h_recompute[j];
+				const rand_hash_function_t* f = &params->minhash_functions[h];
+				minhash_t min = f->apply(kmer_hash);
+				if(min < min_hashes[h] || i == 0) {
+					min_hashes[h] = min;
+				}
+			}
+		}
 		// roll the hash
 		if(i < seq_len - params->k) {
 			unsigned char c_out = seq[seq_offset + i];
