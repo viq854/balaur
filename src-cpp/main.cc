@@ -148,6 +148,9 @@ int main(int argc, char *argv[]) {
 		index_files_t index_files;
 		index_files.prep_index_files(params.in_index_fname.empty() ? params.out_index_fname : params.in_index_fname);
 
+		// set the initial kmer hash function (rolling hash)
+		params.kmer_hasher = new CyclicHash(params.k, 32);
+
 		// generate random hash functions for min-hash sketches
 		for(uint32 h = 0; h < params.h; h++) {
 			params.minhash_functions.push_back(rand_hash_function_t());
