@@ -119,8 +119,6 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 	}
 
 	marisa::Keyset keys;
-	//std::vector<std::string> keys;
-	//std::vector<marisa::UInt32> key_ids;
 	uint32 kmer, count;
 	while (file >> kmer >> count) {
 		if(count >= max_count_threshold) {
@@ -130,102 +128,90 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 		}
 	}
 	freq_trie.build(keys, 0);
-
-	// read the histogram
-//	uint32 map_size;
-//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-//	for (uint32 i = 0; i < map_size; i++) {
-//		uint32 kmer;
-//		seq_t count;
-//		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-//		file.read(reinterpret_cast<char*>(&count), sizeof(count));
-//		hist.insert(std::pair<uint32, seq_t> (kmer, count));
-//	}
 	file.close();
 }
 
-void store_freq_kmers(const MapKmerCounts& hist) {
-	// store sorted frequent kmers
+
+// store the reference index
+void store_ref_idx(const char* refFname, const ref_t& ref) {
+	std::string fname(refFname);
+	fname += std::string(".idx");
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	uint32 size = ref.hash_tables.size();
+	file.write(reinterpret_cast<char*>(&size), sizeof(size));
+	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
+		const buckets_t& buckets = ref.hash_tables[i];
+		// indices
+		file.write(reinterpret_cast<const char*>(&buckets.n_buckets), sizeof(buckets.n_buckets));
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			file.write(reinterpret_cast<const char*>(&buckets.bucket_indices[j]), sizeof(uint32));
+		}
+		// data
+		size = buckets.buckets_data_vectors.size();
+		file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			if(buckets.bucket_indices[j] == buckets.n_buckets) {
+				continue;
+			}
+			const VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
+			size = bucket.size();
+			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+			for(uint32 k = 0; k < bucket.size(); k++) {
+				file.write(reinterpret_cast<const char*>(&bucket[k]), sizeof(seq_t));
+			}
+		}
+	}
+	file.close();
 }
 
 // store the reference index
-void store_ref_idx(const char* idxFname, ref_t& ref) {
-//	std::ofstream file;
-//	file.open(idxFname, std::ios::out | std::ios::app | std::ios::binary);
-//	if (!file.is_open()) {
-//		printf("store_ref_idx: Cannot open the IDX file %s!\n", idxFname);
-//		exit(1);
-//	}
-//
-//	// write the map
-//	uint32 map_size = ref.windows_by_pos.size();
-//	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-//	for (MapPos2Window::iterator it = ref.windows_by_pos.begin(); it != ref.windows_by_pos.end(); ++it) {
-//		seq_t pos = it->first;
-//		ref_win_t window = it->second;
-//		uint32 n_minhashes = window.minhashes.size();
-//
-//	    file.write(reinterpret_cast<char*>(&pos), sizeof(pos));
-//	    file.write(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
-//	    file.write(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
-//
-//	    for(uint32 i = 0; i < n_minhashes; i++) {
-//	    	hash_t minh = window.minhashes[i];
-//	    	file.write(reinterpret_cast<char*>(&minh), sizeof(minh));
-//	    }
-//	}
-//
-//	// write the histogram
-//	map_size = ref.kmer_hist.size();
-//	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-//	for (MapKmerCounts::iterator it = ref.kmer_hist.begin(); it != ref.kmer_hist.end(); ++it) {
-//		uint32 kmer = it->first;
-//		seq_t count = it->second;
-//		file.write(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-//		file.write(reinterpret_cast<char*>(&count), sizeof(count));
-//	}
-//	file.close();
-}
+void load_ref_idx(const char* refFname, ref_t& ref) {
+	std::string fname(refFname);
+	fname += std::string(".idx");
 
-// store the reference index
-void load_ref_idx(const char* idxFname, ref_t& ref) {
-//	std::ifstream file;
-//	file.open(idxFname, std::ios::in | std::ios::binary);
-//	if (!file.is_open()) {
-//		printf("load_ref_idx: Cannot open the IDX file %s!\n", idxFname);
-//		exit(1);
-//	}
-//
-//	// read the windows map
-//	uint32 map_size;
-//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-//	for (uint32 i = 0; i < map_size; i++) {
-//		seq_t pos;
-//		ref_win_t window;
-//		uint32 n_minhashes;
-//		file.read(reinterpret_cast<char*>(&pos), sizeof(pos));
-//		file.read(reinterpret_cast<char*>(&window.simhash), sizeof(window.simhash));
-//		file.read(reinterpret_cast<char*>(&n_minhashes), sizeof(n_minhashes));
-//
-//		window.minhashes.resize(n_minhashes);
-//		for(uint32 j = 0; j < n_minhashes; j++) {
-//			hash_t minh;
-//			file.read(reinterpret_cast<char*>(&minh), sizeof(minh));
-//			window.minhashes[j] = minh;
-//		}
-//		ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(pos, window));
-//	}
-//
-//	// read the histogram
-//	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
-//	for (uint32 i = 0; i < map_size; i++) {
-//		uint32 kmer;
-//		seq_t count;
-//		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
-//		file.read(reinterpret_cast<char*>(&count), sizeof(count));
-//		ref.kmer_hist.insert(std::pair<uint32, seq_t> (kmer, count));
-//	}
-//	file.close();
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	uint32 n_tables;
+	file.read(reinterpret_cast<char*>(&n_tables), sizeof(n_tables));
+
+	ref.hash_tables.resize(n_tables);
+	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
+		buckets_t& buckets = ref.hash_tables[i];
+		file.read(reinterpret_cast<char*>(&buckets.n_buckets), sizeof(buckets.n_buckets));
+		buckets.bucket_indices.resize(buckets.n_buckets);
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			file.read(reinterpret_cast<char*>(&buckets.bucket_indices[j]), sizeof(buckets.bucket_indices[j]));
+		}
+		// data
+		uint32 n_filled_buckets;
+		file.read(reinterpret_cast<char*>(&n_filled_buckets), sizeof(n_filled_buckets));
+		buckets.buckets_data_vectors.resize(n_filled_buckets);
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			if(buckets.bucket_indices[j] == buckets.n_buckets) {
+				continue;
+			}
+			VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
+			uint32 size;
+			file.read(reinterpret_cast<char*>(&size), sizeof(size));
+			bucket.resize(size);
+			for(uint32 k = 0; k < bucket.size(); k++) {
+				file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
+			}
+		}
+	}
+	file.close();
 }
 
 void store_perm( const char* permFname, const VectorU32& perm) {
