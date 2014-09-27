@@ -29,6 +29,35 @@ void generate_ref_windows(ref_t& ref, index_params_t* params) {
 	}
 }
 
+void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
+	clock_t t = clock();
+	ref.ignore_kmer_bitmask.resize(ref.len);
+	marisa::Agent agent;
+	for(seq_t i = 0; i < ref.len - params->k; i++) {
+		for (uint32 k = 0; k < params->k; k++) {
+			if(ref.seq.c_str()[k] == BASE_IGNORE) {
+				ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
+				break;
+			}
+		}
+
+		agent.set_query(&ref.seq.c_str()[i], params->k);
+		if(ref.high_freq_kmer_trie.lookup(agent)) {
+			ref.ignore_kmer_bitmask[i] = 1;
+		}
+	}
+	printf("Done marking frequent kmers time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
+}
+
+void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
+	ref.ignore_window_bitmask.resize(ref.len- params->ref_window_size + 1);
+	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
+		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
+			ref.ignore_window_bitmask[pos] = 1; // discard windows with low information content
+		}
+	}
+}
+
 // --- Minhash ---
 
 // index reference:
@@ -40,32 +69,31 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("**** SRX Reference Indexing ****\n");
 		
 	// 1. load the reference
+	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();
 	fasta2ref(fastaFname, ref);
-	printf("Total ref loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-	// 2. load the frequency of each kmer and collect high-frequency kmers
+	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+
+	// 2. mark uninformative windows / load
+	printf("Marking uninformative windows... \n");
 	t = clock();
-	if(params->max_count != 0) {
-		//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
-		//store_kmer_hist(fastaFname, ref.kmer_hist);
-		//load_kmer_hist(ref.seq.c_str(), ref.kmer_hist, params->max_count);
-		//find_high_freq_kmers(ref.kmer_hist, ref.high_freq_kmer_hist, params);
-
-		load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
-		ref.kmer_hist = MapKmerCounts(); // free memory
-		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	}
+	mark_windows_to_discard(ref, params);
+	printf("Done marking windows; time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
 	
-	// 3. hash each valid window
+	// 3. load the frequency of each kmer and collect high-frequency kmers
+	t = clock();
+	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+	//store_kmer_hist(fastaFname, ref.kmer_hist);
+	//ref.kmer_hist = MapKmerCounts(); // free memory
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
+	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// initialize the hash tables
-	ref.hash_tables.resize(params->n_tables);
+	// 4. hash each valid window
+	ref.hash_tables.resize(params->n_tables); // initialize the hash tables
 	for(uint32 t = 0; t < params->n_tables; t++) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
 		buckets->next_free_bucket_index = 0;
-		//buckets->bucket_sizes.resize(buckets->n_buckets);
 		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
@@ -75,24 +103,24 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
 
+	// per-thread storage
 	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		minhash_thread_vectors[i].resize(params->h);
 	}
-
 	std::vector<CyclicHash*> hasher_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		hasher_thread_vectors[i] = new CyclicHash(params->k, 32);
 	}
 
+	printf("Hashing reference windows... \n");
 	t = clock();
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
-//		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
-//			continue; // discard windows with low information content
-//		}
-
+		if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
+			continue;
+		}
 		//#pragma omp atomic
 		n_valid_windows++;
 
@@ -101,18 +129,22 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			printf("Processed ~ %u windows \n", n_valid_windows);
 		}
 
-		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
 		// get the min-hash signature for the window
-		bool valid_hash = minhash(ref.seq.c_str(), pos, params->ref_window_size, ref.high_freq_kmer_trie,  marisa::Trie(), params, hasher_thread_vectors[tid], 1, minhashes);
+		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
+		bool valid_hash = minhash(ref.seq.c_str(), pos, params->ref_window_size,
+						ref.high_freq_kmer_trie,
+						ref.ignore_kmer_bitmask, marisa::Trie(), params,
+						hasher_thread_vectors[tid], 1,
+						minhashes);
 		if(!valid_hash) {
 			continue;
 		}
 		n_valid_hashes++;
 
-		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+		/*for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 
-			/*#pragma omp critical
+			#pragma omp critical
 			{
 				buckets_t* buckets = &ref.hash_tables[t];
 				uint32 bucket_index = buckets->bucket_indices[bucket_hash];
@@ -149,8 +181,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 						//buckets->bucket_sizes[bucket_hash]++;
 					}
 				}
-			}*/
-		}
+			}
+		}*/
 	}
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
@@ -163,66 +195,39 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	printf("**** SRX Read Indexing ****\n");
 
 	// 1. load the reads (TODO: batch mode)
+	printf("Loading FATQ reads...\n");
 	clock_t t = clock();
 	fastq2reads(readsFname, reads);
 	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 2. compute the frequency of each kmer
+	// 2. compute the frequency of each kmer in the read set
 	t = clock();
-	if(params->kmer_type != SPARSE) {
-		for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
-			//read_t r = reads.reads[i];
+	if(params->min_count != 0) {
+		/*for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
+			read_t r = reads.reads[i];
 			//compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
-		//find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
+		find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
 		reads.kmer_hist = MapKmerCounts(); // free memory
-		printf("Total kmer histogram generation time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+		*/
 	}
+	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 3. compute the fingerprints of each read
+	// 3. compute the min-hash signature of each read
 	t = clock();
-	//#pragma omp parallel for
+	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes.resize(params->h);
-		r->valid_minhash = 0;
-		if(minhash(r->seq.c_str(), 0, r->len, ref.high_freq_kmer_trie,  marisa::Trie(), params, params->kmer_hasher, 0, r->minhashes)) {
-			r->valid_minhash = 1;
-		}
+		r->valid_minhash = minhash(r->seq.c_str(), 0, r->len,
+				ref.high_freq_kmer_trie,
+				ref.ignore_kmer_bitmask,
+				marisa::Trie(), params,
+				params->kmer_hasher, 0,
+				r->minhashes);
 	}
-	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	// free memory
-//	ref.high_freq_kmer_trie =  marisa::Trie();
-	reads.low_freq_kmer_hist = MapKmerCounts();
-
-	// 4. sort the reads by their hash
-	/*sort_reads_hash(reads);
-
-	// 5. split reads into "clusters" based on their simhash
-	t = clock();
-	clusters_t* clusters;
-	cluster_sorted_reads(reads, &clusters);
-	printf("Total number of clusters = %d \n", clusters->num_clusters);
-	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-
-	//int count = 0;
-	//for(int i = 0; i < clusters->num_clusters; i++) {
-		//if((count < 20) && (clusters->clusters[i].size > 1)) {
-			//printf("cluster = %d, simhash = %llx, size = %d \n", i, clusters->clusters[i].simhash, clusters->clusters[i].size);
-			//count++;
-			//for(int j = 0; j < clusters->clusters[i].size; j++) {
-				//print_read(clusters->clusters[i].reads[j]);
-			//}
-		//}
-	//}
-
-	// 6. collapse the clusters that are close to each other in Hamming distance
-	t = clock();
-	int num_collapsed = collapse_clusters(clusters, params);
-	printf("Collapsed %d clusters \n", num_collapsed);
-	printf("Total number of clusters remaining = %d \n", clusters->num_clusters - num_collapsed);
-	printf("Total clustering collapse time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	*/
+	printf("Total read hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	// TODO: free memory
 }
 
 // --- Sampling ---

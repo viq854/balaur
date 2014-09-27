@@ -61,9 +61,9 @@ typedef struct {
 	std::string seq; 					// reference sequence data
 	seq_t len;							// reference sequence length
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	MapKmerCounts high_freq_kmer_hist;	// high frequency kmers
-
 	marisa::Trie high_freq_kmer_trie;
+	VectorBool ignore_kmer_bitmask;
+	VectorBool ignore_window_bitmask;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index
 } ref_t;
