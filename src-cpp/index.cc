@@ -31,7 +31,7 @@ void generate_ref_windows(ref_t& ref, index_params_t* params) {
 
 void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	clock_t t = clock();
-	ref.ignore_kmer_bitmask.resize(ref.len);
+	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
 	marisa::Agent agent;
 	for(seq_t i = 0; i < ref.len - params->k; i++) {
 		for (uint32 k = 0; k < params->k; k++) {
@@ -40,7 +40,6 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 				break;
 			}
 		}
-
 		agent.set_query(&ref.seq.c_str()[i], params->k);
 		if(ref.high_freq_kmer_trie.lookup(agent)) {
 			ref.ignore_kmer_bitmask[i] = 1;
@@ -135,14 +134,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		bool valid_hash = minhash(ref.seq.c_str(), pos, params->ref_window_size,
 						ref.high_freq_kmer_trie,
 						ref.ignore_kmer_bitmask, marisa::Trie(), params,
-						hasher_thread_vectors[tid], 1,
+						hasher_thread_vectors[tid], true,
 						minhashes);
 		if(!valid_hash) {
 			continue;
 		}
 		n_valid_hashes++;
 
-		/*for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 
 			#pragma omp critical
@@ -155,9 +154,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					buckets->next_free_bucket_index++;
 
 					VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-					//bucket.reserve(params->bucket_size);
 					bucket.push_back(pos); // store the window position in the bucket
-					//buckets->bucket_sizes[bucket_hash]++;
 				} else {
 					VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 					// add to the existing hash bucket
@@ -179,11 +176,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 						} else {
 							n_filtered++;
 						}
-						//buckets->bucket_sizes[bucket_hash]++;
 					}
 				}
 			}
-		}*/
+		}
 	}
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
@@ -224,7 +220,7 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 				ref.high_freq_kmer_trie,
 				ref.ignore_kmer_bitmask,
 				marisa::Trie(), params,
-				params->kmer_hasher, 0,
+				params->kmer_hasher, false,
 				r->minhashes);
 	}
 	printf("Total read hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
