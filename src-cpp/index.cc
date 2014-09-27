@@ -86,6 +86,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
+	mark_freq_kmers(ref, params);
 	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// 4. hash each valid window
