@@ -308,7 +308,7 @@ bool minhash_rolling(const char* seq, const seq_t ref_offset, const seq_t seq_le
 					const index_params_t* params, CyclicHash* kmer_hasher,
 					VectorMinHash& min_hashes) {
 
-	minhash_t new_kmer_hash;
+	minhash_t new_kmer_hash = 0;
 	bool new_kmer_hash_valid = false;
 	seq_t last_kmer_pos = ref_offset + seq_len - params->k;
 	if(!ref_freq_kmer_bitmask[last_kmer_pos]) { // check if the kmer should be discarded

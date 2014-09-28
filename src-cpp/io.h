@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <omp.h>
 #include "types.h"
 
 #include <marisa.h>
@@ -43,14 +44,17 @@ typedef std::vector<ref_win_t*> VectorWindowPtr;
 typedef std::map<seq_t, ref_win_t> MapPos2Window;
 typedef std::vector<std::map<minhash_t, VectorWindowPtr> > VectorMinHashMaps;
 typedef std::map<seq_t, uint32> MapPos2MinCount;
+typedef std::vector<omp_lock_t> VectorLocks;
 
 typedef std::vector<VectorSeqPos> VectorBuckets;
 struct buckets_t {
 	uint32 n_buckets;
 	uint32 next_free_bucket_index;
 	VectorU32 bucket_indices;
-	//VectorU32 bucket_sizes;
+	VectorLocks bucket_index_locks;
+
 	VectorBuckets buckets_data_vectors;
+	omp_lock_t lock;
 };
 typedef std::vector<buckets_t> VectorBucketTables;
 typedef std::vector<VectorU32> VectorBucketIndices;
