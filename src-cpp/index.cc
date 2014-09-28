@@ -35,7 +35,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	marisa::Agent agent;
 	for(seq_t i = 0; i < ref.len - params->k; i++) {
 		for (uint32 k = 0; k < params->k; k++) {
-			if(ref.seq.c_str()[k] == BASE_IGNORE) {
+			if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
 				ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
 				break;
 			}
