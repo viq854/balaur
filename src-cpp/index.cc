@@ -200,6 +200,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				} else {
 	    					n_filtered++;
 	    				}
+	    			} else {
+	    				n_filtered++;
 	    			}
 	    		}
 	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
