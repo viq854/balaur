@@ -178,6 +178,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			omp_unset_lock(&buckets->lock);
 	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
 	    			bucket.push_back(pos); // store the window position in the bucket
+	    			n_bucket_entries++;
 	    		} else { // this bucket already exists
 	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 	    			// add to the existing hash bucket
