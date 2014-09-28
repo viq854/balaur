@@ -55,6 +55,10 @@ struct buckets_t {
 typedef std::vector<buckets_t> VectorBucketTables;
 typedef std::vector<VectorU32> VectorBucketIndices;
 
+struct minhash_matrix_t {
+	std::vector<VectorMinHash> h_minhash_cols;
+	uint32 oldest_col_index;
+};
 
 // reference genome
 typedef struct {
@@ -66,6 +70,8 @@ typedef struct {
 	VectorBool ignore_window_bitmask;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index
+	minhash_matrix_t minhash_matrix; 	// h x n_kmers
+
 } ref_t;
 
 struct ref_match_t {

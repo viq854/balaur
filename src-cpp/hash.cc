@@ -227,7 +227,7 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		// check if the kmer should be discarded
 		char weight = 0;
 		if(is_ref) {
-			weight = ref_freq_kmer_bitmask[seq_offset + i];
+			weight = !ref_freq_kmer_bitmask[seq_offset + i];
 		} else {
 			weight = get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, is_ref, params);
 		}
@@ -241,6 +241,8 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 					min_hashes[h] = min;
 				}
 			}
+		} else {
+			continue;
 		}
 
 		// roll the hash
@@ -251,72 +253,91 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 //		}
 		any_valid_kmers = true;
 	}
+
+	if(!any_valid_kmers) {
+		std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
+	}
 	return any_valid_kmers;
 }
 
-bool minhash_rolling(const char* seq, const seq_t seq_offset, const seq_t seq_len,
-					const marisa::Trie& ref_hist, const marisa::Trie& reads_hist,
-					const index_params_t* params, CyclicHash* kmer_hasher, const uint8_t is_ref,
+// avoid redundant computations
+// reference-only
+bool minhash_rolling_init(ref_t& ref, const seq_t ref_offset, const seq_t seq_len,
+					const VectorBool& ref_freq_kmer_bitmask,
+					const index_params_t* params, CyclicHash* kmer_hasher,
 					VectorMinHash& min_hashes) {
 
-	// optimization: if the new kmer is smaller than the current minimum,
-	// update the min without recomputing
-	VectorU8 h_recompute;
-	uint32 n = 0;
-	if(get_kmer_weight(&seq[seq_offset + seq_len - params->k], params->k, ref_hist, ref_hist, 1, params) != 0) {
-		// hash the last kmer
-		kmer_hasher->hashvalue = 0;
-		for(uint32 i = seq_len - params->k; i < seq_len; i++) { // new kmer
-			unsigned char c = seq[seq_offset + seq_len - params->k + i];
-			kmer_hasher->eat(c);
-		}
-		minhash_t kmer_hash = kmer_hasher->hashvalue;
-		for(uint32_t h = 0; h < params->h; h++) {
-			const rand_hash_function_t* f = &params->minhash_functions[h];
-			minhash_t min = f->apply(kmer_hash);
-			if(min < min_hashes[h]) {
-				min_hashes[h] = min;
-				n++;
-			} else {
-				h_recompute.push_back(h);
-			}
-		}
-		if(n == params->h) {
-			// no functions need to be recomputed, we're done
-			return true;
-		}
+	// initialize the rolling matrix
+	ref.minhash_matrix.h_minhash_cols.resize(seq_len - params->k + 1);
+	for(uint32 h = 0; h < params->h; h++) {
+		ref.minhash_matrix.h_minhash_cols[h].resize(params->h);
 	}
-
-	// the sequence needs to be hashed at least under some functions
-	kmer_hasher->hashvalue = 0;
-	for(uint32 i = 0; i < params->k; i++) {
-		unsigned char c = seq[seq_offset + i];
-		kmer_hasher->eat(c);
-	}
+	ref.minhash_matrix.oldest_col_index = 0;
 
 	bool any_valid_kmers = false;
-	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
-		// check if the kmer should be discarded
-		if(get_kmer_weight(&seq[seq_offset + i], params->k, ref_hist, ref_hist, 1, params) != 0) {
-			minhash_t kmer_hash = kmer_hasher->hashvalue;
-			for(uint32_t j = 0; j < n; j++) {
-				uint32 h = h_recompute[j];
+	for(uint32 i = 0; i < seq_len - params->k + 1; i++) {
+		if(!ref_freq_kmer_bitmask[ref_offset + i]) { // check if the kmer should be discarded
+			minhash_t kmer_hash = CityHash32(&ref.seq[ref_offset + i], params->k);
+			for(uint32_t h = 0; h < params->h; h++) { // update the min values
 				const rand_hash_function_t* f = &params->minhash_functions[h];
 				minhash_t min = f->apply(kmer_hash);
+				ref.minhash_matrix.h_minhash_cols[i][h] = min;
 				if(min < min_hashes[h] || i == 0) {
 					min_hashes[h] = min;
 				}
 			}
+			any_valid_kmers = true;
+		} else {
+			for(uint32_t h = 0; h < params->h; h++) {
+				ref.minhash_matrix.h_minhash_cols[i][h] = UINT_MAX;
+			}
 		}
-		// roll the hash
-		if(i < seq_len - params->k) {
-			unsigned char c_out = seq[seq_offset + i];
-			unsigned char c_in = seq[seq_offset + i + params->k];
-			kmer_hasher->update(c_out, c_in);
-		}
-		any_valid_kmers = true;
 	}
+
+	if(!any_valid_kmers) {
+		std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
+	}
+
 	return any_valid_kmers;
+}
+
+bool minhash_rolling(ref_t& ref, const seq_t ref_offset, const seq_t seq_len,
+					const VectorBool& ref_freq_kmer_bitmask,
+					const index_params_t* params, CyclicHash* kmer_hasher,
+					VectorMinHash& min_hashes) {
+
+	// optimization: if the new kmer is smaller than the current minimum,
+	// update the min without recomputing
+
+	seq_t last_kmer_pos = ref_offset + seq_len - params->k;
+	bool discard_kmer = ref_freq_kmer_bitmask[last_kmer_pos]; // check if the kmer should be discarded
+
+	minhash_t new_kmer_hash = CityHash32(&ref.seq[last_kmer_pos], params->k);
+	for(uint32 h = 0; h < params->h; h++) {
+		const rand_hash_function_t* f = &params->minhash_functions[h];
+		minhash_t min_h = UINT_MAX;
+		if(!discard_kmer) {
+			min_h = f->apply(new_kmer_hash);
+		}
+		// if less than current min, update min, populate oldest column
+		if(!discard_kmer && min_h < min_hashes[h]) {
+			min_hashes[h] = min_h;
+			ref.minhash_matrix.h_minhash_cols[ref.minhash_matrix.oldest_col_index][h] = min_h;
+		} else if(ref.minhash_matrix.h_minhash_cols[ref.minhash_matrix.oldest_col_index][h] != min_hashes[h]) {
+			// if the minimum doesn't come from the old column, no need to recompute
+			ref.minhash_matrix.h_minhash_cols[ref.minhash_matrix.oldest_col_index][h] = min_h;
+		} else {
+			// need to recompute the minimum
+			ref.minhash_matrix.h_minhash_cols[ref.minhash_matrix.oldest_col_index][h] = min_h;
+			for(uint32 i = 0; i < seq_len - params->k + 1; i++) {
+				if(ref.minhash_matrix.h_minhash_cols[i][h] < min_hashes[h]) {
+					min_hashes[h] = ref.minhash_matrix.h_minhash_cols[i][h];
+				}
+			}
+		}
+	}
+	ref.minhash_matrix.oldest_col_index = (ref.minhash_matrix.oldest_col_index + 1) % (seq_len - params->k + 1);
+	return !discard_kmer;
 }
 
 

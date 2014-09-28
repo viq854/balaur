@@ -98,15 +98,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
 
-	uint32 n_valid_windows = 0;
-	uint32 n_valid_hashes = 0;
-	uint32 n_bucket_entries = 0;
-	uint32 n_filtered = 0;
-
 	// per-thread storage
 	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		minhash_thread_vectors[i].resize(params->h);
+		std::fill(minhash_thread_vectors[i].begin(), minhash_thread_vectors[i].end(), UINT_MAX);
 	}
 	std::vector<CyclicHash*> hasher_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
@@ -114,73 +110,90 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 
 	printf("Hashing reference windows... \n");
+	uint32 n_valid_windows = 0;
+	uint32 n_valid_hashes = 0;
+	uint32 n_bucket_entries = 0;
+	uint32 n_filtered = 0;
 	t = clock();
-	omp_set_num_threads(params->n_threads);
-	#pragma omp parallel for
-	for(seq_t pos = 0; pos < ref.seq.size() - params->ref_window_size + 1; pos++) { // for each window of the genome
-		if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
-			continue;
-		}
-		//#pragma omp atomic
-		n_valid_windows++;
+	omp_set_num_threads(params->n_threads); // split the windows across the threads
+	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered)
+	{
+	    int tid = omp_get_thread_num();
+	    int n_threads = omp_get_num_threads();
+	    seq_t chunk_start = tid*(ref.len - params->ref_window_size + 1) / n_threads;
+	    seq_t chunk_end = (tid + 1)*(ref.len - params->ref_window_size + 1) / n_threads;
 
-		int tid = omp_get_thread_num();
-		if(tid == 0 && n_valid_windows % 1000000 == 0) {
-			printf("Processed ~ %u windows \n", n_valid_windows);
-		}
+	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
+	    	/*if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
+				continue;
+			}*/
+	    	n_valid_windows++;
+	    	if((n_valid_windows) % 1000000 == 0) {
+	    		printf("Thread %d processed %u valid windows \n", tid, n_valid_windows);
+	    	}
 
-		// get the min-hash signature for the window
-		VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
-		bool valid_hash = minhash(ref.seq.c_str(), pos, params->ref_window_size,
-						ref.high_freq_kmer_trie,
-						ref.ignore_kmer_bitmask, marisa::Trie(), params,
-						hasher_thread_vectors[tid], true,
-						minhashes);
-		if(!valid_hash) {
-			continue;
-		}
-		n_valid_hashes++;
+	    	// get the min-hash signature for the window
+	    	VectorMinHash& minhashes = minhash_thread_vectors[0]; // each thread indexes into its pre-allocated buffer
+	    	bool valid_hash;
+	    	if(pos == chunk_start) {
+	    		valid_hash = minhash_rolling_init(ref, pos, params->ref_window_size,
+							ref.ignore_kmer_bitmask, params,
+							hasher_thread_vectors[0],
+							minhashes);
+	    	} else {
+	    		valid_hash = minhash_rolling(ref, pos, params->ref_window_size,
+							ref.ignore_kmer_bitmask, params,
+							hasher_thread_vectors[0],
+							minhashes);
+	    	}
+	    	if(!valid_hash) {
+	    		continue;
+	    	}
+	    	n_valid_hashes++;
 
-		for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
-			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-
-			#pragma omp critical
-			{
-				buckets_t* buckets = &ref.hash_tables[t];
-				uint32 bucket_index = buckets->bucket_indices[bucket_hash];
-				if(bucket_index == buckets->n_buckets) {
-					// this is the first entry in the bucket
-					buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
-					buckets->next_free_bucket_index++;
-
-					VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-					bucket.push_back(pos); // store the window position in the bucket
-				} else {
-					VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-					// add to the existing hash bucket
-					if(bucket.size() + 1 < params->bucket_size) {
-						// don't store if near-by sequence present
-						bool store_pos = true;
-						for(uint32 e = 0; e < bucket.size(); e++) {
-							seq_t epos = bucket[e];
-							seq_t H = pos + params->bucket_entry_coverage;
-							seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-							if((epos <= H) && (epos >= L)) {
-								store_pos = false;
-								break;
-							}
-						}
-						if(store_pos) {
-							bucket.push_back(pos);
-							n_bucket_entries++;
-						} else {
-							n_filtered++;
-						}
-					}
-				}
-			}
-		}
+	    	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+	    		minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(
+	    				minhashes,
+	    				params->sketch_proj_indices,
+	    				t*params->sketch_proj_len);
+				#pragma omp critical
+	    		{
+	    			buckets_t* buckets = &ref.hash_tables[t];
+	    			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+	    			if(bucket_index == buckets->n_buckets) {
+	    				// this is the first entry in the bucket
+	    				buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
+	    				buckets->next_free_bucket_index++;
+	    				VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
+	    				bucket.push_back(pos); // store the window position in the bucket
+	    			} else {
+	    				VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+	    				// add to the existing hash bucket
+	    				if(bucket.size() + 1 < params->bucket_size) {
+	    					// don't store if near-by sequence present
+	    					bool store_pos = true;
+	    					for(uint32 e = 0; e < bucket.size(); e++) {
+	    						seq_t epos = bucket[e];
+	    						seq_t H = pos + params->bucket_entry_coverage;
+	    						seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+	    						if((epos <= H) && (epos >= L)) {
+	    							store_pos = false;
+	    							break;
+	    						}
+	    					}
+	    					if(store_pos) {
+	    						bucket.push_back(pos);
+	    						n_bucket_entries++;
+	    					} else {
+	    						n_filtered++;
+	    					}
+	    				}
+	    			}
+	    		}
+	    	}
+	    }
 	}
+
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %u \n", n_bucket_entries);

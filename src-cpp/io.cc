@@ -48,6 +48,7 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 			c = (char) getc(fastaFile);
 		}
 	}
+	ref.len = ref.seq.size();
 	printf("Done reading FASTA file. Total sequence length read = %zu\n", ref.seq.size());
 	fclose(fastaFile);
 }
