@@ -108,6 +108,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		hasher_thread_vectors[i] = new CyclicHash(params->k, 32);
 	}
+	std::vector<minhash_matrix_t> minhash_matrices(params->n_threads);
 
 	printf("Hashing reference windows... \n");
 	uint32 n_valid_windows = 0;
@@ -128,20 +129,23 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				continue;
 			}*/
 	    	n_valid_windows++;
-	    	if((n_valid_windows) % 1000000 == 0) {
-	    		printf("Thread %d processed %u valid windows \n", tid, n_valid_windows);
+	    	if((pos - chunk_start) % 1000000 == 0) {
+	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
 	    	}
 
 	    	// get the min-hash signature for the window
-	    	VectorMinHash& minhashes = minhash_thread_vectors[0]; // each thread indexes into its pre-allocated buffer
+	    	VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
+	    	minhash_matrix_t& rolling_minhash_matrix = minhash_matrices[tid];
 	    	bool valid_hash;
 	    	if(pos == chunk_start) {
-	    		valid_hash = minhash_rolling_init(ref, pos, params->ref_window_size,
+	    		valid_hash = minhash_rolling_init(ref.seq.c_str(), pos, params->ref_window_size,
+	    					rolling_minhash_matrix,
 							ref.ignore_kmer_bitmask, params,
 							hasher_thread_vectors[0],
 							minhashes);
 	    	} else {
-	    		valid_hash = minhash_rolling(ref, pos, params->ref_window_size,
+	    		valid_hash = minhash_rolling(ref.seq.c_str(), pos, params->ref_window_size,
+	    					rolling_minhash_matrix,
 							ref.ignore_kmer_bitmask, params,
 							hasher_thread_vectors[0],
 							minhashes);

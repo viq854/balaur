@@ -70,8 +70,6 @@ typedef struct {
 	VectorBool ignore_window_bitmask;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index
-	minhash_matrix_t minhash_matrix; 	// h x n_kmers
-
 } ref_t;
 
 struct ref_match_t {
