@@ -112,7 +112,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 	fname += std::string(".kmer_hist");
 
 	std::ifstream file;
-	file.open(fname.c_str(), std::ios::in); // | std::ios::binary);
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 
 	if (!file.is_open()) {
 		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
@@ -121,15 +121,23 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 
 	marisa::Keyset keys;
 	uint32 kmer, count;
-	while (file >> kmer >> count) {
+	uint32 filtered = 0;
+	int map_size;
+	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+	while(map_size >= 0) {
+		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+		file.read(reinterpret_cast<char*>(&count), sizeof(count));
 		if(count >= max_count_threshold) {
 			unsigned char* seq = (unsigned char*) malloc(16*sizeof(char));
 			unpack_32(kmer, seq, 16);
 			keys.push_back((const char*) seq);
+			filtered++;
 		}
+		map_size--;
 	}
 	freq_trie.build(keys, 0);
 	file.close();
+	printf("Filtered %u kmers \n", filtered);
 }
 
 
