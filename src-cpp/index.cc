@@ -95,7 +95,12 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
 		buckets->next_free_bucket_index = 0;
 		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
-		buckets->buckets_data_vectors.resize(buckets->n_buckets);
+		buckets->bucket_index_locks.resize(buckets->n_buckets);
+		for(uint32 l = 0; l < buckets->n_buckets; l++) {
+			omp_init_lock(&buckets->bucket_index_locks[l]);
+		}
+		omp_init_lock(&buckets->lock);
+		//buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
 
 	// per-thread storage
@@ -160,40 +165,43 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				minhashes,
 	    				params->sketch_proj_indices,
 	    				t*params->sketch_proj_len);
-				#pragma omp critical
-	    		{
-	    			buckets_t* buckets = &ref.hash_tables[t];
-	    			uint32 bucket_index = buckets->bucket_indices[bucket_hash];
-	    			if(bucket_index == buckets->n_buckets) {
-	    				// this is the first entry in the bucket
-	    				buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
-	    				buckets->next_free_bucket_index++;
-	    				VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-	    				bucket.push_back(pos); // store the window position in the bucket
-	    			} else {
-	    				VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-	    				// add to the existing hash bucket
-	    				if(bucket.size() + 1 < params->bucket_size) {
-	    					// don't store if near-by sequence present
-	    					bool store_pos = true;
-	    					for(uint32 e = 0; e < bucket.size(); e++) {
-	    						seq_t epos = bucket[e];
-	    						seq_t H = pos + params->bucket_entry_coverage;
-	    						seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-	    						if((epos <= H) && (epos >= L)) {
-	    							store_pos = false;
-	    							break;
-	    						}
+
+	    		buckets_t* buckets = &ref.hash_tables[t];
+
+	    		omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
+	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
+	    			omp_set_lock(&buckets->lock);
+	    			buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
+	    			buckets->next_free_bucket_index++;
+	    			buckets->buckets_data_vectors.push_back(VectorSeqPos());
+	    			omp_unset_lock(&buckets->lock);
+	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
+	    			bucket.push_back(pos); // store the window position in the bucket
+	    		} else { // this bucket already exists
+	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+	    			// add to the existing hash bucket
+	    			if(bucket.size() + 1 < params->bucket_size) {
+	    				// don't store if near-by sequence present
+	    				bool store_pos = true;
+	    				seq_t H = pos + params->bucket_entry_coverage;
+	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+	    				for(uint32 e = 0; e < bucket.size(); e++) {
+	    					seq_t epos = bucket[e];
+	    					if((epos <= H) && (epos >= L)) {
+	    						store_pos = false;
+	    						break;
 	    					}
-	    					if(store_pos) {
-	    						bucket.push_back(pos);
-	    						n_bucket_entries++;
-	    					} else {
-	    						n_filtered++;
-	    					}
+	    				}
+	    				if(store_pos) {
+	    					bucket.push_back(pos);
+	    					n_bucket_entries++;
+	    				} else {
+	    					n_filtered++;
 	    				}
 	    			}
 	    		}
+	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    	}
 	    }
 	}
