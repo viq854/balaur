@@ -32,18 +32,26 @@ void generate_ref_windows(ref_t& ref, index_params_t* params) {
 void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	clock_t t = clock();
 	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
-	marisa::Agent agent;
-	#pragma omp parallel for
-	for(seq_t i = 0; i < ref.len - params->k; i++) {
-		for (uint32 k = 0; k < params->k; k++) {
-			if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
-				ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
-				break;
+	omp_set_num_threads(params->n_threads); // split the windows across the threads
+	#pragma omp parallel
+	{
+		int tid = omp_get_thread_num();
+		int n_threads = omp_get_num_threads();
+		seq_t chunk_start = tid*(ref.len - params->k + 1) / n_threads;
+		seq_t chunk_end = (tid + 1)*(ref.len - params->k + 1) / n_threads;
+
+		marisa::Agent agent;
+		for(seq_t i = chunk_start; i < chunk_end; i++) {
+			for (uint32 k = 0; k < params->k; k++) {
+				if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
+					ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
+					break;
+				}
 			}
-		}
-		agent.set_query(&ref.seq.c_str()[i], params->k);
-		if(ref.high_freq_kmer_trie.lookup(agent)) {
-			ref.ignore_kmer_bitmask[i] = 1;
+			agent.set_query(&ref.seq.c_str()[i], params->k);
+			if(ref.high_freq_kmer_trie.lookup(agent)) {
+				ref.ignore_kmer_bitmask[i] = 1;
+			}
 		}
 	}
 	printf("Done marking frequent kmers time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
@@ -78,7 +86,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	// 2. mark uninformative windows / load
 	printf("Marking uninformative windows... \n");
 	t = clock();
-	mark_windows_to_discard(ref, params);
+	//mark_windows_to_discard(ref, params);
 	printf("Done marking windows; time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
 	
 	// 3. load the frequency of each kmer and collect high-frequency kmers
