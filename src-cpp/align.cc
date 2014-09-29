@@ -145,8 +145,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
    r->top_hit_acc = 0;
-   char first_found = false;
-   for(int i = params->n_tables - 1; i >= 0; i--) {
+   for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
 		   if(pos_l >= match.pos - match.len - 30 && pos_l <= match.pos + 30) {
@@ -155,13 +154,10 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 		   }
 	   }
 	   if(r->acc == 1) {
-		   if(!first_found) {
-			   r->top_hit_acc = 1;
+		   if((uint32) i == r->best_n_hits) {
+			  r->top_hit_acc = 1;
 		   }
 		   break;
-	   }
-	   if(r->ref_matches[i].size() != 0) {
-		   first_found = true;
 	   }
    }
    return (r->acc == 1);
@@ -175,63 +171,109 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// find the contig with second most hits
 }
 
+#define GENOME_BATCH_SIZE 50000000 // every x positions
+
 void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
-	// collect all the hits and their table ids
-	std::vector<std::pair<seq_t, uint32> > pos_tid;
-	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
-		buckets_t* buckets = &ref.hash_tables[t];
-		uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
-		if(bucket_index == buckets->n_buckets) {
-			continue;
-		}
-		VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-		for(uint32 match = 0; match < bucket.size(); match++) {
-			if(pos_tid.size() < 100000) {
-				pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
-			}
-		}
-	}
-	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
-
-	// need to find hot-spot contigs and count how many times a position occurs
-	// sort and reduce
-	std::sort(pos_tid.begin(), pos_tid.end());
-
-	// construct a priority heap of matches
-	// ordered by number projections matched
+	// construct a priority heap of matches ordered by the number of projections matched
 	r->ref_matches.resize(params->n_tables);
 
-	// due to sampling consider different near-by positions as the frequency of the locus
-	// except when they were in the same bucket! - then it should count as 1
-	// near-by positions will be consecutive in the sorted list
-	// # diff buckets can be found by checking bucket ids
-
-	seq_t last_pos = pos_tid[0].first;
-	uint32 last_tid = pos_tid[0].second;
-	uint32 len = 0;
+	// best number of table hits found so far
+	int n_best_hits = 0;
 	VectorU32 occ(params->n_tables);
-	occ[last_tid] = 1;
-	for(uint32 i = 1; i < pos_tid.size(); i++) {
-		seq_t pos = pos_tid[i].first;
-		uint32 tid = pos_tid[i].second;
-		if(pos <= last_pos + params->contig_gap) { // look for contigs not separated by more than GAP_LEN
-			if(tid != last_tid) {
-				occ[tid] = 1; // mark
+
+	// process all the hits in intervals
+	std::vector<std::pair<seq_t, uint32> > pos_tid;
+	for(uint32 i = 1; i <= ceil(ref.len/GENOME_BATCH_SIZE); i++) {
+
+		std::vector<std::pair<seq_t, uint32> > pos_tid;
+		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
+			buckets_t* buckets = &ref.hash_tables[t];
+			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
+			if(bucket_index == buckets->n_buckets) {
+				continue;
 			}
-			len += pos - last_pos;
-		} else {
-			int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
-			if(r->ref_matches[n_occ].size() < 3000) {
-				r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+			uint32 data_pointer = buckets->bucket_data_consumed_indices[bucket_index];
+			for(uint32 match = data_pointer; match < bucket.size(); match++) {
+				if(bucket[match] < i*GENOME_BATCH_SIZE) { // TODO: don't want to interrupt a contig
+					pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
+				} else {
+					break; // requires that each bucket is sorted
+				}
 			}
-			len = 0;
-			std::fill(occ.begin(), occ.end(), 0);
-			occ[tid] = 1;
 		}
-		last_pos = pos;
-		last_tid = tid;
+
+		// need to find *hot-spot* contigs and count how many times a position occurs
+		// sort and reduce
+		std::sort(pos_tid.begin(), pos_tid.end());
+
+		// find contigs
+		// due to sampling, different near-by positions contribute to the frequency of the locus
+		// except when they were in the same bucket! - then it should count as 1
+		// near-by positions will be consecutive in the sorted list
+		// # diff buckets can be found by checking bucket ids
+
+		seq_t last_pos = pos_tid[0].first;
+		uint32 last_tid = pos_tid[0].second;
+		uint32 len = 0;
+		occ[last_tid] = 1;
+		for(uint32 i = 1; i < pos_tid.size(); i++) {
+			seq_t pos = pos_tid[i].first;
+			uint32 tid = pos_tid[i].second;
+			if(pos <= last_pos + params->contig_gap) { // look for contigs not separated by more than GAP_LEN
+				if(tid != last_tid) {
+					occ[tid] = 1; // mark
+				}
+				len += pos - last_pos; // extend the contig
+			} else {
+				// found a boundary, store the contig
+				int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
+				if(n_occ > n_best_hits) { // if more hits than best so far
+					n_best_hits = n_occ;
+					if(r->ref_matches[n_occ].size() < params->max_best_hits) {
+						r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+					}
+				} else {
+					// sub-optimal
+					// only store if the number of hits is not too much lower than the best so far
+					if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
+						if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
+							r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+						}
+					}
+				}
+				len = 0;
+				std::fill(occ.begin(), occ.end(), 0);
+				occ[tid] = 1;
+
+			}
+			last_pos = pos;
+			last_tid = tid;
+		}
+
+		// add the last contig
+		int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
+		if(n_occ > 0) {
+			if(n_occ > n_best_hits) { // if more hits than best so far
+				n_best_hits = n_occ;
+				if(r->ref_matches[n_occ].size() < params->max_best_hits) {
+					r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+				}
+			} else {
+				// sub-optimal
+				// only store if the number of hits is not too much lower than the best so far
+				if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
+					if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
+						r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+					}
+				}
+			}
+		}
+
 	}
+	r->best_n_hits = n_best_hits;
+	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -379,7 +421,7 @@ uint32_t get_msbits32(const hash_t h, const index_params_t* params) {
 // uses binary search
 // returns -1 if no matches were found
 int find_window_match_diffk(ref_t& ref, cluster_t* cluster, const index_params_t* params) {
-	const uint32_t d_q = get_msbits32(cluster->simhash, params);
+//	const uint32_t d_q = get_msbits32(cluster->simhash, params);
 
 //	seq_t low = 0;
 //	seq_t high = ref.windows.size() - 1;

@@ -6,6 +6,7 @@
 #include <math.h>
 #include <time.h>
 #include <omp.h>
+#include <algorithm>
 
 #include <time.h>
 #include <vector>
@@ -111,6 +112,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 		omp_init_lock(&buckets->lock);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
+		buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
 	}
 
 	// per-thread storage
@@ -219,12 +221,27 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    	}
 	    }
 	}
+	double end_time = omp_get_wtime();
+	printf("Populated all the buckets. Time : %.2f sec\n", end_time - start_time);
+
+	// sort each bucket!
+	printf("Sorting buckets... \n");
+	#pragma omp parallel for
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+		buckets_t* buckets = &ref.hash_tables[t];
+		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
+			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
+			std::sort(bucket.begin(), bucket.end());
+		}
+	}
+	end_time = omp_get_wtime();
+	printf("Total sort time : %.2f sec\n", end_time - start_time);
 
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
-	double end_time = omp_get_wtime();
+	end_time = omp_get_wtime();
 	printf("Total hashing time: %.2f sec\n", end_time - start_time);
 }
 
