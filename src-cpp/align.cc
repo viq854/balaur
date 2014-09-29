@@ -237,6 +237,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 total_windows_matched = 0;
 	uint32 diff_num_top_hits = 0;
 	clock_t t = clock();
+	#pragma omp parallel for reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash) continue;
