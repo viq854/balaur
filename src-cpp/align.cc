@@ -149,7 +149,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    for(int i = params->n_tables - 1; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
-		   if(pos_l >= match.pos - match.len - 20 && pos_l <= match.pos + 20) {
+		   if(pos_l >= match.pos - match.len - 30 && pos_l <= match.pos + 30) {
 			   r->acc = 1;
 			   break;
 		   }
@@ -187,7 +187,9 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 		}
 		VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 		for(uint32 match = 0; match < bucket.size(); match++) {
-			pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
+			if(pos_tid.size() < 100000) {
+				pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
+			}
 		}
 	}
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
@@ -220,7 +222,9 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 			len += pos - last_pos;
 		} else {
 			int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
-			r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+			if(r->ref_matches[n_occ].size() < 3000) {
+				r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+			}
 			len = 0;
 			std::fill(occ.begin(), occ.end(), 0);
 			occ[tid] = 1;
@@ -237,6 +241,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 total_windows_matched = 0;
 	uint32 diff_num_top_hits = 0;
 	clock_t t = clock();
+	omp_set_num_threads(4);
 	#pragma omp parallel for reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
