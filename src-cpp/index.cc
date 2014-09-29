@@ -136,15 +136,16 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	{
 	    int tid = omp_get_thread_num();
 	    int n_threads = omp_get_num_threads();
-	    seq_t chunk_start = tid*(ref.len - params->ref_window_size + 1) / n_threads;
-	    seq_t chunk_end = (tid + 1)*(ref.len - params->ref_window_size + 1) / n_threads;
+	    seq_t chunk_start = ((ref.len - params->ref_window_size + 1) / n_threads)*tid;
+	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
+	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
 	    	/*if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
 				continue;
 			}*/
 	    	n_valid_windows++;
-	    	if((pos - chunk_start) % 1000000 == 0) {
+	    	if((pos - chunk_start) % 20000000 == 0 && (pos - chunk_start) != 0) {
 	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
 	    	}
 
