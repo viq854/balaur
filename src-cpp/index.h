@@ -74,6 +74,7 @@ typedef struct {
 	uint32 contig_gap;
 
 	// alignment evaluation
+	uint32 min_n_hits;
 	uint32 dist_best_hit; // how many fewer than best table hits to still keep
 	uint32 max_best_hits;
 	uint32 max_suboptimal_hits;
@@ -113,6 +114,7 @@ typedef struct {
 
 		n_threads = 1;
 
+		min_n_hits = 2;
 		dist_best_hit = 2;
 		max_best_hits = 1000;
 		max_suboptimal_hits = 500;

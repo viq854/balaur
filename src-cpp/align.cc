@@ -202,6 +202,8 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 			}
 		}
 
+		if(pos_tid.size() == 0) continue;
+
 		// need to find *hot-spot* contigs and count how many times a position occurs
 		// sort and reduce
 		std::sort(pos_tid.begin(), pos_tid.end());
@@ -227,17 +229,19 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 			} else {
 				// found a boundary, store the contig
 				int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
-				if(n_occ > n_best_hits) { // if more hits than best so far
-					n_best_hits = n_occ;
-					if(r->ref_matches[n_occ].size() < params->max_best_hits) {
-						r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
-					}
-				} else {
-					// sub-optimal
-					// only store if the number of hits is not too much lower than the best so far
-					if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
-						if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
+				if(n_occ >= (int) params->min_n_hits - 1) {
+					if(n_occ > n_best_hits) { // if more hits than best so far
+						n_best_hits = n_occ;
+						if(r->ref_matches[n_occ].size() < params->max_best_hits) {
 							r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+						}
+					} else {
+						// sub-optimal
+						// only store if the number of hits is not too much lower than the best so far
+						if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
+							if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
+								r->ref_matches[n_occ].push_back(ref_match_t(last_pos, len));
+							}
 						}
 					}
 				}
@@ -252,7 +256,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 		// add the last contig
 		int n_occ = std::count(occ.begin(), occ.end(), 1) - 1;
-		if(n_occ > 0) {
+		if(n_occ >= (int) params->min_n_hits - 1) {
 			if(n_occ > n_best_hits) { // if more hits than best so far
 				n_best_hits = n_occ;
 				if(r->ref_matches[n_occ].size() < params->max_best_hits) {
@@ -281,7 +285,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 total_windows_matched = 0;
 	uint32 diff_num_top_hits = 0;
 	clock_t t = clock();
-	omp_set_num_threads(4);
+	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];

@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
 
 	int compute_diff_stats = 0;
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
@@ -127,6 +127,7 @@ int main(int argc, char *argv[]) {
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'S': compute_diff_stats = 1; break;
 			case 'I': params.hit_collection_interval = atoi(optarg); break;
+			case 'm': params.min_n_hits = atoi(optarg); break;
 			default: return 0;
 		}
 	}
@@ -138,6 +139,7 @@ int main(int argc, char *argv[]) {
 	printf("h = %u \n", params.h);
 	printf("T = %u \n", params.n_tables);
 	printf("b = %u \n", params.sketch_proj_len);
+	printf("m = %u \n", params.min_n_hits);
 	printf("n_buckets = %f \n", pow(2, params.n_buckets_pow2));
 
 
