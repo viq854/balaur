@@ -147,7 +147,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				continue;
 			}*/
 	    	n_valid_windows++;
-	    	if((pos - chunk_start) % 20000000 == 0 && (pos - chunk_start) != 0) {
+	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
 	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
 	    	}
 
