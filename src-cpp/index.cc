@@ -226,6 +226,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	// sort each bucket!
 	printf("Sorting buckets... \n");
+	double start_time_sort = omp_get_wtime();
 	#pragma omp parallel for
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 		buckets_t* buckets = &ref.hash_tables[t];
@@ -235,7 +236,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 	}
 	end_time = omp_get_wtime();
-	printf("Total sort time : %.2f sec\n", end_time - start_time);
+	printf("Total sort time : %.2f sec\n", end_time - start_time_sort);
 
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);

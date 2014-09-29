@@ -77,6 +77,7 @@ typedef struct {
 	uint32 dist_best_hit; // how many fewer than best table hits to still keep
 	uint32 max_best_hits;
 	uint32 max_suboptimal_hits;
+	uint32 hit_collection_interval;
 
 	// sim-hash mapping parameters
 	uint32 p; 					// number of permutation tables
@@ -116,7 +117,7 @@ typedef struct {
 		max_best_hits = 1000;
 		max_suboptimal_hits = 500;
 
-
+		hit_collection_interval = 5000000;
 	}
 
 } index_params_t;
