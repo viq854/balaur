@@ -276,7 +276,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		diff_num_top_hits += f - s;
 	}
+	printf("Collected read hits \n");
 
+	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
