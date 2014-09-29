@@ -33,6 +33,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	clock_t t = clock();
 	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
 	marisa::Agent agent;
+	#pragma omp parallel for
 	for(seq_t i = 0; i < ref.len - params->k; i++) {
 		for (uint32 k = 0; k < params->k; k++) {
 			if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
@@ -50,6 +51,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 	ref.ignore_window_bitmask.resize(ref.len- params->ref_window_size + 1);
+	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
 		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
 			ref.ignore_window_bitmask[pos] = 1; // discard windows with low information content
