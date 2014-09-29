@@ -120,7 +120,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_valid_hashes = 0;
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
-	t = clock();
+	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered)
 	{
@@ -213,7 +213,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
-	printf("Total hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	double end_time = omp_get_wtime();
+	printf("Total hashing time: %.2f sec\n", end_time - start_time);
 }
 
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& reads) {

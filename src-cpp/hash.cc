@@ -221,10 +221,39 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 //		kmer_hasher->eat(c);
 //	}
 
+//	bool any_valid_kmers = false;
+//	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
+//		// check if the kmer should be discarded
+//		if(!get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params)) {
+//			//minhash_t kmer_hash = kmer_hasher->hashvalue;
+//			minhash_t kmer_hash = CityHash32(&seq[seq_offset + i], params->k);
+//			for(uint32_t h = 0; h < params->h; h++) { // update the min values
+//				const rand_hash_function_t* f = &params->minhash_functions[h];
+//				minhash_t min = f->apply(kmer_hash);
+//				if(min < min_hashes[h] || i == 0) {
+//					min_hashes[h] = min;
+//				}
+//			}
+//			//any_valid_kmers = true;
+//		}
+//		// roll the hash
+////		if(i < seq_len - params->k) {
+////			unsigned char c_out = seq[seq_offset + i];
+////			unsigned char c_in = seq[seq_offset + i + params->k];
+////			kmer_hasher->update(c_out, c_in);
+////		}
+//	}
+//	return any_valid_kmers;
 	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if the kmer should be discarded
-		if(!get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params)) {
+		char weight = 0;
+		if(is_ref) {
+			weight = !ref_freq_kmer_bitmask[seq_offset + i];
+		} else {
+			weight = get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params);
+		}
+		if(weight != 0) {
 			//minhash_t kmer_hash = kmer_hasher->hashvalue;
 			minhash_t kmer_hash = CityHash32(&seq[seq_offset + i], params->k);
 			for(uint32_t h = 0; h < params->h; h++) { // update the min values
@@ -234,14 +263,21 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 					min_hashes[h] = min;
 				}
 			}
-			any_valid_kmers = true;
+		} else {
+			continue;
 		}
+
 		// roll the hash
 //		if(i < seq_len - params->k) {
 //			unsigned char c_out = seq[seq_offset + i];
 //			unsigned char c_in = seq[seq_offset + i + params->k];
 //			kmer_hasher->update(c_out, c_in);
 //		}
+		any_valid_kmers = true;
+	}
+
+	if(!any_valid_kmers) {
+		std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
 	}
 	return any_valid_kmers;
 }
