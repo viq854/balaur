@@ -194,7 +194,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 			uint32 data_pointer = buckets->bucket_data_consumed_indices[bucket_index];
 			for(uint32 match = data_pointer; match < bucket.size(); match++) {
-				if(bucket[match] < i*GENOME_BATCH_SIZE) { // TODO: don't want to interrupt a contig
+				if(bucket[match] < i*params->hit_collection_interval) { // TODO: don't want to interrupt a contig
 					pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
 				} else {
 					break; // requires that each bucket is sorted
