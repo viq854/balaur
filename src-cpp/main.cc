@@ -140,6 +140,7 @@ int main(int argc, char *argv[]) {
 	printf("n_buckets = %f \n", pow(2, params.n_buckets_pow2));
 
 
+	srand(1);
 	if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
 		params.alg = MINH; // only min-hash enabled for now

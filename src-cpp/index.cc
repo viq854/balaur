@@ -240,7 +240,8 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// 3. compute the min-hash signature of each read
-	t = clock();
+	double start_time = omp_get_wtime();
+	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
@@ -252,7 +253,8 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 				params->kmer_hasher, false,
 				r->minhashes);
 	}
-	printf("Total read hashing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	double end_time = omp_get_wtime();
+	printf("Total read hashing time: %.2f sec\n", end_time - start_time);
 	// TODO: free memory
 }
 
