@@ -184,7 +184,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// process all the hits in intervals
 	std::vector<std::pair<seq_t, uint32> > pos_tid;
-	for(uint32 i = 1; i <= ceil(ref.len/GENOME_BATCH_SIZE); i++) {
+	for(uint32 i = 1; i <= ceil((float) ref.len/GENOME_BATCH_SIZE); i++) {
 
 		std::vector<std::pair<seq_t, uint32> > pos_tid;
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
