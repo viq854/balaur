@@ -171,8 +171,6 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// find the contig with second most hits
 }
 
-#define GENOME_BATCH_SIZE 50000000 // every x positions
-
 void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// construct a priority heap of matches ordered by the number of projections matched
@@ -184,7 +182,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// process all the hits in intervals
 	std::vector<std::pair<seq_t, uint32> > pos_tid;
-	for(uint32 i = 1; i <= ceil((float) ref.len/GENOME_BATCH_SIZE); i++) {
+	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
 
 		std::vector<std::pair<seq_t, uint32> > pos_tid;
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
