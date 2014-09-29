@@ -128,8 +128,9 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
 		file.read(reinterpret_cast<char*>(&count), sizeof(count));
 		if(count >= max_count_threshold) {
-			unsigned char* seq = (unsigned char*) malloc(16*sizeof(char));
+			unsigned char* seq = (unsigned char*) malloc(17*sizeof(char));
 			unpack_32(kmer, seq, 16);
+			seq[16] = '\0';
 			keys.push_back((const char*) seq);
 			filtered++;
 		}
