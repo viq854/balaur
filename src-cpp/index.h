@@ -73,6 +73,11 @@ typedef struct {
 	uint32 bucket_entry_coverage;
 	uint32 contig_gap;
 
+	// alignment evaluation
+	uint32 dist_best_hit; // how many fewer than best table hits to still keep
+	uint32 max_best_hits;
+	uint32 max_suboptimal_hits;
+
 	// sim-hash mapping parameters
 	uint32 p; 					// number of permutation tables
 	uint32 msbits_match;			// number of most significant bits to match
@@ -106,6 +111,12 @@ typedef struct {
 		max_hammd = 10;
 
 		n_threads = 1;
+
+		dist_best_hit = 2;
+		max_best_hits = 1000;
+		max_suboptimal_hits = 500;
+
+
 	}
 
 } index_params_t;

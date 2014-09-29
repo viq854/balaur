@@ -54,6 +54,7 @@ struct buckets_t {
 	VectorLocks bucket_index_locks;
 
 	VectorBuckets buckets_data_vectors;
+	VectorU32 bucket_data_consumed_indices;
 	omp_lock_t lock;
 };
 typedef std::vector<buckets_t> VectorBucketTables;
@@ -103,6 +104,7 @@ typedef struct {
 	// found ref match positions
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
+	uint32 best_n_hits;
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
