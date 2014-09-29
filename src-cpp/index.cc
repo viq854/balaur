@@ -100,7 +100,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			omp_init_lock(&buckets->bucket_index_locks[l]);
 		}
 		omp_init_lock(&buckets->lock);
-		//buckets->buckets_data_vectors.resize(buckets->n_buckets);
+		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 	}
 
 	// per-thread storage
@@ -174,7 +174,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			omp_set_lock(&buckets->lock);
 	    			buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
 	    			buckets->next_free_bucket_index++;
-	    			buckets->buckets_data_vectors.push_back(VectorSeqPos());
+	    			//buckets->buckets_data_vectors.push_back(VectorSeqPos());
 	    			omp_unset_lock(&buckets->lock);
 	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
 	    			bucket.push_back(pos); // store the window position in the bucket
