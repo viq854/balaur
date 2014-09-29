@@ -242,15 +242,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(!r->valid_minhash) continue;
 		//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
 		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-//			VectorMinHash sketch_proj(params->sketch_proj_len);
-//			for(uint32 p = 0; p < params->sketch_proj_len; p++) {
-//				sketch_proj[p] = r->minhashes[params->sketch_proj_indices[t*params->sketch_proj_len + p]];
-//			}
 			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 			uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 			r->ref_bucket_id_matches_by_table.push_back(bucket_index);
 		}
-
 		collect_read_hits(ref, r, params);
 
 		// stats
