@@ -272,7 +272,7 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 
 	// 2. load the index
 	printf("Loading reference index for reference file %s... \n", fastaFname);
-	clock_t t = clock();
+	t = clock();
 	load_ref_idx(fastaFname, ref, params);
 	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
