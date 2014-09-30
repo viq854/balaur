@@ -265,12 +265,18 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	printf("**** SRX Reference Index Loading ****\n");
 
 	// 1. load the reference
+	printf("Loading FASTA file %s... \n", fastaFname);
+	clock_t t = clock();
+	fasta2ref(fastaFname, ref);
+	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+
+	// 2. load the index
 	printf("Loading reference index for reference file %s... \n", fastaFname);
 	clock_t t = clock();
 	load_ref_idx(fastaFname, ref, params);
 	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 2. load the frequency of each kmer and collect high-frequency kmers
+	// 3. load the frequency of each kmer and collect high-frequency kmers
 	double start_time = omp_get_wtime();
 	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
