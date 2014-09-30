@@ -97,7 +97,7 @@ typedef struct {
 
 	// generate random hash functions for min-hash sketches
 	void set_minhash_hash_function() {
-		for(uint32 h = 0; h < h; h++) {
+		for(uint32 f = 0; f < h; f++) {
 			minhash_functions.push_back(rand_hash_function_t());
 		}
 	}
