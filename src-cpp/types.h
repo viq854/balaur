@@ -1,7 +1,12 @@
 #ifndef TYPES_H_
 #define TYPES_H_
 
+#pragma once
+
 #include <vector>
+#include <map>
+#include <string>
+#include <marisa.h>
 
 typedef unsigned int uint32;
 typedef unsigned long long int uint64;
