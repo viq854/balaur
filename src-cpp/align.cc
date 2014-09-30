@@ -415,9 +415,9 @@ void align_reads_lsh(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	//get_stats(ref, clusters);
 }
 
-uint32_t get_msbits32(const hash_t h, const index_params_t* params) {
-	return (h >> (SIMHASH_BITLEN - params->msbits_match));
-}
+//uint32_t get_msbits32(const hash_t h, const index_params_t* params) {
+//	return (h >> (SIMHASH_BITLEN - params->msbits_match));
+//}
 
 // computes the idxs of the matching simhash windows
 // uses binary search
@@ -636,12 +636,12 @@ void shift_bucket_reads(reads_t* reads, int bucket) {
 // permutes a 64-bit integer
 // perm is a random permutation of integers 0..63
 void perm64(uint64_t* n, int* perm) {
-	uint64_t p = 0;
-	for(int i = 0; i < SIMHASH_BITLEN; i++) {
-		int idx = perm[i];
-		p |= (((*n >> idx) & 1) << i);
-	}
-	*n = p;
+//	uint64_t p = 0;
+//	for(int i = 0; i < SIMHASH_BITLEN; i++) {
+//		int idx = perm[i];
+//		p |= (((*n >> idx) & 1) << i);
+//	}
+//	*n = p;
 }
 
 void permute_ref(ref_t& ref, int* perm) {
@@ -667,17 +667,17 @@ int irand(int n) {
 }
 
 void shuffle(int *perm) {
-	int tmp;
-	int len = SIMHASH_BITLEN; 
-	while(len) {		
-		int j = irand(len);				
-		if (j != len - 1) {			
-			tmp = perm[j];
-			perm[j] = perm[len-1];
-			perm[len-1] = tmp;
-		} 
-		len--;			
-	}		
+//	int tmp;
+//	int len = SIMHASH_BITLEN;
+//	while(len) {
+//		int j = irand(len);
+//		if (j != len - 1) {
+//			tmp = perm[j];
+//			perm[j] = perm[len-1];
+//			perm[len-1] = tmp;
+//		}
+//		len--;
+//	}
 }
 
 /* ---- Hit Evaluation ----- */

@@ -1,16 +1,10 @@
-#include <stdint.h>
-#include <assert.h>
-#include <stdlib.h>
+
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-#include <math.h>
-
-#include <iostream>
 #include <fstream>
 
 #include "io.h"
-#include "hash.h"
+#include "types.h"
 
 /* Reference I/O */
 
@@ -49,7 +43,7 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 		}
 	}
 	ref.len = ref.seq.size();
-	printf("Done reading FASTA file. Total sequence length read = %zu\n", ref.seq.size());
+	printf("Done reading FASTA file. Total sequence length read = %u\n", ref.len);
 	fclose(fastaFile);
 }
 
@@ -143,7 +137,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 
 
 // store the reference index
-void store_ref_idx(const char* refFname, const ref_t& ref) {
+void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".idx");
 
@@ -181,8 +175,8 @@ void store_ref_idx(const char* refFname, const ref_t& ref) {
 	file.close();
 }
 
-// store the reference index
-void load_ref_idx(const char* refFname, ref_t& ref) {
+// load the reference index buckets
+void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".idx");
 
@@ -193,32 +187,31 @@ void load_ref_idx(const char* refFname, ref_t& ref) {
 		exit(1);
 	}
 
-	uint32 n_tables;
-	file.read(reinterpret_cast<char*>(&n_tables), sizeof(n_tables));
-
-	ref.hash_tables.resize(n_tables);
-	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
-		buckets_t& buckets = ref.hash_tables[i];
-		file.read(reinterpret_cast<char*>(&buckets.n_buckets), sizeof(buckets.n_buckets));
-		buckets.bucket_indices.resize(buckets.n_buckets);
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			file.read(reinterpret_cast<char*>(&buckets.bucket_indices[j]), sizeof(buckets.bucket_indices[j]));
+	file.read(reinterpret_cast<char*>(&params->n_tables), sizeof(params->n_tables));
+	ref.hash_tables.resize(params->n_tables);
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		buckets_t* buckets = &ref.hash_tables[i];
+		file.read(reinterpret_cast<char*>(&buckets->n_buckets), sizeof(buckets->n_buckets));
+		buckets->bucket_indices.resize(buckets->n_buckets);
+		for(uint32 j = 0; j < buckets->n_buckets; j++) {
+			file.read(reinterpret_cast<char*>(&buckets->bucket_indices[j]), sizeof(buckets->bucket_indices[j]));
 		}
+		// note: no need to initialize the locks
 		// data
-		uint32 n_filled_buckets;
-		file.read(reinterpret_cast<char*>(&n_filled_buckets), sizeof(n_filled_buckets));
-		buckets.buckets_data_vectors.resize(n_filled_buckets);
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			if(buckets.bucket_indices[j] == buckets.n_buckets) {
+		file.read(reinterpret_cast<char*>(&buckets->next_free_bucket_index), sizeof(buckets->next_free_bucket_index));
+		buckets->buckets_data_vectors.resize(buckets->next_free_bucket_index);
+		for(uint32 j = 0; j < buckets->n_buckets; j++) {
+			if(buckets->bucket_indices[j] == buckets->n_buckets) {
 				continue;
 			}
-			VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
+			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[j]];
 			uint32 size;
 			file.read(reinterpret_cast<char*>(&size), sizeof(size));
 			bucket.resize(size);
 			for(uint32 k = 0; k < bucket.size(); k++) {
 				file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
 			}
+			buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
 		}
 	}
 	file.close();

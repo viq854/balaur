@@ -1,32 +1,50 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
-#include <assert.h>
-#include <stdint.h>
 #include <math.h>
-#include <time.h>
 #include <omp.h>
 #include <algorithm>
-
 #include <time.h>
-#include <vector>
-#include <string.h>
 
+#include <omp.h>
+#include "types.h"
 #include "index.h"
+#include "lsh.h"
 #include "io.h"
 #include "hash.h"
-#include "cluster.h"
 
-// generate all valid/informative reference windows
-void generate_ref_windows(ref_t& ref, index_params_t* params) {
-	seq_t max_num_windows = ref.seq.size() - params->ref_window_size + 1;
-	seq_t i;
-	for(i = 0; i < max_num_windows; i++) {
-		if(is_inform_ref_window(&ref.seq.c_str()[i], params->ref_window_size)) {
-			ref_win_t window;
-			window.pos = i;
-			//ref.windows_by_pos.insert(std::pair<seq_t, ref_win_t>(i, window));
+
+// checks if the given sequence is informative or not
+// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
+int is_inform_ref_window(const char* seq, const uint32_t len) {
+	uint32 base_counts[5] = { 0 };
+	for(uint32 i = 0; i < len; i++) {
+		base_counts[(int) seq[i]]++;
+	}
+	if(base_counts[4] > 10) { // N ambiguous bases
+		return 0;
+	}
+	uint32 n_empty = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] == 0) {
+			n_empty++;
 		}
+	}
+	if(n_empty > 1) { // repetitions of 2 or 1 base
+		return 0;
+	}
+
+	return 1;
+}
+
+// compute and store the frequency of each kmer in the given sequence
+void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_params_t* params,
+		MapKmerCounts& hist) {
+	for(seq_t j = 0; j <= (seq_len - params->k); j++) {
+		uint32_t kmer;
+		if(pack_32(&seq[j], params->k, &kmer) < 0) {
+			continue;
+		}
+		hist[kmer]++;
 	}
 }
 
@@ -84,23 +102,20 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	fasta2ref(fastaFname, ref);
 	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 2. mark uninformative windows / load
-	printf("Marking uninformative windows... \n");
-	t = clock();
-	//mark_windows_to_discard(ref, params);
-	printf("Done marking windows; time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
-	
-	// 3. load the frequency of each kmer and collect high-frequency kmers
-	t = clock();
+	// 2. load the frequency of each kmer and collect high-frequency kmers
+	double start_time = omp_get_wtime();
 	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
 	mark_freq_kmers(ref, params);
-	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	double end_time = omp_get_wtime();
+	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 
-	// 4. hash each valid window
-	ref.hash_tables.resize(params->n_tables); // initialize the hash tables
+	// 3. hash each valid window
+
+	// initialize the hash tables
+	ref.hash_tables.resize(params->n_tables);
 	for(uint32 t = 0; t < params->n_tables; t++) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
@@ -115,7 +130,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
 	}
 
-	// per-thread storage
+	// initialize per-thread storage
 	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		minhash_thread_vectors[i].resize(params->h);
@@ -132,7 +147,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_valid_hashes = 0;
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
-	double start_time = omp_get_wtime();
+	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered)
 	{
@@ -221,10 +236,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    	}
 	    }
 	}
-	double end_time = omp_get_wtime();
+	end_time = omp_get_wtime();
 	printf("Populated all the buckets. Time : %.2f sec\n", end_time - start_time);
 
-	// sort each bucket!
+	// 4. sort each bucket!
 	printf("Sorting buckets... \n");
 	double start_time_sort = omp_get_wtime();
 	#pragma omp parallel for
@@ -244,6 +259,38 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
 	end_time = omp_get_wtime();
 	printf("Total hashing time: %.2f sec\n", end_time - start_time);
+}
+
+void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
+	printf("**** SRX Reference Index Loading ****\n");
+
+	// 1. load the reference
+	printf("Loading reference index for reference file %s... \n", fastaFname);
+	clock_t t = clock();
+	load_ref_idx(fastaFname, ref, params);
+	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+
+	// 2. load the frequency of each kmer and collect high-frequency kmers
+	double start_time = omp_get_wtime();
+	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+	//store_kmer_hist(fastaFname, ref.kmer_hist);
+	//ref.kmer_hist = MapKmerCounts(); // free memory
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
+	mark_freq_kmers(ref, params);
+	double end_time = omp_get_wtime();
+	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
+
+}
+
+
+void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
+	printf("**** SRX Reference Index Loading ****\n");
+
+	// store the reference buckets
+	printf("Storing the reference index for reference file %s... \n", fastaFname);
+	clock_t t = clock();
+	store_ref_idx(fastaFname, ref, params);
+	printf("Reference storing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& reads) {

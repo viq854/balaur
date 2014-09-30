@@ -5,33 +5,25 @@
 #include <stdlib.h>
 #include <math.h>
 #include <getopt.h>
-#include <omp.h>
-#include <iostream>
-#include <vector>
 #include <string.h>
 
+#include "types.h"
 #include "index.h"
 #include "align.h"
-#include "hash.h"
+#include "io.h"
 
-
-int rand_range(int n) {
-	int r, rand_max = RAND_MAX - (RAND_MAX % n);
-	while ((r = rand()) >= rand_max);
-	return r / (rand_max / n);
-}
 
 void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_params_t* params) {
-	printf("**********Diff Stats**************\n");
-
-	VectorU32 diff_hist(SIMHASH_BITLEN);
-	VectorU32 minh_hist(params->h);
-	uint32 n_unmapped = 0;
-
-	uint32 n_checked = 0;
-
-	#pragma omp parallel for
-	for(uint32 i = 0; i < reads.reads.size(); i++) {
+//	printf("**********Diff Stats**************\n");
+//
+//	VectorU32 diff_hist(SIMHASH_BITLEN);
+//	VectorU32 minh_hist(params->h);
+//	uint32 n_unmapped = 0;
+//
+//	uint32 n_checked = 0;
+//
+//	#pragma omp parallel for
+//	for(uint32 i = 0; i < reads.reads.size(); i++) {
 //			read_t r = reads.reads[i];
 //			unsigned int pos_l, pos_r;
 //			int strand;
@@ -84,31 +76,30 @@ void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_param
 //					#pragma omp atomic
 //					diff_hist[d]++;
 //			}
-	}
-
-	if(params->alg == MINH) {
-		for(uint32 i = 0; i < params->h; i++) {
-			printf("%d: %d\n", i, minh_hist[i]);
-		}
-		printf("unmapped: %d\n", n_unmapped);
-	}
-	else {
-		for(uint32 i = 0; i < SIMHASH_BITLEN; i++) {
-			printf("%d: %d\n", i, diff_hist[i]);
-		}
-	}
+//	}
+//
+//	if(params->alg == MINH) {
+//		for(uint32 i = 0; i < params->h; i++) {
+//			printf("%d: %d\n", i, minh_hist[i]);
+//		}
+//		printf("unmapped: %d\n", n_unmapped);
+//	}
+//	else {
+//		for(uint32 i = 0; i < SIMHASH_BITLEN; i++) {
+//			printf("%d: %d\n", i, diff_hist[i]);
+//		}
+//	}
 }
 
 int main(int argc, char *argv[]) {
 	if (argc < 4) {
-		printf("Usage: ./rx [options] <align|cluster> <ref.fa> <reads.fq> \n");
+		printf("Usage: ./rx [options] <index|align|cluster> <ref.fa> <reads.fq> \n");
 		exit(1);
 	}
 
 	index_params_t params;
 	params.set_default_index_params();
 
-	int compute_diff_stats = 0;
 	int c;
 	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:")) >= 0) {
 		switch (c) {
@@ -125,7 +116,6 @@ int main(int argc, char *argv[]) {
 			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
 			case 'g': params.contig_gap = atoi(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
-			case 'S': compute_diff_stats = 1; break;
 			case 'I': params.hit_collection_interval = atoi(optarg); break;
 			case 'm': params.min_n_hits = atoi(optarg); break;
 			default: return 0;
@@ -144,69 +134,36 @@ int main(int argc, char *argv[]) {
 
 
 	srand(1);
-	if (strcmp(argv[1], "align") == 0) {
+	if (strcmp(argv[1], "index") == 0) {
+		printf("Mode: Indexing \n");
+		params.alg = MINH; // only min-hash enabled for now
+		params.set_kmer_hash_function();
+		params.set_minhash_hash_function();
+		params.set_minhash_sketch_hash_function();
+		params.generate_sparse_sketch_projections();
+
+		// index the reference
+		ref_t ref;
+		index_ref_lsh(argv[optind+1], &params, ref);
+
+		// store the index
+		store_index_ref_lsh(argv[optind+1], &params, ref);
+
+	} else if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
 		params.alg = MINH; // only min-hash enabled for now
+		params.set_kmer_hash_function();
+		params.set_minhash_hash_function();
+		params.set_minhash_sketch_hash_function();
+		params.generate_sparse_sketch_projections();
 
-		// prepare the input/output reference index files
-		index_files_t index_files;
-		index_files.prep_index_files(params.in_index_fname.empty() ? params.out_index_fname : params.in_index_fname);
-
-		// set the initial kmer hash function (rolling hash)
-		params.kmer_hasher = new CyclicHash(params.k, 32);
-
-		// generate random hash functions for min-hash sketches
-		for(uint32 h = 0; h < params.h; h++) {
-			params.minhash_functions.push_back(rand_hash_function_t());
-		}
-
-		// generate random vector hash function sketch buckets
-		params.sketch_proj_hash_func = rand_hash_function_t(params.n_buckets_pow2, params.sketch_proj_len);
-
-		// generate the sparse sketch projections
-		if(params.in_index_fname.empty()) {
-			VectorU32 idx(params.h); // sketch length
-			params.sketch_proj_indices.resize(params.sketch_proj_len * params.n_tables);
-
-			for(uint32 i = 0; i < params.n_tables; i++) {
-				for(uint32 k = 0; k < params.h; k++) {
-					idx[k] = k;
-				}
-				// pick random indices from the sketch
-				const int32_t offset = i*params.sketch_proj_len;
-				const int32_t start = rand_range(params.h);
-				params.sketch_proj_indices[offset] = start;
-				uint32 cnt = 0;
-				uint32 len = params.h;
-				while(cnt < params.sketch_proj_len) {
-					int j = rand_range(len); // exclude 0
-					params.sketch_proj_indices[offset + cnt] = idx[j];
-					idx[j] = idx[len-1];
-					cnt++;
-					len--;
-				}
-			}
-		}
-
-		// 1. index the reference
+		// 1. load the reference index
 		ref_t ref;
-		if(!params.in_index_fname.empty()) {
-			load_ref_idx(params.in_index_fname.c_str(), ref);
-		} else {
-			index_ref_lsh(argv[optind+1], &params, ref);
-		}
-		// store the index
-		if(!params.out_index_fname.empty()) {
-			store_ref_idx(params.in_index_fname.c_str(), ref);
-		}
+		load_index_ref_lsh(argv[optind+1], &params, ref);
 
 		// 2. index the reads
 		reads_t reads;
 		index_reads_lsh(argv[optind+2], ref, &params, reads);
-
-		if(compute_diff_stats) {
-			compute_hash_diff_stats(ref, reads, &params);
-		}
 
 		// 3. map the hashes
 		align_reads_minhash(ref, reads, &params);
