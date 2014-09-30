@@ -127,7 +127,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 		omp_init_lock(&buckets->lock);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
-		buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
+		buckets->bucket_sizes.resize(buckets->n_buckets);
+		//buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
 	}
 
 	// initialize per-thread storage
@@ -147,9 +148,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_valid_hashes = 0;
 	uint32 n_bucket_entries = 0;
 	uint32 n_filtered = 0;
+	uint32 n_dropped = 0;
 	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
-	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered)
+	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered, n_dropped)
 	{
 	    int tid = omp_get_thread_num();
 	    int n_threads = omp_get_num_threads();
@@ -200,22 +202,24 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
 	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
 	    			omp_set_lock(&buckets->lock);
-	    			buckets->bucket_indices[bucket_hash] = buckets->next_free_bucket_index;
+	    			bucket_index = buckets->next_free_bucket_index;
 	    			buckets->next_free_bucket_index++;
-	    			//buckets->buckets_data_vectors.push_back(VectorSeqPos());
+	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
-	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[bucket_hash]];
-	    			bucket.push_back(pos); // store the window position in the bucket
+	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+	    			bucket.resize(params->bucket_size);
+	    			bucket[0] = pos; // store the window position in the bucket
+	    			buckets->bucket_sizes[bucket_index]++;
 	    			n_bucket_entries++;
 	    		} else { // this bucket already exists
 	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 	    			// add to the existing hash bucket
-	    			if(bucket.size() + 1 < params->bucket_size) {
+	    			if(buckets->bucket_sizes[bucket_index] + 1 <= params->bucket_size) {
 	    				// don't store if near-by sequence present
 	    				bool store_pos = true;
 	    				seq_t H = pos + params->bucket_entry_coverage;
 	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-	    				for(uint32 e = 0; e < bucket.size(); e++) {
+	    				for(uint32 e = 0; e < buckets->bucket_sizes[bucket_index]; e++) {
 	    					seq_t epos = bucket[e];
 	    					if((epos <= H) && (epos >= L)) {
 	    						store_pos = false;
@@ -224,12 +228,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				}
 	    				if(store_pos) {
 	    					bucket.push_back(pos);
+	    					bucket[buckets->bucket_sizes[bucket_index]] = pos;
+	    					buckets->bucket_sizes[bucket_index]++;
 	    					n_bucket_entries++;
 	    				} else {
 	    					n_filtered++;
 	    				}
 	    			} else {
-	    				n_filtered++;
+	    				n_dropped++;
 	    			}
 	    		}
 	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
@@ -247,7 +253,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			std::sort(bucket.begin(), bucket.end());
+			std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b]);
 		}
 	}
 	end_time = omp_get_wtime();
@@ -257,6 +263,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
+	printf("Total number of window bucket entries dropped: %u \n", n_dropped);
 	end_time = omp_get_wtime();
 	printf("Total hashing time: %.2f sec\n", end_time - start_time);
 }

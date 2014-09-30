@@ -141,6 +141,7 @@ struct buckets_t {
 	VectorLocks bucket_index_locks;
 
 	VectorBuckets buckets_data_vectors;
+	VectorU32 bucket_sizes;
 	VectorU32 bucket_data_consumed_indices;
 	omp_lock_t lock;
 };
