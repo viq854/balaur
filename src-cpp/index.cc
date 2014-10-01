@@ -207,52 +207,42 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				t*params->sketch_proj_len);
 
 	    		buckets_t* buckets = &ref.hash_tables[t];
-
 	    		omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
-	    		printf("Thread %d: table %u index %u \n", tid, t, bucket_index);
-	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
+	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the global bucket
 	    			omp_set_lock(&buckets->lock);
 	    			bucket_index = buckets->next_free_bucket_index;
 	    			buckets->next_free_bucket_index++;
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
 	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
-
-	    			// add to the empty thread bucket
-	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+	    		}
+	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+	    		if(bucket.size() == 0) {
+	    			// first item in this thread bucket
 	    			bucket.resize(params->bucket_size);
-	    			bucket[0] = pos; // store the window position in the bucket
-	    			buckets->per_thread_bucket_sizes[bucket_index][tid]++;
-	    			n_bucket_entries++;
-	    		} else { // this bucket already exists
-	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
-	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
-	    			// add to the existing bucket (if size allows)
-	    			uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
-
-	    			printf("Thread %d: table %u index %u --- bucket exists\n", tid, t, bucket_index, curr_size);
-	    			if(curr_size + 1 <= params->bucket_size) {
-	    				bool store_pos = true;
-	    				// don't store if near-by sequence present, need to check the last value only
-	    				if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
-	    					seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-	    					seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1];
-	    					if(epos >= L) {
-	    						store_pos = false;
-	    					}
+	    		}
+	    		// add to the bucket (if size allows)
+	    		uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
+	    		if(curr_size + 1 <= params->bucket_size) {
+	    			bool store_pos = true;
+	    			// don't store if near-by sequence present, need to check the last value only
+	    			if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
+	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+	    				seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1];
+	    				if(epos >= L) {
+	    					store_pos = false;
 	    				}
-
-	    				if(store_pos) {
-	    					bucket[curr_size] = pos;
-	    					buckets->per_thread_bucket_sizes[bucket_index][tid]++;
-	    					n_bucket_entries++;
-	    				} else {
-	    					n_filtered++;
-	    				}
-	    			} else {
-	    				n_dropped++;
 	    			}
+	    			if(store_pos) {
+	    				bucket[curr_size] = pos;
+	    				buckets->per_thread_bucket_sizes[bucket_index][tid]++;
+	    				n_bucket_entries++;
+	    			} else {
+	    				n_filtered++;
+	    			}
+	    		} else {
+	    			n_dropped++;
 	    		}
 	    	}
 	    }
