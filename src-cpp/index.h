@@ -143,14 +143,13 @@ struct buckets_t {
 	uint32 n_buckets;
 	uint32 next_free_bucket_index;
 	VectorU32 bucket_indices;
-	VectorLocks bucket_index_locks;
 	omp_lock_t lock;
+	VectorLocks bucket_index_locks;
+	VectorBuckets buckets_data_vectors;
+	VectorU32 bucket_sizes;
 
 	VectorPerThreadBuckets per_thread_buckets_data_vectors;
 	VectorPerThreadSizes per_thread_bucket_sizes;
-
-	VectorBuckets buckets_data_vectors;
-	VectorU32 bucket_sizes;
 
 	VectorU32 bucket_data_consumed_indices; // TODO: per thread
 

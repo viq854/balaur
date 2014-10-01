@@ -127,7 +127,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 		omp_init_lock(&buckets->lock);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
-		buckets->bucket_sizes.resize(buckets->n_buckets);
+		buckets->bucket_sizes.resize(buckets->n_buckets, 0);
 
 		// per thread buckets
 		buckets->per_thread_buckets_data_vectors.resize(buckets->n_buckets);
@@ -136,7 +136,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			buckets->per_thread_buckets_data_vectors[i].resize(params->n_threads);
 		}
 		for(uint32 i = 0; i < buckets->n_buckets; i++) {
-			buckets->per_thread_bucket_sizes[i].resize(params->n_threads);
+			buckets->per_thread_bucket_sizes[i].resize(params->n_threads, 0);
 		}
 
 	}
@@ -210,6 +210,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	    		omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
+	    		printf("Thread %d: table %u index %u \n", tid, t, bucket_index);
 	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
 	    			omp_set_lock(&buckets->lock);
 	    			bucket_index = buckets->next_free_bucket_index;
@@ -217,8 +218,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
 	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
-	    			//printf("Tid %d table %u: hash %u index %u thred_blen %zu \n", tid, t, bucket_hash, bucket_index, buckets->per_thread_buckets_data_vectors[bucket_index].size());
-				VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+
+	    			// add to the empty thread bucket
+	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    			bucket.resize(params->bucket_size);
 	    			bucket[0] = pos; // store the window position in the bucket
 	    			buckets->per_thread_bucket_sizes[bucket_index][tid]++;
@@ -226,23 +228,23 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		} else { // this bucket already exists
 	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
-	    			// add to the existing hash bucket
-	    			if(buckets->per_thread_bucket_sizes[bucket_index][tid] + 1 <= params->bucket_size) {
-	    				// don't store if near-by sequence present
+	    			// add to the existing bucket (if size allows)
+	    			uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
+
+	    			printf("Thread %d: table %u index %u --- bucket exists\n", tid, t, bucket_index, curr_size);
+	    			if(curr_size + 1 <= params->bucket_size) {
 	    				bool store_pos = true;
-	    				//seq_t H = pos + params->bucket_entry_coverage;
-	    				// check the last value
-					if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
-						seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-						seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1]; //for(uint32 e = 0; e < buckets->per_thread_bucket_sizes[bucket_index]; e++)
+	    				// don't store if near-by sequence present, need to check the last value only
+	    				if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
+	    					seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+	    					seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1];
 	    					if(epos >= L) {
 	    						store_pos = false;
 	    					}
-					}
+	    				}
 
 	    				if(store_pos) {
-	    					//printf("Adding - Tid %d table %u: hash %u index %u thred_blen %zu \n", tid, t, bucket_hash, bucket_index, buckets->per_thread_buckets_data_vectors[bucket_index].size());
-						bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]] = pos;
+	    					bucket[curr_size] = pos;
 	    					buckets->per_thread_bucket_sizes[bucket_index][tid]++;
 	    					n_bucket_entries++;
 	    				} else {
