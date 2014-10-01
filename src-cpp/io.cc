@@ -215,7 +215,6 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 			for(uint32 k = 0; k < size; k++) {
 				file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
 			}
-			buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
 		}
 	}
 	file.close();

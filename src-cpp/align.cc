@@ -179,6 +179,10 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// best number of table hits found so far
 	int n_best_hits = 0;
 	VectorU32 occ(params->n_tables);
+	std::vector<VectorU32> bucket_data_consumed_indices(params->n_tables); // TODO: per thread to be reused
+	for(uint32 t = 0; t < params->n_tables; t++) {
+		bucket_data_consumed_indices[t].resize(ref.hash_tables[0].n_buckets);
+	}
 
 	// process all the hits in intervals
 	std::vector<std::pair<seq_t, uint32> > pos_tid;
@@ -193,7 +197,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 				continue;
 			}
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-			uint32 data_pointer = buckets->bucket_data_consumed_indices[bucket_index];
+			uint32 data_pointer = bucket_data_consumed_indices[t][bucket_index];
 			for(uint32 match = data_pointer; match < bucket.size(); match++) {
 				if(bucket[match] < i*params->hit_collection_interval) { // TODO: don't want to interrupt a contig
 					pos_tid.push_back(std::make_pair(bucket[match], t)); // TODO: limit the number of hits collected
@@ -285,54 +289,49 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 max_windows_matched = 0;
 	uint32 total_windows_matched = 0;
 	uint32 diff_num_top_hits = 0;
-	clock_t t = clock();
-	omp_set_num_threads(params->n_threads);
-	#pragma omp parallel for reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
-	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		read_t* r = &reads.reads[i];
-		if(!r->valid_minhash) continue;
-		r->ref_bucket_id_matches_by_table.resize(params->n_tables);
-		for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-			minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-			uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-			r->ref_bucket_id_matches_by_table[t] = bucket_index;
-		}
-		collect_read_hits(ref, r, params);
+	double start_time = omp_get_wtime();
+	omp_set_num_threads(params->n_threads); // split the reads across the threads
+	#pragma omp parallel reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
+	{
+		int tid = omp_get_thread_num();
+		int n_threads = omp_get_num_threads();
+		seq_t chunk_start = (reads.reads.size()/n_threads)*tid;
+		seq_t chunk_end = (reads.reads.size()/n_threads)*(tid + 1);
+		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
-		// stats
-		uint32 n_contigs = 0;
-		for(uint32 t = 0; t < params->n_tables; t++) {
-			n_contigs += r->ref_matches[t].size();
-		}
-		if(n_contigs > max_windows_matched) {
-			max_windows_matched = n_contigs;
-		}
-		total_windows_matched += n_contigs;
-
-		uint32 f = params->n_tables;
-		uint32 s = params->n_tables;
-		for(int t = params->n_tables-1; t >=0; t--) {
-			if(r->ref_matches[t].size() != 0) {
-				if(f != params->n_tables) {
-					if(s != params->n_tables) {
-						break;
-					}
-					else {
-						s = t;
-					}
-				} else {
-					f = t;
-				}
+		for (uint32 i = chunk_start; i != chunk_end; i++) { // for each read of the thread's chunk
+			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
+				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
+			read_t* r = &reads.reads[i];
+			if(!r->valid_minhash) continue;
+			r->ref_bucket_id_matches_by_table.resize(params->n_tables);
+			for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+				minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
+				uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
+				r->ref_bucket_id_matches_by_table[t] = bucket_index;
+			}
+			collect_read_hits(ref, r, params);
+
+			// stats
+			uint32 n_contigs = 0;
+			for(uint32 t = 0; t < params->n_tables; t++) {
+				n_contigs += r->ref_matches[t].size();
+			}
+			if(n_contigs > max_windows_matched) {
+				max_windows_matched = n_contigs;
+			}
+			total_windows_matched += n_contigs;
 		}
-		diff_num_top_hits += f - s;
 	}
+	double end_time = omp_get_wtime();
 	printf("Collected read hits \n");
 
 	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
+	#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
@@ -345,7 +344,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
-	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
 
