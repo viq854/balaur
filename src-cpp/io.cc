@@ -37,7 +37,9 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 				if (c >= 'a' && c <= 'z'){
 					c += 'A'-'a';
 				}
-				ref.seq.append(1, nt4_table[(int) c]);
+				//if(ref.seq.size() < 100000000) {
+					ref.seq.append(1, nt4_table[(int) c]);
+				//}
 			}
 			c = (char) getc(fastaFile);
 		}
@@ -184,6 +186,7 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		cerr << "Error: " << strerror(errno);
 		exit(1);
 	}
 
