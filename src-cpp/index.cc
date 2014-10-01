@@ -215,8 +215,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			buckets->next_free_bucket_index++;
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
-	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    		}
+	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    		if(bucket.size() == 0) {
 	    			// first item in this thread bucket
