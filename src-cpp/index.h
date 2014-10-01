@@ -131,8 +131,12 @@ typedef struct {
 
 // **** Reference Index ****
 typedef std::vector<omp_lock_t> VectorLocks;
-typedef std::vector<VectorSeqPos> VectorBuckets;
+//typedef std::vector<VectorSeqPos> VectorBuckets;
 typedef std::vector<VectorU32> VectorBucketIndices;
+typedef std::vector<VectorSeqPos> VectorBuckets;
+
+typedef std::vector<std::vector<VectorSeqPos> > VectorPerThreadBuckets;
+typedef std::vector<VectorU32> VectorPerThreadSizes;
 
 // min-hash signature index
 struct buckets_t {
@@ -140,11 +144,16 @@ struct buckets_t {
 	uint32 next_free_bucket_index;
 	VectorU32 bucket_indices;
 	VectorLocks bucket_index_locks;
+	omp_lock_t lock;
+
+	VectorPerThreadBuckets per_thread_buckets_data_vectors;
+	VectorPerThreadSizes per_thread_bucket_sizes;
 
 	VectorBuckets buckets_data_vectors;
 	VectorU32 bucket_sizes;
-	VectorU32 bucket_data_consumed_indices;
-	omp_lock_t lock;
+
+	VectorU32 bucket_data_consumed_indices; // TODO: per thread
+
 };
 typedef std::vector<buckets_t> VectorBucketTables;
 
