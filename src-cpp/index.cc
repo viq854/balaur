@@ -128,10 +128,20 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		omp_init_lock(&buckets->lock);
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 		buckets->bucket_sizes.resize(buckets->n_buckets);
-		//buckets->bucket_data_consumed_indices.resize(buckets->n_buckets);
+
+		// per thread buckets
+		buckets->per_thread_buckets_data_vectors.resize(buckets->n_buckets);
+		buckets->per_thread_bucket_sizes.resize(buckets->n_buckets);
+		for(uint32 i = 0; i < buckets->n_buckets; i++) {
+			buckets->per_thread_buckets_data_vectors[i].resize(params->n_threads);
+		}
+		for(uint32 i = 0; i < params->n_buckets; i++) {
+			buckets->per_thread_bucket_sizes[i].resize(params->n_threads);
+		}
+
 	}
 
-	// initialize per-thread storage
+	// initialize additional per-thread storage
 	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		minhash_thread_vectors[i].resize(params->h);
@@ -146,9 +156,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Hashing reference windows... \n");
 	uint32 n_valid_windows = 0;
 	uint32 n_valid_hashes = 0;
-	uint32 n_bucket_entries = 0;
-	uint32 n_filtered = 0;
-	uint32 n_dropped = 0;
+	uint64 n_bucket_entries = 0;
+	uint64 n_filtered = 0;
+	uint64 n_dropped = 0;
 	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered, n_dropped)
@@ -206,30 +216,30 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			buckets->next_free_bucket_index++;
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
-	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
+	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    			bucket.resize(params->bucket_size);
 	    			bucket[0] = pos; // store the window position in the bucket
-	    			buckets->bucket_sizes[bucket_index]++;
+	    			buckets->per_thread_bucket_sizes[bucket_index][tid]++;
 	    			n_bucket_entries++;
 	    		} else { // this bucket already exists
-	    			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
+	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
+	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    			// add to the existing hash bucket
-	    			if(buckets->bucket_sizes[bucket_index] + 1 <= params->bucket_size) {
+	    			if(buckets->per_thread_bucket_sizes[bucket_index][tid] + 1 <= params->bucket_size) {
 	    				// don't store if near-by sequence present
 	    				bool store_pos = true;
 	    				seq_t H = pos + params->bucket_entry_coverage;
 	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-	    				/*for(uint32 e = 0; e < buckets->bucket_sizes[bucket_index]; e++) {
-	    					seq_t epos = bucket[e];
-	    					if((epos <= H) && (epos >= L)) {
-	    						store_pos = false;
-	    						break;
-	    					}
-	    				}*/
+	    				// check the last value
+	    				seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index]-1]; //for(uint32 e = 0; e < buckets->per_thread_bucket_sizes[bucket_index]; e++)
+	    				if(epos <= H) { //if((epos <= H) && (epos >= L)) {
+	    					store_pos = false;
+	    				}
+
 	    				if(store_pos) {
-	    					bucket.push_back(pos);
-	    					bucket[buckets->bucket_sizes[bucket_index]] = pos;
-	    					buckets->bucket_sizes[bucket_index]++;
+	    					bucket[buckets->per_thread_bucket_sizes[bucket_index]] = pos;
+	    					buckets->per_thread_bucket_sizes[bucket_index]++;
 	    					n_bucket_entries++;
 	    				} else {
 	    					n_filtered++;
@@ -238,14 +248,34 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				n_dropped++;
 	    			}
 	    		}
-	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    	}
 	    }
 	}
 	end_time = omp_get_wtime();
 	printf("Populated all the buckets. Time : %.2f sec\n", end_time - start_time);
 
-	// 4. sort each bucket!
+	// 4. collect per thread results
+	printf("Collecting thread buckets... \n");
+	double start_coll_sort = omp_get_wtime();
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+		buckets_t* buckets = &ref.hash_tables[t];
+		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
+			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
+			for(uint32 i = 0; i < params->n_threads; i++) {
+				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[b][i];
+				for(uint32 j = 0; j < buckets->per_thread_bucket_sizes[b][i]; j++) {
+					bucket.push_back(thread_bucket[j]);
+					buckets->bucket_sizes[b]++;
+				}
+				thread_bucket = VectorSeqPos();
+			}
+
+		}
+	}
+	end_time = omp_get_wtime();
+	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_time);
+
+	// 5. sort each bucket!
 	printf("Sorting buckets... \n");
 	double start_time_sort = omp_get_wtime();
 	#pragma omp parallel for
@@ -261,9 +291,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
-	printf("Total number of window bucket entries: %u \n", n_bucket_entries);
-	printf("Total number of window bucket entries filtered: %u \n", n_filtered);
-	printf("Total number of window bucket entries dropped: %u \n", n_dropped);
+	printf("Total number of window bucket entries: %llu \n", n_bucket_entries);
+	printf("Total number of window bucket entries filtered: %llu \n", n_filtered);
+	printf("Total number of window bucket entries dropped: %llu \n", n_dropped);
 	end_time = omp_get_wtime();
 	printf("Total hashing time: %.2f sec\n", end_time - start_time);
 }
