@@ -142,7 +142,7 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 	fname += std::string(".idx");
 
 	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 	if (!file.is_open()) {
 		printf("store_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
 		exit(1);
@@ -158,7 +158,7 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 			file.write(reinterpret_cast<const char*>(&buckets.bucket_indices[j]), sizeof(uint32));
 		}
 		// data
-		size = buckets.buckets_data_vectors.size();
+		size = buckets.next_free_bucket_index;
 		file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 		for(uint32 j = 0; j < buckets.n_buckets; j++) {
 			if(buckets.bucket_indices[j] == buckets.n_buckets) {
