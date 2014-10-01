@@ -135,7 +135,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		for(uint32 i = 0; i < buckets->n_buckets; i++) {
 			buckets->per_thread_buckets_data_vectors[i].resize(params->n_threads);
 		}
-		for(uint32 i = 0; i < params->n_buckets; i++) {
+		for(uint32 i = 0; i < buckets->n_buckets; i++) {
 			buckets->per_thread_bucket_sizes[i].resize(params->n_threads);
 		}
 
@@ -217,7 +217,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
 	    			omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
-	    			VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+	    			//printf("Tid %d table %u: hash %u index %u thred_blen %zu \n", tid, t, bucket_hash, bucket_index, buckets->per_thread_buckets_data_vectors[bucket_index].size());
+				VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    			bucket.resize(params->bucket_size);
 	    			bucket[0] = pos; // store the window position in the bucket
 	    			buckets->per_thread_bucket_sizes[bucket_index][tid]++;
@@ -229,17 +230,20 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			if(buckets->per_thread_bucket_sizes[bucket_index][tid] + 1 <= params->bucket_size) {
 	    				// don't store if near-by sequence present
 	    				bool store_pos = true;
-	    				seq_t H = pos + params->bucket_entry_coverage;
-	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+	    				//seq_t H = pos + params->bucket_entry_coverage;
 	    				// check the last value
-	    				seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index]-1]; //for(uint32 e = 0; e < buckets->per_thread_bucket_sizes[bucket_index]; e++)
-	    				if(epos <= H) { //if((epos <= H) && (epos >= L)) {
-	    					store_pos = false;
-	    				}
+					if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
+						seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+						seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1]; //for(uint32 e = 0; e < buckets->per_thread_bucket_sizes[bucket_index]; e++)
+	    					if(epos >= L) {
+	    						store_pos = false;
+	    					}
+					}
 
 	    				if(store_pos) {
-	    					bucket[buckets->per_thread_bucket_sizes[bucket_index]] = pos;
-	    					buckets->per_thread_bucket_sizes[bucket_index]++;
+	    					//printf("Adding - Tid %d table %u: hash %u index %u thred_blen %zu \n", tid, t, bucket_hash, bucket_index, buckets->per_thread_buckets_data_vectors[bucket_index].size());
+						bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]] = pos;
+	    					buckets->per_thread_bucket_sizes[bucket_index][tid]++;
 	    					n_bucket_entries++;
 	    				} else {
 	    					n_filtered++;
@@ -273,7 +277,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		}
 	}
 	end_time = omp_get_wtime();
-	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_time);
+	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_coll_sort);
 
 	// 5. sort each bucket!
 	printf("Sorting buckets... \n");

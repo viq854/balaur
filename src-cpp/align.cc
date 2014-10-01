@@ -185,6 +185,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
 
 		std::vector<std::pair<seq_t, uint32> > pos_tid;
+		pos_tid.reserve(1000);
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 			buckets_t* buckets = &ref.hash_tables[t];
 			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
