@@ -83,7 +83,7 @@ typedef struct {
 		max_best_hits = 1000;
 		max_suboptimal_hits = 500;
 
-		hit_collection_interval = 5000000;
+		hit_collection_interval = 200000000;
 	}
 
 	// set the initial kmer hash function (rolling hash)
@@ -147,12 +147,8 @@ struct buckets_t {
 	VectorLocks bucket_index_locks;
 	VectorBuckets buckets_data_vectors;
 	VectorU32 bucket_sizes;
-
 	VectorPerThreadBuckets per_thread_buckets_data_vectors;
 	VectorPerThreadSizes per_thread_bucket_sizes;
-
-	VectorU32 bucket_data_consumed_indices; // TODO: per thread
-
 };
 typedef std::vector<buckets_t> VectorBucketTables;
 
