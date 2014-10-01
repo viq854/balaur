@@ -8,6 +8,7 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 
 #include <omp.h>
 #include "hash.h"
+#include <tbb/tbb.h>
 
 // program parameters
 typedef struct {	

@@ -4,7 +4,7 @@ DFLAGS=		-DHAVE_PTHREAD
 OBJS=		main.o io.o index.o lsh.o city.o cluster.o align.o mt19937-64.o
 PROG=		srx
 INCLUDES=	-I/usr/local/include/
-LIBS=		-lm -lz -lpthread -L/usr/local/bin -lmarisa
+LIBS=		-lm -lz -ltbb -ltbbmalloc -lpthread -L/usr/local/bin -lmarisa
 
 .SUFFIXES:.c .o .cc
 

@@ -219,13 +219,13 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				bool store_pos = true;
 	    				seq_t H = pos + params->bucket_entry_coverage;
 	    				seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-	    				for(uint32 e = 0; e < buckets->bucket_sizes[bucket_index]; e++) {
+	    				/*for(uint32 e = 0; e < buckets->bucket_sizes[bucket_index]; e++) {
 	    					seq_t epos = bucket[e];
 	    					if((epos <= H) && (epos >= L)) {
 	    						store_pos = false;
 	    						break;
 	    					}
-	    				}
+	    				}*/
 	    				if(store_pos) {
 	    					bucket.push_back(pos);
 	    					bucket[buckets->bucket_sizes[bucket_index]] = pos;
