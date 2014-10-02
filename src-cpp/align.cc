@@ -525,8 +525,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 				r->ref_bucket_id_matches_by_table[t] = bucket_index;
 			}
-			collect_read_hits_contigs(ref, r, params);
-			printf("Collected read %u best %u \n", i, r->best_n_hits);
+			collect_read_hits_contigs_inplace_merge(ref, r, params);
+			//printf("Collected read %u best %u \n", i, r->best_n_hits);
 
 			// stats
 			uint32 n_contigs = 0;
