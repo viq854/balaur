@@ -315,7 +315,7 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
-	mark_freq_kmers(ref, params);
+	//mark_freq_kmers(ref, params);
 	double end_time = omp_get_wtime();
 	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 

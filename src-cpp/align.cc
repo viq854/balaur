@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <utility>
 #include <limits.h>
+#include <assert.h>
 #include "index.h"
 #include "io.h"
 #include "hash.h"
@@ -148,6 +149,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    r->top_hit_acc = 0;
    
    //printf("best_n %u \n", r->best_n_hits);
+   assert(r->best_n_hits < params->n_tables);
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
@@ -408,7 +410,6 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 				}
 			}
 		}
-
 		if(matches.size() == 0) continue;
 
 		// count how many times a position occurs
@@ -416,7 +417,7 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 
 		seq_t last_pos = matches[0].first;
 		VectorBool occ(params->n_tables, false);
-		occ[ matches[0].second] = true;
+		occ[matches[0].second] = true;
 		uint32 n_diff_table_hits = 1;
 		uint32 len = 0;
 		for(uint32 i = 1; i < matches.size(); i++) {
@@ -429,6 +430,8 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 				len += pos - last_pos;
 			} else {
 				// found a boundary, store
+				assert(n_diff_table_hits > 0);
+				assert(n_diff_table_hits-1 < params->n_tables);
 				if(n_diff_table_hits >= params->min_n_hits) {
 					if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 						n_best_hits = n_diff_table_hits;
@@ -477,6 +480,7 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 
 	}
 	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
+	assert(r->best_n_hits < params->n_tables);
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
