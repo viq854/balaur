@@ -10,7 +10,6 @@
 #include "index.h"
 #include "io.h"
 #include "hash.h"
-#include "cluster.h"
 
 int find_window_match_diffk(ref_t& ref, cluster_t* cluster, const index_params_t* params);
 int find_window_match(ref_t& ref, cluster_t* cluster, const index_params_t* params);
@@ -288,15 +287,11 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 	// construct a priority heap of matches ordered by the number of projections matched
 	r->ref_matches.resize(params->n_tables);
 
-	int n_best_hits = 0; // best number of table hits found so far
-	VectorU32 occ(params->n_tables, 0);
-	std::vector<VectorU32> bucket_data_consumed_indices(params->n_tables); // TODO: per thread to be reused
-	for(uint32 t = 0; t < params->n_tables; t++) {
-		bucket_data_consumed_indices[t].resize(ref.hash_tables[0].n_buckets);
-	}
+	uint32 n_best_hits = 0; // best number of table hits found so far
+	VectorU32 bucket_data_consumed_indices(params->n_tables);
 
 	// process all the hits in intervals
-	std::vector<seq_t, tbb::scalable_allocator<seq_t> > matches;
+	std::vector<seq_t> matches;
 	matches.reserve(1000);
 	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
 		matches.clear();
@@ -304,53 +299,44 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 			buckets_t* buckets = &ref.hash_tables[t];
 			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
 			if(bucket_index == buckets->n_buckets) {
-				continue;
+				continue; // no reference window fell into this bucket
 			}
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-			uint32 data_pointer = bucket_data_consumed_indices[t][bucket_index];
+			uint32 data_pointer = bucket_data_consumed_indices[t];
 			for(uint32 match = data_pointer; match < bucket.size(); match++) {
-				if(bucket[match] < i*params->hit_collection_interval) { // TODO: don't want to interrupt a contig
-					matches.push_back(bucket[match]); // TODO: limit the number of hits collected
-					bucket_data_consumed_indices[t][bucket_index]++;
+				if(bucket[match] < i*params->hit_collection_interval) {
+					matches.push_back(bucket[match]);
+					bucket_data_consumed_indices[t]++;
 				} else {
 					break; // requires that each bucket is sorted
 				}
 			}
 		}
-
 		if(matches.size() == 0) continue;
 
-		// need to find *hot-spot* contigs and count how many times a position occurs
-		// sort and reduce
+		// count how many times a position occurs
 		std::sort(matches.begin(), matches.end());
-
-		// find contigs
-		// due to sampling, different near-by positions contribute to the frequency of the locus
-		// except when they were in the same bucket! - then it should count as 1
-		// near-by positions will be consecutive in the sorted list
-		// # diff buckets can be found by checking bucket ids
 
 		seq_t last_pos = matches[0];
 		uint32 n_diff_table_hits = 1;
 		for(uint32 i = 1; i < matches.size(); i++) {
 			seq_t pos = matches[i];
-			if(pos == last_pos) { // look for contigs not separated by more than GAP_LEN
+			if(pos == last_pos) {
 				n_diff_table_hits++;
 			} else {
 				// found a boundary, store
-				int n_occ = n_diff_table_hits - 1;
-				if(n_occ >= (int) params->min_n_hits - 1) {
-					if(n_occ > n_best_hits) { // if more hits than best so far
-						n_best_hits = n_occ;
-						if(r->ref_matches[n_occ].size() < params->max_best_hits) {
-							r->ref_matches[n_occ].push_back(ref_match_t(last_pos, 0));
+				if(n_diff_table_hits >= (int) params->min_n_hits) {
+					if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
+						n_best_hits = n_diff_table_hits;
+						if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
+							r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
 						}
 					} else {
 						// sub-optimal
 						// only store if the number of hits is not too much lower than the best so far
-						if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
-							if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
-								r->ref_matches[n_occ].push_back(ref_match_t(last_pos, 0));
+						if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
+							if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
+								r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
 							}
 						}
 					}
@@ -359,20 +345,19 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 			last_pos = pos;
 		}
 
-		// add the last contig
-		int n_occ = (int) n_diff_table_hits - 1;
-		if(n_occ >= (int) params->min_n_hits - 1) {
-			if(n_occ > n_best_hits) { // if more hits than best so far
-				n_best_hits = n_occ;
-				if(r->ref_matches[n_occ].size() < params->max_best_hits) {
-					r->ref_matches[n_occ].push_back(ref_match_t(last_pos, 0));
+		// add the last position
+		if(n_diff_table_hits >= params->min_n_hits) {
+			if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
+				n_best_hits = n_diff_table_hits;
+				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
+					r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
 				}
 			} else {
 				// sub-optimal
 				// only store if the number of hits is not too much lower than the best so far
-				if(n_occ >= n_best_hits - (int) params->dist_best_hit) {
-					if(r->ref_matches[n_occ].size() < params->max_suboptimal_hits) {
-						r->ref_matches[n_occ].push_back(ref_match_t(last_pos, 0));
+				if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
+					if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
+						r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
 					}
 				}
 			}
@@ -404,6 +389,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
 			read_t* r = &reads.reads[i];
+			r->best_n_hits = 0;
 			if(!r->valid_minhash) continue;
 			r->ref_bucket_id_matches_by_table.resize(params->n_tables);
 			for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
