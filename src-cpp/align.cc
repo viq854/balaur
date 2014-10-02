@@ -296,10 +296,10 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 	}
 
 	// process all the hits in intervals
-	std::vector<seq_t, tbb::scalable_allocator<seq_t> > pos;
-	pos.reserve(1000);
+	std::vector<seq_t, tbb::scalable_allocator<seq_t> > matches;
+	matches.reserve(1000);
 	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
-		pos.clear();
+		matches.clear();
 		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 			buckets_t* buckets = &ref.hash_tables[t];
 			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
@@ -310,7 +310,7 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 			uint32 data_pointer = bucket_data_consumed_indices[t][bucket_index];
 			for(uint32 match = data_pointer; match < bucket.size(); match++) {
 				if(bucket[match] < i*params->hit_collection_interval) { // TODO: don't want to interrupt a contig
-					pos.push_back(bucket[match]); // TODO: limit the number of hits collected
+					matches.push_back(bucket[match]); // TODO: limit the number of hits collected
 					bucket_data_consumed_indices[t][bucket_index]++;
 				} else {
 					break; // requires that each bucket is sorted
@@ -318,11 +318,11 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 			}
 		}
 
-		if(pos.size() == 0) continue;
+		if(matches.size() == 0) continue;
 
 		// need to find *hot-spot* contigs and count how many times a position occurs
 		// sort and reduce
-		std::sort(pos.begin(), pos.end());
+		std::sort(matches.begin(), matches.end());
 
 		// find contigs
 		// due to sampling, different near-by positions contribute to the frequency of the locus
@@ -330,10 +330,10 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 		// near-by positions will be consecutive in the sorted list
 		// # diff buckets can be found by checking bucket ids
 
-		seq_t last_pos = pos[0];
+		seq_t last_pos = matches[0];
 		uint32 n_diff_table_hits = 1;
-		for(uint32 i = 1; i < pos.size(); i++) {
-			seq_t pos = pos[i];
+		for(uint32 i = 1; i < matches.size(); i++) {
+			seq_t pos = matches[i];
 			if(pos == last_pos) { // look for contigs not separated by more than GAP_LEN
 				n_diff_table_hits++;
 			} else {
