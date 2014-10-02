@@ -500,9 +500,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		int n_threads = omp_get_num_threads();
 		seq_t chunk_start = (reads.reads.size()/n_threads)*tid;
 		seq_t chunk_end = (reads.reads.size()/n_threads)*(tid + 1);
+		if(tid == n_threads - 1) {
+			chunk_end = reads.reads.size();
+		}
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
-		for (uint32 i = chunk_start; i != chunk_end; i++) { // for each read of the thread's chunk
+		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
