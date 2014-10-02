@@ -10,6 +10,7 @@
 #include "index.h"
 #include "io.h"
 #include "hash.h"
+#include "cluster.h"
 
 int find_window_match_diffk(ref_t& ref, cluster_t* cluster, const index_params_t* params);
 int find_window_match(ref_t& ref, cluster_t* cluster, const index_params_t* params);
@@ -144,6 +145,8 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 
    r->top_hit_acc = 0;
+   
+   //printf("best_n %u \n", r->best_n_hits);
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
@@ -278,7 +281,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 		}
 
 	}
-	r->best_n_hits = n_best_hits;
+	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
@@ -312,6 +315,7 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 				}
 			}
 		}
+		
 		if(matches.size() == 0) continue;
 
 		// count how many times a position occurs
@@ -325,22 +329,25 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 				n_diff_table_hits++;
 			} else {
 				// found a boundary, store
-				if(n_diff_table_hits >= (int) params->min_n_hits) {
+				if(n_diff_table_hits >= params->min_n_hits) {
 					if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 						n_best_hits = n_diff_table_hits;
 						if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-							r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
+							ref_match_t rm(last_pos, 0);
+							r->ref_matches[n_diff_table_hits-1].push_back(rm);
 						}
 					} else {
 						// sub-optimal
 						// only store if the number of hits is not too much lower than the best so far
 						if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
 							if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-								r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
+								ref_match_t rm(last_pos, 0);
+								r->ref_matches[n_diff_table_hits-1].push_back(rm);
 							}
 						}
 					}
 				}
+				n_diff_table_hits = 1;
 			}
 			last_pos = pos;
 		}
@@ -350,21 +357,23 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 			if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 				n_best_hits = n_diff_table_hits;
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
+					ref_match_t rm(last_pos, 0);
+					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			} else {
 				// sub-optimal
 				// only store if the number of hits is not too much lower than the best so far
 				if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
 					if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-						r->ref_matches[n_diff_table_hits-1].push_back(ref_match_t(last_pos, 0));
+						ref_match_t rm(last_pos, 0);
+						r->ref_matches[n_diff_table_hits-1].push_back(rm);
 					}
 				}
 			}
 		}
 
 	}
-	r->best_n_hits = n_best_hits;
+	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
@@ -420,6 +429,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
+		//printf("Evaluating read %u \n", i);
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
