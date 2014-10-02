@@ -459,6 +459,8 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 		}
 
 		// add the last position
+		assert(n_diff_table_hits > 0);
+		assert(n_diff_table_hits-1 < params->n_tables);
 		if(n_diff_table_hits >= params->min_n_hits) {
 			if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 				n_best_hits = n_diff_table_hits;
@@ -514,6 +516,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				r->ref_bucket_id_matches_by_table[t] = bucket_index;
 			}
 			collect_read_hits_contigs(ref, r, params);
+			printf("Collected read %u best %u \n", i, r->best_n_hits);
 
 			// stats
 			uint32 n_contigs = 0;
@@ -533,7 +536,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int valid_hash = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
-	#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
+	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
 		//printf("Evaluating read %u \n", i);

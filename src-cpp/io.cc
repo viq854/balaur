@@ -347,7 +347,7 @@ void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned
         } else if(token_index == 2) {
                 sscanf(token, "%u", ref_pos_r);
         } else if(token_index == 3) {
-                *strand = (strcmp(token, "nm") == 0) ? 1 : 0;
+                //*strand = (strcmp(token, "nm") == 0) ? 1 : 0;
         } else if(token_index > 3){
         	break;
         }
