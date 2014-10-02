@@ -329,7 +329,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		r.acc = 0;
 		reads.reads.push_back(r);
 
-		//if(reads.reads.size() > 1000) break;
+		if(reads.reads.size() > 1000) break;
 	}
 	fclose(readsFile);
 }
