@@ -307,7 +307,7 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	printf("Loading reference index for reference file %s... \n", fastaFname);
 	t = clock();
 	load_ref_idx(fastaFname, ref, params);
-	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Reference index loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// 3. load the frequency of each kmer and collect high-frequency kmers
 	double start_time = omp_get_wtime();

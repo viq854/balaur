@@ -174,7 +174,7 @@ struct ref_match_t {
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
 
-typedef struct {
+struct read_t {
 	uint32_t len; 					// read length
 	std::string name; 				// read name
 	std::string seq;				// read sequence
@@ -198,7 +198,7 @@ typedef struct {
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
 
-} read_t;
+};
 typedef std::vector<read_t> VectorReads;
 typedef std::vector<read_t*> VectorPReads;
 
