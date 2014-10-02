@@ -257,15 +257,21 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
+			uint32 bsize = 0; // count the size of the global bucket
+			for(uint32 i = 0; i < params->n_threads; i++) {
+				bsize += buckets->per_thread_bucket_sizes[b][i];
+			}
+			bucket.resize(bsize);
+
 			for(uint32 i = 0; i < params->n_threads; i++) {
 				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[b][i];
 				for(uint32 j = 0; j < buckets->per_thread_bucket_sizes[b][i]; j++) {
-					bucket.push_back(thread_bucket[j]);
+					bucket[buckets->bucket_sizes[b]] = thread_bucket[j];
 					buckets->bucket_sizes[b]++;
 				}
-				thread_bucket = VectorSeqPos();
+				 VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[b][i]);
 			}
-
+			std::vector<VectorSeqPos>().swap(buckets->per_thread_buckets_data_vectors[b]);
 		}
 	}
 	end_time = omp_get_wtime();
