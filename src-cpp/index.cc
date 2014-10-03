@@ -224,14 +224,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		}
 	    		// add to the bucket (if size allows)
 	    		uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
-	    		if(curr_size + 1 <= bucket.size()) {
+	    		if(curr_size + 1 >= bucket.size()) {
 	    			bucket.resize(curr_size + 100);
 	    		}
 				bool store_pos = true;
 				// don't store if near-by sequence present, need to check the last value only
-				if(buckets->per_thread_bucket_sizes[bucket_index][tid] > 0) {
+				if(curr_size > 0) {
 					seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-					seq_t epos = bucket[buckets->per_thread_bucket_sizes[bucket_index][tid]-1];
+					seq_t epos = bucket[curr_size-1];
 					if(epos >= L) {
 						store_pos = false;
 					}
