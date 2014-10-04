@@ -31,7 +31,7 @@ static const unsigned char nt4_table[256] = {
 void fasta2ref(const char *fastaFname, ref_t& ref);
 void fastq2reads(const char *readsFname, reads_t& reads);
 void print_read(read_t* read);
-void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
+void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
 void load_kmer_hist(const char* refFname, MapKmerCounts& hist, const uint32 max_count);
 void store_kmer_hist(const char* refFname, const MapKmerCounts& hist);
 void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);

@@ -143,13 +143,20 @@ int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
 //}
 
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
-   unsigned int pos_l, pos_r;
+   unsigned int seq_id, pos_l, pos_r;
    int strand;
-   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-
+   parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
+   seq_id = seq_id - 1;
    r->top_hit_acc = 0;
    
+   assert(seq_id >= 0);
+   if(ref.subsequence_offsets.size() > 1) {
+	   assert(seq_id < ref.subsequence_offsets.size());
+	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+   }
+
    //printf("best_n %u \n", r->best_n_hits);
+   assert(seq_id);
    assert(r->best_n_hits < params->n_tables);
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
@@ -397,13 +404,13 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		buckets_t* buckets = &ref.hash_tables[t];
 		uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
-		printf("Table %u - index %u \n", t, bucket_index);
+		//printf("Table %u - index %u \n", t, bucket_index);
 		if(bucket_index == buckets->n_buckets) {
 			continue; // no reference window fell into this bucket
 		}
 		VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
 		q.push(std::make_pair(bucket[0], t));
-		printf("Pushed match (%u, %u) \n", bucket[0], t);
+		//printf("Pushed match (%u, %u) \n", bucket[0], t);
 		bucket_indices[t]++;
 	}
 	if(q.empty()) return; // all the matched buckets are empty
@@ -416,7 +423,7 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 	VectorSeqPos& bucket = ref.hash_tables[tid].buckets_data_vectors[r->ref_bucket_id_matches_by_table[tid]];
 	if(bucket_indices[tid] < bucket.size()) {
 		q.push(std::make_pair(bucket[bucket_indices[tid]], tid));
-		printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
+		//printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
 		bucket_indices[tid]++;
 	}
 
@@ -435,9 +442,9 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 			}
 			occ[tid] = true;
 			len += pos - last_pos;
-			printf("Pop within contig cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
+			//printf("Pop within contig cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
 		} else { // found a boundary, store
-			printf("Pop found boundary cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
+			//printf("Pop found boundary cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
 			assert(n_diff_table_hits > 0);
 			assert(n_diff_table_hits-1 < params->n_tables);
 			if(n_diff_table_hits >= params->min_n_hits) {
@@ -457,7 +464,7 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 						}
 					}
 				}
-				printf("MATCH pos %u len %u n_hits %u \n", pos, len, n_diff_table_hits);
+				//printf("MATCH pos %u len %u n_hits %u \n", pos, len, n_diff_table_hits);
 			}
 			std::fill(occ.begin(), occ.end(), false);
 			occ[tid] = true;
@@ -470,7 +477,7 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 		if(bucket_indices[tid] < bucket.size()) {
 			q.push(std::make_pair(bucket[bucket_indices[tid]], tid));
 			bucket_indices[tid]++;
-			printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
+			//printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
 		}
 	}
 	// add the last position
@@ -493,7 +500,7 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 				}
 			}
 		}
-		printf("MATCH (last) pos %u len %u n_hits %u \n", last_pos, len, n_diff_table_hits);
+		//printf("MATCH (last) pos %u len %u n_hits %u \n", last_pos, len, n_diff_table_hits);
 	}
 
 	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
