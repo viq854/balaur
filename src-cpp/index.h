@@ -157,6 +157,8 @@ typedef struct {
 	std::string seq; 					// reference sequence data
 	seq_t len;							// reference sequence length
 
+	VectorU32 subsequence_offsets;
+
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
 	marisa::Trie high_freq_kmer_trie;
 	VectorBool ignore_kmer_bitmask;

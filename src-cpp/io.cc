@@ -25,6 +25,7 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 	while(!feof(fastaFile)) {
 		c = (char) getc(fastaFile);
 
+		ref.subsequence_offsets.push_back(ref.seq.size());
 		// sequence description line (> ...)
 		while(c != '\n' && !feof(fastaFile)){
 			c = (char) getc(fastaFile);
@@ -37,15 +38,13 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 				if (c >= 'a' && c <= 'z'){
 					c += 'A'-'a';
 				}
-				//if(ref.seq.size() < 100000000) {
-					ref.seq.append(1, nt4_table[(int) c]);
-				//}
+				ref.seq.append(1, nt4_table[(int) c]);
 			}
 			c = (char) getc(fastaFile);
 		}
 	}
 	ref.len = ref.seq.size();
-	printf("Done reading FASTA file. Total sequence length read = %u\n", ref.len);
+	printf("Done reading FASTA file. Number of subsequences: %zu. Total sequence length read = %u\n", ref.subsequence_offsets.size(), ref.len);
 	fclose(fastaFile);
 }
 
@@ -329,20 +328,22 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		r.acc = 0;
 		reads.reads.push_back(r);
 
-		if(reads.reads.size() > 1000) break;
+		//if(reads.reads.size() > 1000) break;
 	}
 	fclose(readsFile);
 }
 
 // assumes that reads were generated with wgsim
-void parse_read_mapping(const char* read_name, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
+void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
     int token_index = 0;
     const char delimiters[] = "_";
     const char* read_name_dup = std::string(read_name).c_str();
     char* ptr;
     char* token = strtok_r((char *) read_name_dup, delimiters, &ptr);
     while (token != NULL) {
-        if(token_index == 1) {
+    	if(token_index == 0) {
+				sscanf(&token[1], "%u", seq_id);
+		} else if(token_index == 1) {
                 sscanf(token, "%u", ref_pos_l);
         } else if(token_index == 2) {
                 sscanf(token, "%u", ref_pos_r);
