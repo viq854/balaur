@@ -30,7 +30,7 @@ void shift_bucket_ref(ref_t& ref, int bucket);
 void shift_bucket_reads(reads_t& reads, int bucket);
 
 void get_stats(const ref_t& ref, const VectorClusters& clusters) {
-	uint32 printed = 0;
+	/*uint32 printed = 0;
 	for(uint32 i = 0; i < clusters.size(); i++) {
 		cluster_t c = clusters[i];
 		if(c.acc == 0) {
@@ -44,7 +44,7 @@ void get_stats(const ref_t& ref, const VectorClusters& clusters) {
 				print_read(r);
 				unsigned int pos_l, pos_r;
 				int strand;
-				parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
+				//parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
 //				unsigned int true_pos = pos_l - 1;
 //				for(seq_t k = 0; k < ref.windows.size(); k++) {
 //					if(true_pos == ref.windows[k].pos) {
@@ -56,7 +56,7 @@ void get_stats(const ref_t& ref, const VectorClusters& clusters) {
 //				}
 			}
 		}
-	}
+	}*/
 }
 
 // aligns the indexed reads to the indexed reference
@@ -148,15 +148,15 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
    seq_id = seq_id - 1;
    r->top_hit_acc = 0;
-   
+
    assert(seq_id >= 0);
    if(ref.subsequence_offsets.size() > 1) {
+	   //printf("%u\n", seq_id);
 	   assert(seq_id < ref.subsequence_offsets.size());
 	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
    }
 
    //printf("best_n %u \n", r->best_n_hits);
-   assert(seq_id);
    assert(r->best_n_hits < params->n_tables);
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
@@ -917,11 +917,11 @@ void shuffle(int *perm) {
 // check how many reads in this cluster match the window positions
 int eval_cluster_hit(cluster_t* cluster) {
     int matched = 0;
-    for(uint32 i = 0; i < cluster->reads.size(); i++) {
+    /*for(uint32 i = 0; i < cluster->reads.size(); i++) {
         read_t r = *cluster->reads[i];
         unsigned int pos_l, pos_r;
         int strand;
-        parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
+        //parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
         //printf("lpos %llu rpos %llu \n", pos_l, pos_r);
 
 	int found = 0;
@@ -939,7 +939,7 @@ int eval_cluster_hit(cluster_t* cluster) {
         		break;
         	}
         }
-    }
+    }*/
     return matched;
 }
 

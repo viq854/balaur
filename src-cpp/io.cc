@@ -1,4 +1,6 @@
-
+#include <istream>
+#include <sstream>
+#include <iostream>
 #include <stdio.h>
 #include <string.h>
 #include <fstream>
@@ -335,6 +337,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 
 // assumes that reads were generated with wgsim
 void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
+    /*printf("name %s \n", read_name);
     int token_index = 0;
     const char delimiters[] = "_";
     const char* read_name_dup = std::string(read_name).c_str();
@@ -342,19 +345,34 @@ void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned in
     char* token = strtok_r((char *) read_name_dup, delimiters, &ptr);
     while (token != NULL) {
     	if(token_index == 0) {
-				sscanf(&token[1], "%u", seq_id);
-		} else if(token_index == 1) {
+		sscanf(token, "%u", seq_id);
+		if(*seq_id > 22)  *seq_id = 23;
+	} else if(token_index == 1) {
                 sscanf(token, "%u", ref_pos_l);
         } else if(token_index == 2) {
                 sscanf(token, "%u", ref_pos_r);
         } else if(token_index == 3) {
-                //*strand = (strcmp(token, "nm") == 0) ? 1 : 0;
+                *strand = (strcmp(token, "nm") == 0) ? 1 : 0;
         } else if(token_index > 3){
         	break;
         }
         token = strtok_r(NULL, delimiters, &ptr);
         token_index++;
+    }*/
+    std::istringstream is((std::string(read_name)));
+    std::string seqid;
+    std::string refl;    
+
+    std::getline(is, seqid, '_');
+    std::getline(is, refl, '_');
+   
+    if(seqid.compare("X") == 0) {
+    	*seq_id = 23;
+    } else {
+    	*seq_id = atoi(seqid.c_str());
     }
+    *ref_pos_l = atoi(refl.c_str());
+    //printf("Parsed %u %u %u \n", *seq_id, *ref_pos_l, *ref_pos_r);
 }
 
 void print_read(read_t* read) {
