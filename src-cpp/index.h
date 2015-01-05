@@ -194,6 +194,7 @@ struct read_t {
 
 	// found ref match positions
 	VectorU32 ref_bucket_id_matches_by_table;
+	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 	uint32 best_n_hits;
 
