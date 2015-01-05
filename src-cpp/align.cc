@@ -53,14 +53,6 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    return (r->acc == 1);
 }
 
-
-void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	// find the contig with most hits
-
-	// find the contig with second most hits
-}
-
 void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// construct a priority heap of matches ordered by the number of projections matched
@@ -479,15 +471,25 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 }
 
+void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
+
+	// find the contig with most hits
+	// find the contig with second most hits
+
+	// banded global dynamic programming
+}
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
 	uint32 max_windows_matched = 0;
 	uint32 total_windows_matched = 0;
+	uint32 total_top_contigs = 0;
+	uint32 total_contigs_length = 0;
 	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the reads across the threads
-	#pragma omp parallel reduction(+:total_windows_matched, diff_num_top_hits) reduction(max:max_windows_matched)
+	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) reduction(max:max_windows_matched)
 	{
 		int tid = omp_get_thread_num();
 		int n_threads = omp_get_num_threads();
@@ -521,13 +523,24 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 			// stats
 			uint32 n_contigs = 0;
+			uint32 top_contigs = 0;
+			uint32 contig_length = 0;
 			for(uint32 t = 0; t < params->n_tables; t++) {
 				n_contigs += r->ref_matches[t].size();
+				if(t == r->best_n_hits) {
+					top_contigs++;
+				}
+				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
+				   ref_match_t match = r->ref_matches[i][j];
+				   contig_length += match.len;
+			   }
 			}
 			if(n_contigs > max_windows_matched) {
 				max_windows_matched = n_contigs;
 			}
 			total_windows_matched += n_contigs;
+			total_top_contigs += top_contigs;
+			total_contigs_length += contig_length;
 		}
 	}
 	double end_time = omp_get_wtime();
@@ -548,7 +561,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
-	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/reads.reads.size());
+	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/acc_hits);
+	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/acc_hits);
+	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
