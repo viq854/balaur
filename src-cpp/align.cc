@@ -381,10 +381,9 @@ void collect_read_hits_contigs_priorityqueue(ref_t& ref, read_t* r, const index_
 }
 
 struct heap_entry_t {
-	const seq_t pos;
-	const uint32 tid;
-	const uint32 next_idx;
-	heap_entry_t(seq_t _pos, uint32 _tid, uint32 _next_idx) : pos(_pos), tid(_tid), next_idx(_next_idx) {}
+	seq_t pos;
+	uint32 tid;
+	uint32 next_idx;
 };
 
 void heap_update(heap_entry_t* heap, uint32 n) {
@@ -393,7 +392,7 @@ void heap_update(heap_entry_t* heap, uint32 n) {
 	heap_entry_t tmp = heap[i];
 	while ((k = (k << 1) + 1) < n) {
 		if (k != n - 1 && (heap[k].pos >= heap[k+1].pos)) ++k;
-		if (heap[k].pos >= tmp) break;
+		if (heap[k].pos >= tmp.pos) break;
 		heap[i] = heap[k]; i = k;
 	}
 	heap[i] = tmp;
@@ -412,7 +411,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	// push the first entries in each sorted bucket onto the heap
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) continue;
-		heap[heap_size] = heap_entry_t((*r->ref_bucket_matches_by_table[t])[0], t, 1);
+		heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0];
+		heap[heap_size].tid = t;
+		heap[heap_size].next_idx = 1;
 		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
@@ -445,14 +446,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			n_diff_table_hits = 1;
 			len = 0;
 			last_pos = e.pos;
-			occ = { false };
+			std::fill(occ, occ + params->n_tables, false );
 			occ[e.tid] = true;
 		}
 		// push the next match from this bucket
 		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-			heap[0] = heap_entry_t((*r->ref_bucket_matches_by_table[e.tid])[e.next_idx], e.tid, e.next_idx+1);
+			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
+			heap[0].tid = e.tid;
+			heap[0].next_idx = e.next_idx+1;
 			heap_update(heap, heap_size);
-		} else {
+		} else { // no more entries in this bucket
 			heap_size--;
 		}
 	}
@@ -469,7 +472,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 
 	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
 	assert(r->best_n_hits < params->n_tables);
-	VectorU32().swap(r->ref_bucket_matches_by_table); //release memory
+	std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 }
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
