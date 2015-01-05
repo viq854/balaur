@@ -378,14 +378,27 @@ struct heap_entry_t {
 	uint32 next_idx;
 };
 
+void heap_sort(heap_entry_t* heap, uint32 n) {
+	heap_entry_t tmp;
+	uint32 i, j;
+	for(j = 1; j < n; j++) {
+		tmp = heap[j];
+		for(i = j - 1; (i >= 0) && (heap[i].pos < tmp.pos); i--) {
+			heap[i+1] = heap[i];
+		}
+		heap[i+1] = tmp;
+	}
+}
+
 void heap_update(heap_entry_t* heap, uint32 n) {
 	uint32 i = 0;
 	uint32 k = i;
 	heap_entry_t tmp = heap[i];
-	while ((k = (k << 1) + 1) < n) {
-		if (k != n - 1 && (heap[k].pos >= heap[k+1].pos)) ++k;
-		if (heap[k].pos >= tmp.pos) break;
-		heap[i] = heap[k]; i = k;
+	while((k = (k << 1) + 1) < n) {
+		if(k != (n - 1) && (heap[k].pos >= heap[k+1].pos)) ++k;
+		if(heap[k].pos >= tmp.pos) break;
+		heap[i] = heap[k];
+		i = k;
 	}
 	heap[i] = tmp;
 }
@@ -394,7 +407,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 
 	// output matches (ordered by the number of projections matched)
 	r->ref_matches.resize(params->n_tables);
-	uint32 n_best_hits = 0; // best number of table hits found so far
+	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
 	heap_entry_t* heap = new heap_entry_t[params->n_tables];
@@ -407,16 +420,23 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		heap[heap_size].tid = t;
 		heap[heap_size].next_idx = 1;
 		heap_size++;
-		heap_update(heap, heap_size);
 	}
+	heap_sort(heap, heap_size);
+
+	printf("HEAP INIT: \n");
+	for(uint32 i = 0; i < heap_size; i++) {
+		printf("%u \n", heap[i].pos);
+	}
+
 	if(heap_size == 0) return; // all the matched buckets are empty
 
-	uint32 n_diff_table_hits = 0;
+	int n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint last_pos = -1;
 	bool* occ = new bool[params->n_tables];
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0];
+		printf("POP: %u \n", e.pos);
 		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
 			if(!occ[e.tid]) {
 				n_diff_table_hits++;
@@ -426,7 +446,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			occ[e.tid] = true;
 		} else { // found a boundary
 			// store last contig
-			if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
+			if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
 				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 					n_best_hits = n_diff_table_hits;
 				}
@@ -447,9 +467,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
 			heap[0].tid = e.tid;
 			heap[0].next_idx = e.next_idx+1;
-			heap_update(heap, heap_size);
+			printf("PUSH: %u \n", heap[0].pos);
 		} else { // no more entries in this bucket
+			heap[0].pos = UINT_MAX;
 			heap_size--;
+		}
+		heap_update(heap, heap_size);
+
+		printf("HEAP STATE: \n");
+		for(uint32 i = 0; i < heap_size; i++) {
+			printf("%u \n", heap[i].pos);
 		}
 	}
 	delete(occ);
@@ -531,7 +558,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					top_contigs++;
 				}
 				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
-				   ref_match_t match = r->ref_matches[i][j];
+				   ref_match_t match = r->ref_matches[t][j];
 				   contig_length += match.len;
 			   }
 			}
