@@ -421,7 +421,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	uint32 n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint last_pos = -1;
-	bool occ[params->n_tables] = { false };
+	bool occ[params->n_tables] = new bool[params->n_tables];
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0];
 		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
