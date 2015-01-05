@@ -397,8 +397,8 @@ void heap_update(heap_entry_t* heap, uint32 n) {
 	uint32 i = 0;
 	uint32 k = i;
 	heap_entry_t tmp = heap[i];
-	while((k = (k << 1) + 1) < T) {
-		if(k != (T - 1) && (heap[k].pos >= heap[k+1].pos)) ++k;
+	while((k = (k << 1) + 1) < n) {
+		if(k != (n - 1) && (heap[k].pos >= heap[k+1].pos)) ++k;
 		if(heap[k].pos >= tmp.pos) break;
 		heap[i] = heap[k];
 		i = k;
@@ -421,22 +421,23 @@ void heap_update(heap_entry_t* heap, uint32 n) {
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// output matches (ordered by the number of projections matched)
-	r->ref_matches.resize(T);
+	r->ref_matches.resize(params->n_tables);
 	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
-	heap_entry_t* heap = new heap_entry_t[T];
+	heap_entry_t* heap = new heap_entry_t[params->n_tables];
 	uint32 heap_size = 0;
 
 	// push the first entries in each sorted bucket onto the heap
-	for(uint32 t = 0; t < T; t++) { // for each table
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
-			heap[heap_size].pos = UINT_MAX;
 			continue;
+			//heap[heap_size].pos = UINT_MAX;
+		} else {
+			heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0];
+			heap[heap_size].tid = t;
+			heap[heap_size].next_idx = 1;
 		}
-		heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0];
-		heap[heap_size].tid = t;
-		heap[heap_size].next_idx = 1;
 		heap_size++;
 	}
 	heap_sort(heap, heap_size);
@@ -467,10 +468,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 					n_best_hits = n_diff_table_hits;
 				}
-				//if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-				ref_match_t rm(last_pos, len);
-				r->ref_matches[n_diff_table_hits-1].push_back(rm);
-				//}
+				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
+					ref_match_t rm(last_pos, len);
+					r->ref_matches[n_diff_table_hits-1].push_back(rm);
+				}
 			}
 			// start a new contig
 			n_diff_table_hits = 1;
@@ -488,7 +489,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap[0].pos = UINT_MAX;
 			heap_size--;
 		}
-		_heap_update(heap, heap_size);
+		heap_update(heap, heap_size);
 	}
 	delete(heap);
 
