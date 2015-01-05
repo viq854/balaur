@@ -15,132 +15,11 @@
 #include "hash.h"
 #include "cluster.h"
 
-int find_window_match_diffk(ref_t& ref, cluster_t* cluster, const index_params_t* params);
-int find_window_match(ref_t& ref, cluster_t* cluster, const index_params_t* params);
-void find_windows_exact(ref_t& ref, read_t* r, const index_params_t* params);
-void find_windows_exact_bucket(ref_t& ref, read_t* r, const index_params_t* params, int bucket);
-
-int eval_cluster_hit(cluster_t* cluster);
-int eval_read_hit(ref_t& ref, read_t* r);
 
 void shuffle(int* perm);
 void permute_ref(ref_t& ref, int perm[]);
 void permute_reads(VectorClusters& reads, int perm[]);
-void shift_bucket_ref(ref_t& ref, int bucket);
-void shift_bucket_reads(reads_t& reads, int bucket);
 
-void get_stats(const ref_t& ref, const VectorClusters& clusters) {
-	/*uint32 printed = 0;
-	for(uint32 i = 0; i < clusters.size(); i++) {
-		cluster_t c = clusters[i];
-		if(c.acc == 0) {
-			if(printed > 50) break;
-			printed++;
-			printf("Cluster %u size = %zu hash %llx \n", i, c.reads.size(), c.simhash);
-			printf("best diff = %d \n", c.best_hamd);
-			//printf("best pos = %llu \n", c.ref_matches[c.best_pos]);
-			for(uint32 j = 0; j < c.reads.size(); j++) {
-				read_t* r = c.reads[j];
-				print_read(r);
-				unsigned int pos_l, pos_r;
-				int strand;
-				//parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-//				unsigned int true_pos = pos_l - 1;
-//				for(seq_t k = 0; k < ref.windows.size(); k++) {
-//					if(true_pos == ref.windows[k].pos) {
-//						printf("hamm dist true = %d simhash = %llx \n", hamming_dist(ref->windows[k].simhash, c.simhash), ref->windows[k].simhash);
-//					}
-//					if(c.ref_matches[c.best_pos] == ref->windows[k].pos) {
-//						printf("hamm dist best = %d simhash = %llx\n", hamming_dist(ref->windows[k].simhash, c.simhash), ref->windows[k].simhash);
-//					}
-//				}
-			}
-		}
-	}*/
-}
-
-// aligns the indexed reads to the indexed reference
-// using multiple tables of read sampling
-void align_reads_sampling(ref_t& ref, reads_t& reads, const index_params_t* params) {
-	printf("**** SRX Alignment: Sampling ****\n");
-	
-//	// construct and search m hash tables using sampling
-//	clock_t t = clock();
-//	for(uint32 i = 0; i < params->m; i++) {
-//		printf("Table %d \n", i);
-//		index_ref_table_i(ref, params, i);
-//		index_reads_table_i(reads, params, i);
-//
-//		for(uint32 j = 0; j < reads.reads.size(); j++) {
-//			if(reads.reads[j].acc == 1) continue;
-//			// binary search to find the matching ref window(s)
-//			find_windows_exact(ref, &reads.reads[j], params);
-//			eval_read_hit(&reads.reads[j]);
-//		}
-//	}
-//
-//	int acc_hits = 0;
-//	for(uint32 i = 0; i < reads.reads.size(); i++) {
-//		acc_hits += reads.reads[i].acc;
-//	}
-//	printf("Total number of accurate hits found = %d \n", acc_hits);
-//	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-}
-
-int eval_minhash_hits_old(read_t* r, const index_params_t* params) {
-//   unsigned int pos_l, pos_r;
-//   int strand;
-//   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-//
-//   for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
-//	   MapPos2MinCount::const_iterator v;
-//	   if((v = r->matched_window_counts.find(j)) != r->matched_window_counts.end()) {
-//		  if(v->second > params->n_min_matched) {
-//			  r->acc = 1;
-//			  break;
-//		  }
-//	   }
-//
-//    	if(r->acc == 1) {
-//    		break;
-//    	}
-//    }
-    return (r->acc == 1);
-}
-
-//int eval_read_hit(ref_t& ref, read_t* r) {
-//   unsigned int pos_l, pos_r;
-//   int strand;
-//   parse_read_mapping(r->name.c_str(), &pos_l, &pos_r, &strand);
-//
-//   for(seq_t j = pos_l - 20; j <= pos_r + 20; j++) {
-//	   for(uint32 t = 0; t < r->ref_bucket_id_matches.size(); t++) {
-//		   buckets_t* buckets = &ref.hash_tables[t];
-//		   for(seq_t idx = 0; idx < r->ref_bucket_id_matches[t].size(); idx++) {
-//			   uint32 bucket_index = r->ref_bucket_id_matches[t][idx];
-//			   VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-//			   for(uint32 match = 0; match < bucket.size(); match++) {
-//				   seq_t hit_pos = bucket[match];
-//				   if(hit_pos == j) {
-//					   r->acc = 1;
-//					   break;
-//				   }
-//			   }
-//			   if(r->acc == 1) {
-//				   break;
-//			   }
-//		   }
-//		   if(r->acc == 1) {
-//		       	break;
-//		   }
-//        }
-//    	if(r->acc == 1) {
-//    		break;
-//    	}
-//    }
-//    return (r->acc == 1);
-//}
 
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    unsigned int seq_id, pos_l, pos_r;
@@ -151,12 +30,10 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 
    assert(seq_id >= 0);
    if(ref.subsequence_offsets.size() > 1) {
-	   //printf("%u\n", seq_id);
 	   assert(seq_id < ref.subsequence_offsets.size());
 	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
    }
 
-   //printf("best_n %u \n", r->best_n_hits);
    assert(r->best_n_hits < params->n_tables);
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
@@ -276,7 +153,7 @@ void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) 
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
-void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* params) {
+void collect_read_hits_contigs_sort(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// construct a priority heap of matches ordered by the number of projections matched
 	r->ref_matches.resize(params->n_tables);
@@ -382,13 +259,8 @@ void collect_read_hits_contigs(ref_t& ref, read_t* r, const index_params_t* para
 	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
 }
 
-//int comp_clusters(const cluster_t r1, const cluster_t r2) {
-//	hash_t h1 = r1.simhash;
-//	hash_t h2 = r2.simhash;
-//	return (h1 > h2) - (h1 < h2);
-//}
 
-void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_params_t* params) {
+void collect_read_hits_contigs_priorityqueue(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// output matches (ordered by the number of projections matched)
 	r->ref_matches.resize(params->n_tables);
@@ -508,6 +380,98 @@ void collect_read_hits_contigs_inplace_merge(ref_t& ref, read_t* r, const index_
 	VectorU32().swap(r->ref_bucket_id_matches_by_table); //release memory
 }
 
+struct heap_entry_t {
+	const seq_t pos;
+	const uint32 tid;
+	const uint32 next_idx;
+	heap_entry_t(seq_t _pos, uint32 _tid, uint32 _next_idx) : pos(_pos), tid(_tid), next_idx(_next_idx) {}
+};
+
+void heap_update(heap_entry_t* heap, uint32 n) {
+	uint32 i = 0;
+	uint32 k = i;
+	heap_entry_t tmp = heap[i];
+	while ((k = (k << 1) + 1) < n) {
+		if (k != n - 1 && (heap[k].pos >= heap[k+1].pos)) ++k;
+		if (heap[k].pos >= tmp) break;
+		heap[i] = heap[k]; i = k;
+	}
+	heap[i] = tmp;
+}
+
+void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index_params_t* params) {
+
+	// output matches (ordered by the number of projections matched)
+	r->ref_matches.resize(params->n_tables);
+	uint32 n_best_hits = 0; // best number of table hits found so far
+
+	// priority heap of matched positions
+	heap_entry_t* heap = new heap_entry_t[params->n_tables];
+	uint32 heap_size = 0;
+
+	// push the first entries in each sorted bucket onto the heap
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
+		if(r->ref_bucket_matches_by_table[t] == NULL) continue;
+		heap[heap_size] = heap_entry_t((*r->ref_bucket_matches_by_table[t])[0], t, 1);
+		heap_size++;
+	}
+	if(heap_size == 0) return; // all the matched buckets are empty
+
+	uint32 n_diff_table_hits = 0;
+	uint32 len = 0;
+	uint last_pos = -1;
+	bool occ[params->n_tables] = { false };
+	while(heap_size > 0) {
+		heap_entry_t e = heap[0];
+		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
+			if(!occ[e.tid]) {
+				n_diff_table_hits++;
+			}
+			len += e.pos - last_pos;
+			last_pos = e.pos;
+			occ[e.tid] = true;
+		} else { // found a boundary
+			// store last contig
+			if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
+				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
+					n_best_hits = n_diff_table_hits;
+				}
+				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
+					ref_match_t rm(last_pos, len);
+					r->ref_matches[n_diff_table_hits-1].push_back(rm);
+				}
+			}
+			// start a new contig state
+			n_diff_table_hits = 1;
+			len = 0;
+			last_pos = e.pos;
+			occ = { false };
+			occ[e.tid] = true;
+		}
+		// push the next match from this bucket
+		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+			heap[0] = heap_entry_t((*r->ref_bucket_matches_by_table[e.tid])[e.next_idx], e.tid, e.next_idx+1);
+			heap_update(heap, heap_size);
+		} else {
+			heap_size--;
+		}
+	}
+	// add the last position
+	if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
+		if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
+			n_best_hits = n_diff_table_hits;
+		}
+		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
+			ref_match_t rm(last_pos, len);
+			r->ref_matches[n_diff_table_hits-1].push_back(rm);
+		}
+	}
+
+	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
+	assert(r->best_n_hits < params->n_tables);
+	VectorU32().swap(r->ref_bucket_matches_by_table); //release memory
+}
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
@@ -534,13 +498,18 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			read_t* r = &reads.reads[i];
 			r->best_n_hits = 0;
 			if(!r->valid_minhash) continue;
-			r->ref_bucket_id_matches_by_table.resize(params->n_tables);
+			//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
+			r->ref_bucket_matches_by_table.resize(params->n_tables);
 			for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 				minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 				uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-				r->ref_bucket_id_matches_by_table[t] = bucket_index;
+				//r->ref_bucket_id_matches_by_table[t] = bucket_index;
+				if(bucket_index == ref.hash_tables[t].n_buckets) {
+					continue; // no reference window fell into this bucket
+				}
+				r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 			}
-			collect_read_hits_contigs_inplace_merge(ref, r, params);
+			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 			//printf("Collected read %u best %u \n", i, r->best_n_hits);
 
 			// stats
