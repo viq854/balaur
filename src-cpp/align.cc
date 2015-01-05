@@ -14,6 +14,7 @@
 #include "io.h"
 #include "hash.h"
 #include "cluster.h"
+#include <bitset>
 
 
 void shuffle(int* perm);
@@ -385,7 +386,7 @@ void heap_sort(heap_entry_t* heap, uint32 n) {
 	int i, j;
 	for(j = 1; j < n; j++) {
 		tmp = heap[j];
-		for(i = j - 1; (i >= 0) && (heap[i].pos < tmp.pos); i--) {
+		for(i = j - 1; (i >= 0) && (heap[i].pos > tmp.pos); i--) {
 			heap[i+1] = heap[i];
 		}
 		heap[i+1] = tmp;
@@ -424,7 +425,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
-	heap_entry_t heap[T]; //= new heap_entry_t[T];
+	heap_entry_t* heap = new heap_entry_t[T];
 	uint32 heap_size = 0;
 
 	// push the first entries in each sorted bucket onto the heap
@@ -450,16 +451,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint last_pos = -1;
-	std::vector<bool> occ(T);
+	std::bitset<T> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0];
 		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
-			if(!occ[e.tid]) {
+			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
 			}
 			len += e.pos - last_pos;
 			last_pos = e.pos;
-			occ[e.tid] = true;
+			occ.set(e.tid);
 		} else { // found a boundary
 			// store last contig
 			if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
@@ -475,21 +476,21 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			n_diff_table_hits = 1;
 			len = 0;
 			last_pos = e.pos;
-			std::fill(occ, occ + T, false);
-			occ[e.tid] = true;
+			occ.reset();
+			occ.set(e.tid);
 		}
 		// push the next match from this bucket
 		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
-			//heap[0].tid = e.tid;
-			heap[0].next_idx++; // e.next_idx+1;
+			heap[0].tid = e.tid;
+			heap[0].next_idx = e.next_idx+1;
 		} else { // no more entries in this bucket
 			heap[0].pos = UINT_MAX;
 			heap_size--;
 		}
 		_heap_update(heap, heap_size);
 	}
-	//delete(heap);
+	delete(heap);
 
 	// add the last position
 	if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
