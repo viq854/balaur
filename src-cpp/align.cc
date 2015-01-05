@@ -415,6 +415,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		heap[heap_size].tid = t;
 		heap[heap_size].next_idx = 1;
 		heap_size++;
+		heap_update(heap, heap_size);
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
 
@@ -442,7 +443,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			}
-			// start a new contig state
+			// start a new contig
 			n_diff_table_hits = 1;
 			len = 0;
 			last_pos = e.pos;
