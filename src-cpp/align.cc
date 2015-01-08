@@ -444,13 +444,18 @@ void heap_sort_vector(std::vector<heap_entry_t>& heap, uint32 n) {
 }
 
 void heap_update_vector(std::vector<heap_entry_t>& heap, uint32 n) {
+	printf("HEAP BEFORE \n");
+	for(uint32 i = 0; i < n; i++) {
+		printf("%u \n", heap[i].pos);
+	}
+
 	if(n <= 1) return;
 	if(heap[1].pos >= heap[0].pos) return; // nothing to shift
 
 	heap_entry_t tmp = heap[0];
 	if(heap[n-1].pos <= heap[0].pos) { // shift all
 		heap.erase(heap.begin());
-		heap.push_back(tmp);
+		heap.insert(heap.begin() + n-1, tmp);
 	} else { // binary search: find the first element > tmp
 		int i, j, k;
 		i = 1;
@@ -465,6 +470,16 @@ void heap_update_vector(std::vector<heap_entry_t>& heap, uint32 n) {
 		}
 		heap.insert(heap.begin() + i-1, tmp);
 		heap.erase(heap.begin());
+	}
+	printf("HEAP AFTER \n");
+	for(uint32 i = 0; i < n; i++) {
+		printf("%u \n", heap[i].pos);
+	}
+
+	for(uint32 i = 0; i < n-1; i++) {
+		if(heap[i].pos > heap[i+1].pos) {
+			exit(0);
+		}
 	}
 }
 
@@ -487,8 +502,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
-	//heap_entry_t* heap = new heap_entry_t[params->n_tables];
-	std::vector<heap_entry_t> heap(params->n_tables);
+	heap_entry_t* heap = new heap_entry_t[params->n_tables];
+	//std::vector<heap_entry_t> heap(params->n_tables);
 	uint32 heap_size = 0;
 
 	// push the first entries in each sorted bucket onto the heap
@@ -503,8 +518,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		}
 		heap_size++;
 	}
-	heap_sort_vector(heap, heap_size);
-	//heap_sort(heap, heap_size);
+	//heap_sort_vector(heap, heap_size);
+	heap_sort(heap, heap_size);
 
 	/*printf("HEAP INIT: \n");
 	for(uint32 i = 0; i < heap_size; i++) {
@@ -549,10 +564,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
 			heap[0].tid = e.tid;
 			heap[0].next_idx = e.next_idx+1;
-			heap_update_vector(heap, heap_size);
+			heap_update(heap, heap_size);
 		} else { // no more entries in this bucket
 			heap[0].pos = UINT_MAX;
-			heap_update_vector(heap, heap_size);
+			heap_update(heap, heap_size);
 			heap_size--;
 		}
 	}
