@@ -16,6 +16,10 @@
 #include "cluster.h"
 #include <bitset>
 
+#include <seqan/align.h>
+#include <seqan/sequence.h>
+#include <seqan/basic.h>
+
 
 void shuffle(int* perm);
 void permute_ref(ref_t& ref, int perm[]);
@@ -406,7 +410,7 @@ void heap_update(heap_entry_t* heap, uint32 n) {
 	heap[i] = tmp;
 }
 
-void heap_update_memmove(heap_entry_t* heap, uint32 n) {
+inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	if(n <= 1) return;
 	if(heap[1].pos >= heap[0].pos) return; // nothing to shift
 
@@ -502,7 +506,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
-	heap_entry_t* heap = new heap_entry_t[params->n_tables];
+	heap_entry_t heap[params->n_tables];
 	//std::vector<heap_entry_t> heap(params->n_tables);
 	uint32 heap_size = 0;
 
@@ -510,7 +514,6 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
 			continue;
-			//heap[heap_size].pos = UINT_MAX;
 		} else {
 			heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0];
 			heap[heap_size].tid = t;
@@ -571,7 +574,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap_size--;
 		}
 	}
-	delete(heap);
+	//delete(heap);
 
 	// add the last position
 	if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
@@ -593,8 +596,24 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// find the contig with most hits
 	// find the contig with second most hits
-
 	// banded global dynamic programming
+
+	typedef seqan::String<seqam::Dna> sequence_t;
+
+	// process the top configs
+	for(int i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+
+		sequence_t ref_seq;
+		ref_set.resize(ref_contig.pos + r->len - ref_contig.len + 1);
+		uint32 i = 0;
+		for(uint32 pos = ref_contig.pos - ref_contig.len; pos <= ref_contig.pos + r->len; pos++) {
+			ref_seq[i] = ref.seq[pos];
+			i++;
+		}
+
+		std::cout << ref_seq << std::endl;
+	}
 }
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -638,6 +657,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 			//printf("Collected read %u best %u \n", i, r->best_n_hits);
+
+			if(r->best_n_hits > 0) {
+				process_read_hits(ref, r, params);
+			}
 
 			// stats
 			uint32 n_contigs = 0;
