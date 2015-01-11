@@ -722,11 +722,20 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) {
 				// found a shared kmer seed
 				for(int read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
+					bool true_hit = true;
+					for(uint32 k = 0; k < params->k; k++) {
+						if(ref.seq[hit_offset + j + k] == r->seq[kmer2pos[kmer_hash][read_pos_idx + k]]) {
+							true_hit = false;
+							break;
+						}
+					}
+					if(!true_hit) continue;
+
 					seed_t s(hit_offset + j, kmer2pos[kmer_hash][read_pos_idx], params->k);
 					seeds.push_back(s);
 
 					std::cout << "SHARED SEEDS: " << std::endl;
-					printf("ref_pos %u read_pos %u \n", hit_offset + j, kmer2pos[kmer_hash][read_pos_idx]);
+					printf("global_ref_pos %u local_ref_pos %u read_pos %u \n", hit_offset + j, j, kmer2pos[kmer_hash][read_pos_idx]);
 					for(uint32 k = 0; k < params->k; k++) {
 						printf("%c", (char)iupacChar[(int)ref.seq[hit_offset + j + k]]);
 					}
