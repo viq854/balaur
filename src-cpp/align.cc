@@ -15,6 +15,7 @@
 #include "hash.h"
 #include "cluster.h"
 #include <bitset>
+#include <unordered_map>
 
 #include <seqan/index.h>
 #include <iostream>
@@ -606,7 +607,7 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	// banded global dynamic programming
 
 	int kmer_length = 10;
-        int gap_threshold = 500;
+    int gap_threshold = 500;
 	int score_threshold = 30;
 	seqan::Score<int, seqan::Simple> scoreMatrix(1, -1, -1);
 
@@ -680,6 +681,67 @@ void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 	}*/
 }
 
+struct seed_t {
+	const seq_t ref_pos;
+	const seq_t read_pos;
+	const uint32 len;
+	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len) {}
+};
+
+void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
+	// index the read sequence: generate and store all kmers
+	std::unordered_map<minhash_t, std::vector<uint32>> kmer2pos;
+	for(uint32 i = 0; i <= (r->len - params->k); i++) {
+		minhash_t kmer_hash = CityHash32(&r->seq[i], params->k);
+		if(kmer2pos.find(kmer_hash) != kmer2pos.end()) {
+			kmer2pos.emplace(std::make_pair(kmer_hash, std::vector<uint32>()));
+		}
+		kmer2pos[kmer_hash].push_back(i);
+	}
+	std::cout << "READ: " << std::endl;
+	for(uint32 k = 0; k < r->len; k++) {
+		printf("%c", (char)iupacChar[(int)r->seq[k]]);
+	}
+	printf("\n");
+
+	// collect seeds shared between the reference and the read
+	std::vector<seed_t> seeds;
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		int hit_len = r->len + ref_contig.len;
+		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+
+		std::cout << "REF CONTIG: " << std::endl;
+		for(uint32 k = 0; k < hit_len; k++) {
+			printf("%c", (char)iupacChar[(int)ref.seq[hit_offset + k]]);
+		}
+		printf("\n");
+
+		for(uint32 j = 0; j < hit_len; j++) {
+			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
+			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) {
+				// found a shared kmer seed
+				for(int read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
+					seed_t s(hit_offset + j, kmer2pos[kmer_hash][read_pos_idx], params->k);
+					seeds.push_back(s);
+
+					std::cout << "SHARED SEEDS: " << std::endl;
+					printf("ref_pos %u read_pos %u \n", hit_offset + j, kmer2pos[kmer_hash][read_pos_idx]);
+					for(uint32 k = 0; k < params->k; k++) {
+						printf("%c", (char)iupacChar[(int)ref.seq[hit_offset + j + k]]);
+					}
+					printf("\n");
+				}
+			}
+		}
+	}
+
+	// chain shared seeds
+
+	// extend seeds with longest chains
+
+}
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
@@ -723,7 +785,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			//printf("Collected read %u best %u \n", i, r->best_n_hits);
 
 			if(r->best_n_hits > 0) {
-				process_read_hits(ref, r, params);
+				process_read_hits_se(ref, r, params);
 			}
 
 			// stats
