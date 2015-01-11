@@ -16,10 +16,13 @@
 #include "cluster.h"
 #include <bitset>
 
+#include <seqan/index.h>
+#include <iostream>
+#include <seqan/file.h>
 #include <seqan/align.h>
 #include <seqan/sequence.h>
 #include <seqan/basic.h>
-
+#include <seqan/seeds.h>
 
 void shuffle(int* perm);
 void permute_ref(ref_t& ref, int perm[]);
@@ -385,7 +388,7 @@ struct heap_entry_t {
 
 #define T 32
 
-void heap_sort(heap_entry_t* heap, uint32 n) {
+void heap_sort(heap_entry_t* heap, int n) {
 	heap_entry_t tmp;
 	int i, j;
 	for(j = 1; j < n; j++) {
@@ -435,7 +438,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-void heap_sort_vector(std::vector<heap_entry_t>& heap, uint32 n) {
+void heap_sort_vector(std::vector<heap_entry_t>& heap, int n) {
 	heap_entry_t tmp;
 	int i, j;
 	for(j = 1; j < n; j++) {
@@ -546,7 +549,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			occ.set(e.tid);
 		} else { // found a boundary
 			// store last contig
-			if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
+			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
 				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 					n_best_hits = n_diff_table_hits;
 				}
@@ -577,7 +580,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	//delete(heap);
 
 	// add the last position
-	if(last_pos != (uint32) -1 && n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
+	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
 		if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 			n_best_hits = n_diff_table_hits;
 		}
@@ -594,26 +597,87 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 
 void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
 
-	// find the contig with most hits
-	// find the contig with second most hits
+	typedef seqan::Align<seqan::DnaString> align_t;
+	typedef seqan::Index<seqan::DnaString, seqan::IndexQGram<seqan::UngappedShape<10>>> index_t;
+	typedef seqan::Seed<seqan::Simple> seed_t;
+	typedef seqan::SeedSet<seqan::Simple, seqan::Unordered> seed_set_t;
+
+	// find the contig with most hits and second most hits
 	// banded global dynamic programming
 
-	typedef seqan::String<seqam::Dna> sequence_t;
+	int kmer_length = 10;
+        int gap_threshold = 500;
+	int score_threshold = 30;
+	seqan::Score<int, seqan::Simple> scoreMatrix(1, -1, -1);
+
+	seqan::DnaString read_seq;
+	resize(read_seq, r->len);
+	for(uint32 i = 0; i < r->len; i++) {
+		read_seq[i] = (seqan::Dna) ((char) iupacChar[(int) r->seq[i]]);
+	}
+	//std::cout << read_seq << endl;
+
+	// generate the seeds, construct the index
+	index_t read_index(read_seq);
+	seqan::Finder<index_t> finder(read_index);
+	seed_set_t seedSet;
 
 	// process the top configs
-	for(int i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+	int best_score = INT_MIN;
+	align_t best_align;
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
-
-		sequence_t ref_seq;
-		ref_set.resize(ref_contig.pos + r->len - ref_contig.len + 1);
-		uint32 i = 0;
-		for(uint32 pos = ref_contig.pos - ref_contig.len; pos <= ref_contig.pos + r->len; pos++) {
-			ref_seq[i] = ref.seq[pos];
-			i++;
+		seqan::DnaString ref_seq;
+		resize(ref_seq, r->len + ref_contig.len + 1);
+		
+		//std::cout << ref_contig.pos << " " << ref_contig.len << " " << length(ref_seq) << std::endl;
+		for(uint32 j = 0; j < (int) length(ref_seq); j++) {
+			ref_seq[j] = (seqan::Dna) ((char)iupacChar[(int)ref.seq[j + 1 + ref_contig.pos - ref_contig.len]]);
 		}
-
-		std::cout << ref_seq << std::endl;
+		//std::cout << "SEQ: " << ref_seq << std::endl;
+		// generate all the kmers and match against the read index
+		for(uint32 pos = 0; pos < (int) length(ref_seq) - kmer_length + 1; pos++) {
+			//std::cout << pos << " " << length(ref_seq) << std::endl;
+			seqan::DnaString qgram = seqan::infix(ref_seq, pos, pos+kmer_length);
+			//std::cout << "QGRAM: " << qgram << " " << length(qgram) << std::endl;
+			while(seqan::find(finder, qgram)) {
+				int p = seqan::position(finder);
+				//std::cout << pos << std::endl;
+				//std::cout << p << std::endl;
+				if(!addSeed(seedSet,  seed_t(p, pos, kmer_length), 1, 2, seqan::Score<int, seqan::Simple>(), read_seq, ref_seq, seqan::Chaos())) {
+					addSeed(seedSet,  seed_t(p, pos, kmer_length), seqan::Single());
+				}	
+			}
+			//printf("No more hits \n");
+			seqan::clear(finder);	
+		}
+		//printf("Processed all qgrams \n");
+		if(length(seedSet) != 0) {
+			seqan::String<seed_t> chain;
+			seqan::chainSeedsGlobally(chain, seedSet, seqan::SparseChaining());	
+			//std::cout << chain << std::endl;
+			seqan::clear(seedSet);
+			
+			align_t align;
+                	resize(rows(align), 2);
+                	assignSource(row(align, 0), read_seq);
+                	assignSource(row(align, 1), ref_seq);
+                	int score = seqan::bandedChainAlignment(align, chain, seqan::Score<int, seqan::Simple>(1, -4, -1, -6), seqan::AlignConfig<true, false, false, true>());
+			//if(score > best_score) {
+			//	best_score = score;
+			//	best_align = align;
+			//}
+			//std::cout << score << std::endl;
+ 			//std::cout << align << std::endl;
+		}
 	}
+	/*if(best_score != INT_MIN) {
+		std::cout << best_score << std::endl;
+        	std::cout << best_align << std::endl;
+		int read_start_view = seqan::toViewPosition(row(best_align, 0), 0);
+		std::cout << seqan::toSourcePosition(row(best_align, 1), read_start_view) << " " << read_start_view << std::endl; 
+        	std::cout << r->ref_pos_l << " " << r->ref_pos_r << std::endl;
+	}*/
 }
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -669,7 +733,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			for(uint32 t = 0; t < params->n_tables; t++) {
 				n_contigs += r->ref_matches[t].size();
 				if(t == r->best_n_hits) {
-					top_contigs++;
+					top_contigs += n_contigs;;
 				}
 				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
 				   ref_match_t match = r->ref_matches[t][j];
