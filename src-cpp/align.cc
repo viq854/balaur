@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <iostream>
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
@@ -10,24 +11,15 @@
 #include <limits.h>
 #include <assert.h>
 #include <queue>
+#include <unordered_map>
+
 #include "index.h"
 #include "io.h"
 #include "hash.h"
 #include "cluster.h"
 #include <bitset>
-#include <unordered_map>
 
-#include <seqan/index.h>
-#include <iostream>
-#include <seqan/file.h>
-#include <seqan/align.h>
-#include <seqan/sequence.h>
-#include <seqan/basic.h>
-#include <seqan/seeds.h>
-
-void shuffle(int* perm);
-void permute_ref(ref_t& ref, int perm[]);
-void permute_reads(VectorClusters& reads, int perm[]);
+#include "ksw.h"
 
 
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
@@ -62,332 +54,11 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    return (r->acc == 1);
 }
 
-void collect_read_hits_all(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	// construct a priority heap of matches ordered by the number of projections matched
-	r->ref_matches.resize(params->n_tables);
-
-	uint32 n_best_hits = 0; // best number of table hits found so far
-	VectorU32 bucket_data_consumed_indices(params->n_tables);
-
-	// process all the hits in intervals
-	std::vector<seq_t> matches;
-	matches.reserve(1000);
-	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
-		matches.clear();
-		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
-			buckets_t* buckets = &ref.hash_tables[t];
-			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
-			if(bucket_index == buckets->n_buckets) {
-				continue; // no reference window fell into this bucket
-			}
-			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-			uint32 data_pointer = bucket_data_consumed_indices[t];
-			for(uint32 match = data_pointer; match < bucket.size(); match++) {
-				if(bucket[match] < i*params->hit_collection_interval) {
-					matches.push_back(bucket[match]);
-					bucket_data_consumed_indices[t]++;
-				} else {
-					break; // requires that each bucket is sorted
-				}
-			}
-		}
-		
-		if(matches.size() == 0) continue;
-
-		// count how many times a position occurs
-		std::sort(matches.begin(), matches.end());
-
-		seq_t last_pos = matches[0];
-		uint32 n_diff_table_hits = 1;
-		for(uint32 i = 1; i < matches.size(); i++) {
-			seq_t pos = matches[i];
-			if(pos == last_pos) {
-				n_diff_table_hits++;
-			} else {
-				// found a boundary, store
-				if(n_diff_table_hits >= params->min_n_hits) {
-					if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-						n_best_hits = n_diff_table_hits;
-						if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-							ref_match_t rm(last_pos, 0);
-							r->ref_matches[n_diff_table_hits-1].push_back(rm);
-						}
-					} else {
-						// sub-optimal
-						// only store if the number of hits is not too much lower than the best so far
-						if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-							if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-								ref_match_t rm(last_pos, 0);
-								r->ref_matches[n_diff_table_hits-1].push_back(rm);
-							}
-						}
-					}
-				}
-				n_diff_table_hits = 1;
-			}
-			last_pos = pos;
-		}
-
-		// add the last position
-		if(n_diff_table_hits >= params->min_n_hits) {
-			if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-				n_best_hits = n_diff_table_hits;
-				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, 0);
-					r->ref_matches[n_diff_table_hits-1].push_back(rm);
-				}
-			} else {
-				// sub-optimal
-				// only store if the number of hits is not too much lower than the best so far
-				if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-					if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-						ref_match_t rm(last_pos, 0);
-						r->ref_matches[n_diff_table_hits-1].push_back(rm);
-					}
-				}
-			}
-		}
-
-	}
-	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
-	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
-}
-
-void collect_read_hits_contigs_sort(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	// construct a priority heap of matches ordered by the number of projections matched
-	r->ref_matches.resize(params->n_tables);
-
-	uint32 n_best_hits = 0; // best number of table hits found so far
-	VectorU32 bucket_data_consumed_indices(params->n_tables);
-
-	// process all the hits in intervals
-	std::vector<std::pair<seq_t, uint32> > matches;
-	matches.reserve(1000);
-	for(uint32 i = 1; i <= ceil((float) ref.len/params->hit_collection_interval); i++) {
-		matches.clear();
-		for(uint32 t = 0; t < params->n_tables; t++) { // for each table
-			buckets_t* buckets = &ref.hash_tables[t];
-			uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
-			if(bucket_index == buckets->n_buckets) {
-				continue; // no reference window fell into this bucket
-			}
-			VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-			uint32 data_pointer = bucket_data_consumed_indices[t];
-			for(uint32 match = data_pointer; match < bucket.size(); match++) {
-				if(bucket[match] < i*params->hit_collection_interval) {
-					matches.push_back(std::make_pair(bucket[match], t));
-					bucket_data_consumed_indices[t]++;
-				} else {
-					break; // requires that each bucket is sorted
-				}
-			}
-		}
-		if(matches.size() == 0) continue;
-
-		// count how many times a position occurs
-		std::sort(matches.begin(), matches.end());
-
-		seq_t last_pos = matches[0].first;
-		VectorBool occ(params->n_tables, false);
-		occ[matches[0].second] = true;
-		uint32 n_diff_table_hits = 1;
-		uint32 len = 0;
-		for(uint32 i = 1; i < matches.size(); i++) {
-			seq_t pos = matches[i].first;
-			if(pos <= last_pos + params->contig_gap) {
-				if(!occ[matches[i].second]) {
-					n_diff_table_hits++;
-				}
-				occ[matches[i].second] = true;
-				len += pos - last_pos;
-			} else {
-				// found a boundary, store
-				assert(n_diff_table_hits > 0);
-				assert(n_diff_table_hits-1 < params->n_tables);
-				if(n_diff_table_hits >= params->min_n_hits) {
-					if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-						n_best_hits = n_diff_table_hits;
-						if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-							ref_match_t rm(last_pos, len);
-							r->ref_matches[n_diff_table_hits-1].push_back(rm);
-						}
-					} else {
-						// sub-optimal
-						// only store if the number of hits is not too much lower than the best so far
-						if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-							if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-								ref_match_t rm(last_pos, len);
-								r->ref_matches[n_diff_table_hits-1].push_back(rm);
-							}
-						}
-					}
-				}
-				std::fill(occ.begin(), occ.end(), false);
-				occ[matches[i].second] = true;
-				n_diff_table_hits = 1;
-				len = 0;
-			}
-			last_pos = pos;
-		}
-
-		// add the last position
-		assert(n_diff_table_hits > 0);
-		assert(n_diff_table_hits-1 < params->n_tables);
-		if(n_diff_table_hits >= params->min_n_hits) {
-			if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-				n_best_hits = n_diff_table_hits;
-				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, len);
-					r->ref_matches[n_diff_table_hits-1].push_back(rm);
-				}
-			} else {
-				// sub-optimal
-				// only store if the number of hits is not too much lower than the best so far
-				if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-					if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-						ref_match_t rm(last_pos, len);
-						r->ref_matches[n_diff_table_hits-1].push_back(rm);
-					}
-				}
-			}
-		}
-
-	}
-	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
-	assert(r->best_n_hits < params->n_tables);
-	r->ref_bucket_id_matches_by_table = VectorU32(); //release memory
-}
-
-
-void collect_read_hits_contigs_priorityqueue(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	// output matches (ordered by the number of projections matched)
-	r->ref_matches.resize(params->n_tables);
-	uint32 n_best_hits = 0; // best number of table hits found so far
-
-	// construct a priority heap of matched positions
-	// comparing by position first
-	typedef std::pair<seq_t, uint32> PairPosTid;
-	std::priority_queue<PairPosTid, std::vector<PairPosTid>, std::greater<PairPosTid> > q;
-	VectorU32 bucket_indices(params->n_tables);
-
-	// push the first entries in each sorted bucket onto the heap
-	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
-		buckets_t* buckets = &ref.hash_tables[t];
-		uint32 bucket_index = r->ref_bucket_id_matches_by_table[t];
-		//printf("Table %u - index %u \n", t, bucket_index);
-		if(bucket_index == buckets->n_buckets) {
-			continue; // no reference window fell into this bucket
-		}
-		VectorSeqPos& bucket = buckets->buckets_data_vectors[bucket_index];
-		q.push(std::make_pair(bucket[0], t));
-		//printf("Pushed match (%u, %u) \n", bucket[0], t);
-		bucket_indices[t]++;
-	}
-	if(q.empty()) return; // all the matched buckets are empty
-
-	VectorBool occ(params->n_tables, false);
-	PairPosTid top = q.top();
-	q.pop();
-	uint32 tid = top.second;
-	// push the next match from this bucket
-	VectorSeqPos& bucket = ref.hash_tables[tid].buckets_data_vectors[r->ref_bucket_id_matches_by_table[tid]];
-	if(bucket_indices[tid] < bucket.size()) {
-		q.push(std::make_pair(bucket[bucket_indices[tid]], tid));
-		//printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
-		bucket_indices[tid]++;
-	}
-
-	seq_t last_pos = top.first;
-	occ[tid] = true;
-	uint32 n_diff_table_hits = 1;
-	uint32 len = 0;
-	while(!q.empty()) {
-		top = q.top();
-		q.pop();
-		seq_t pos = top.first;
-		uint32 tid = top.second;
-		if(pos <= last_pos + params->contig_gap) {
-			if(!occ[tid]) {
-				n_diff_table_hits++;
-			}
-			occ[tid] = true;
-			len += pos - last_pos;
-			//printf("Pop within contig cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
-		} else { // found a boundary, store
-			//printf("Pop found boundary cur_pos %u last_pos %u tid %u len %u\n", pos, last_pos, tid, len);
-			assert(n_diff_table_hits > 0);
-			assert(n_diff_table_hits-1 < params->n_tables);
-			if(n_diff_table_hits >= params->min_n_hits) {
-				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-					n_best_hits = n_diff_table_hits;
-					if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-						ref_match_t rm(last_pos, len);
-						r->ref_matches[n_diff_table_hits-1].push_back(rm);
-					}
-				} else {
-					// sub-optimal
-					// only store if the number of hits is not too much lower than the best so far
-					if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-						if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-							ref_match_t rm(last_pos, len);
-							r->ref_matches[n_diff_table_hits-1].push_back(rm);
-						}
-					}
-				}
-				//printf("MATCH pos %u len %u n_hits %u \n", pos, len, n_diff_table_hits);
-			}
-			std::fill(occ.begin(), occ.end(), false);
-			occ[tid] = true;
-			n_diff_table_hits = 1;
-			len = 0;
-		}
-		last_pos = pos;
-		// push the next match from this bucket
-		VectorSeqPos& bucket = ref.hash_tables[tid].buckets_data_vectors[r->ref_bucket_id_matches_by_table[tid]];
-		if(bucket_indices[tid] < bucket.size()) {
-			q.push(std::make_pair(bucket[bucket_indices[tid]], tid));
-			bucket_indices[tid]++;
-			//printf("Pushed match (%u, %u) \n", bucket[bucket_indices[tid]], tid);
-		}
-	}
-	// add the last position
-	assert(n_diff_table_hits > 0);
-	assert(n_diff_table_hits-1 < params->n_tables);
-	if(n_diff_table_hits >= params->min_n_hits) {
-		if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-			n_best_hits = n_diff_table_hits;
-			if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-				ref_match_t rm(last_pos, len);
-				r->ref_matches[n_diff_table_hits-1].push_back(rm);
-			}
-		} else {
-			// sub-optimal
-			// only store if the number of hits is not too much lower than the best so far
-			if(n_best_hits < params->dist_best_hit || n_diff_table_hits > (n_best_hits - params->dist_best_hit)) {
-				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_suboptimal_hits) {
-					ref_match_t rm(last_pos, len);
-					r->ref_matches[n_diff_table_hits-1].push_back(rm);
-				}
-			}
-		}
-		//printf("MATCH (last) pos %u len %u n_hits %u \n", last_pos, len, n_diff_table_hits);
-	}
-
-	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
-	assert(r->best_n_hits < params->n_tables);
-	VectorU32().swap(r->ref_bucket_id_matches_by_table); //release memory
-}
-
 struct heap_entry_t {
 	seq_t pos;
 	uint32 tid;
 	uint32 next_idx;
 };
-
-#define T 32
 
 void heap_sort(heap_entry_t* heap, int n) {
 	heap_entry_t tmp;
@@ -439,79 +110,13 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-void heap_sort_vector(std::vector<heap_entry_t>& heap, int n) {
-	heap_entry_t tmp;
-	int i, j;
-	for(j = 1; j < n; j++) {
-		tmp = heap[j];
-		for(i = j - 1; (i >= 0) && (heap[i].pos > tmp.pos); i--) {
-			heap[i+1] = heap[i];
-		}
-		heap[i+1] = tmp;
-	}
-}
-
-void heap_update_vector(std::vector<heap_entry_t>& heap, uint32 n) {
-	printf("HEAP BEFORE \n");
-	for(uint32 i = 0; i < n; i++) {
-		printf("%u \n", heap[i].pos);
-	}
-
-	if(n <= 1) return;
-	if(heap[1].pos >= heap[0].pos) return; // nothing to shift
-
-	heap_entry_t tmp = heap[0];
-	if(heap[n-1].pos <= heap[0].pos) { // shift all
-		heap.erase(heap.begin());
-		heap.insert(heap.begin() + n-1, tmp);
-	} else { // binary search: find the first element > tmp
-		int i, j, k;
-		i = 1;
-		j = n;
-		while(i != j) {
-			k = (i + j)/2;
-			if (heap[k].pos < tmp.pos) {
-				i = k + 1;
-			} else {
-				j = k;
-			}
-		}
-		heap.insert(heap.begin() + i-1, tmp);
-		heap.erase(heap.begin());
-	}
-	printf("HEAP AFTER \n");
-	for(uint32 i = 0; i < n; i++) {
-		printf("%u \n", heap[i].pos);
-	}
-
-	for(uint32 i = 0; i < n-1; i++) {
-		if(heap[i].pos > heap[i+1].pos) {
-			exit(0);
-		}
-	}
-}
-
-#define _heap_update(heap, n) \
-		uint32 i = 0; \
-		uint32 k = i; \
-		heap_entry_t tmp = heap[i]; \
-		while((k = (k << 1) + 1) < T) { \
-			if(k != (T - 1) && (heap[k].pos >= heap[k+1].pos)) ++k; \
-			if(heap[k].pos >= tmp.pos) break; \
-			heap[i] = heap[k]; \
-			i = k; \
-		} \
-		heap[i] = tmp; \
-
+// output matches (ordered by the number of projections matched)
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	// output matches (ordered by the number of projections matched)
 	r->ref_matches.resize(params->n_tables);
 	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
 	heap_entry_t heap[params->n_tables];
-	//std::vector<heap_entry_t> heap(params->n_tables);
 	uint32 heap_size = 0;
 
 	// push the first entries in each sorted bucket onto the heap
@@ -525,15 +130,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		}
 		heap_size++;
 	}
-	//heap_sort_vector(heap, heap_size);
-	heap_sort(heap, heap_size);
-
-	/*printf("HEAP INIT: \n");
-	for(uint32 i = 0; i < heap_size; i++) {
-		printf("%u \n", heap[i].pos);
-	}*/
-
 	if(heap_size == 0) return; // all the matched buckets are empty
+	heap_sort(heap, heap_size);
 
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
@@ -548,8 +146,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			len += e.pos - last_pos;
 			last_pos = e.pos;
 			occ.set(e.tid);
-		} else { // found a boundary
-			// store last contig
+		} else { // found a boundary, store last contig
 			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
 				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
 					n_best_hits = n_diff_table_hits;
@@ -578,7 +175,6 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap_size--;
 		}
 	}
-	//delete(heap);
 
 	// add the last position
 	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
@@ -596,97 +192,40 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 }
 
-void process_read_hits(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	typedef seqan::Align<seqan::DnaString> align_t;
-	typedef seqan::Index<seqan::DnaString, seqan::IndexQGram<seqan::UngappedShape<10>>> index_t;
-	typedef seqan::Seed<seqan::Simple> seed_t;
-	typedef seqan::SeedSet<seqan::Simple, seqan::Unordered> seed_set_t;
-
-	// find the contig with most hits and second most hits
-	// banded global dynamic programming
-
-	int kmer_length = 10;
-    int gap_threshold = 500;
-	int score_threshold = 30;
-	seqan::Score<int, seqan::Simple> scoreMatrix(1, -1, -1);
-
-	seqan::DnaString read_seq;
-	resize(read_seq, r->len);
-	for(uint32 i = 0; i < r->len; i++) {
-		read_seq[i] = (seqan::Dna) ((char) iupacChar[(int) r->seq[i]]);
-	}
-	//std::cout << read_seq << endl;
-
-	// generate the seeds, construct the index
-	index_t read_index(read_seq);
-	seqan::Finder<index_t> finder(read_index);
-	seed_set_t seedSet;
-
-	// process the top configs
-	int best_score = INT_MIN;
-	align_t best_align;
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
-		seqan::DnaString ref_seq;
-		resize(ref_seq, r->len + ref_contig.len + 1);
-		
-		//std::cout << ref_contig.pos << " " << ref_contig.len << " " << length(ref_seq) << std::endl;
-		for(uint32 j = 0; j < (int) length(ref_seq); j++) {
-			ref_seq[j] = (seqan::Dna) ((char)iupacChar[(int)ref.seq[j + 1 + ref_contig.pos - ref_contig.len]]);
-		}
-		//std::cout << "SEQ: " << ref_seq << std::endl;
-		// generate all the kmers and match against the read index
-		for(uint32 pos = 0; pos < (int) length(ref_seq) - kmer_length + 1; pos++) {
-			//std::cout << pos << " " << length(ref_seq) << std::endl;
-			seqan::DnaString qgram = seqan::infix(ref_seq, pos, pos+kmer_length);
-			//std::cout << "QGRAM: " << qgram << " " << length(qgram) << std::endl;
-			while(seqan::find(finder, qgram)) {
-				int p = seqan::position(finder);
-				//std::cout << pos << std::endl;
-				//std::cout << p << std::endl;
-				if(!addSeed(seedSet,  seed_t(p, pos, kmer_length), 1, 2, seqan::Score<int, seqan::Simple>(), read_seq, ref_seq, seqan::Chaos())) {
-					addSeed(seedSet,  seed_t(p, pos, kmer_length), seqan::Single());
-				}	
-			}
-			//printf("No more hits \n");
-			seqan::clear(finder);	
-		}
-		//printf("Processed all qgrams \n");
-		if(length(seedSet) != 0) {
-			seqan::String<seed_t> chain;
-			seqan::chainSeedsGlobally(chain, seedSet, seqan::SparseChaining());	
-			//std::cout << chain << std::endl;
-			seqan::clear(seedSet);
-			
-			align_t align;
-                	resize(rows(align), 2);
-                	assignSource(row(align, 0), read_seq);
-                	assignSource(row(align, 1), ref_seq);
-                	int score = seqan::bandedChainAlignment(align, chain, seqan::Score<int, seqan::Simple>(1, -4, -1, -6), seqan::AlignConfig<true, false, false, true>());
-			//if(score > best_score) {
-			//	best_score = score;
-			//	best_align = align;
-			//}
-			//std::cout << score << std::endl;
- 			//std::cout << align << std::endl;
-		}
-	}
-	/*if(best_score != INT_MIN) {
-		std::cout << best_score << std::endl;
-        	std::cout << best_align << std::endl;
-		int read_start_view = seqan::toViewPosition(row(best_align, 0), 0);
-		std::cout << seqan::toSourcePosition(row(best_align, 1), read_start_view) << " " << read_start_view << std::endl; 
-        	std::cout << r->ref_pos_l << " " << r->ref_pos_r << std::endl;
-	}*/
-}
-
 struct seed_t {
 	const seq_t ref_pos;
 	const seq_t read_pos;
 	const uint32 len;
 	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len) {}
 };
+
+struct chain_t {
+	int32_t pos;
+	std::vector<seed_t> seeds;
+};
+
+#include "kbtree.h"
+
+#define chain_cmp(a, b) (((b).pos < (a).pos) - ((a).pos < (b).pos))
+KBTREE_INIT(chn, chain_t, chain_cmp)
+
+// return 1 if the seed is merged into the chain
+static int test_and_merge(const index_params_t* params, chain_t *c, const seed_t *p) {
+	uint32 read_end, ref_end, x, y;
+	const seed_t *last = &c->seeds[c->seeds.size()-1];
+	read_end = last->read_pos + last->len;
+	ref_end = last->ref_pos + last->len;
+	if (p->read_pos >= c->seeds[0].read_pos && p->read_pos + p->len <= read_end && p->ref_pos >= c->seeds[0].ref_pos && p->ref_pos + p->len <= ref_end)
+		return 1; // contained seed; do nothing
+
+	x = p->read_pos - last->read_pos; // always non-negtive
+	y = p->ref_pos - last->ref_pos;
+	if (y >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last->len < params->max_chain_gap && y - last->len < params->max_chain_gap) { // grow the chain
+		c->seeds.push_back(*p);
+		return 1;
+	}
+	return 0; // request to add a new chain
+}
 
 void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
@@ -698,56 +237,87 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		}
 		kmer2pos[kmer_hash].push_back(i);
 	}
-	std::cout << "READ: " << std::endl;
-	for(uint32 k = 0; k < r->len; k++) {
-		printf("%c", (char)iupacChar[(int)r->seq[k]]);
-	}
-	printf("\n");
 
-	// collect seeds shared between the reference and the read
+	// 1. collect seeds shared between the reference and the read
 	std::vector<seed_t> seeds;
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		int hit_len = r->len + ref_contig.len;
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 
-		std::cout << "REF CONTIG: " << std::endl;
-		for(uint32 k = 0; k < hit_len; k++) {
-			printf("%c", (char)iupacChar[(int)ref.seq[hit_offset + k]]);
-		}
-		printf("\n");
-
-		for(uint32 j = 0; j < hit_len; j++) {
+		uint32 step = 1;
+		for(uint32 j = 0; j < hit_len; j += step) {
 			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
-			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) {
-				// found a shared kmer seed
-				for(int read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
+			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) { // found a shared kmer seed
+
+				uint32 min_step = UINT_MAX;
+				for(uint32 read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
+					uint32 read_pos = kmer2pos[kmer_hash][read_pos_idx];
 					bool true_hit = true;
 					for(uint32 k = 0; k < params->k; k++) {
-						if(ref.seq[hit_offset + j + k] == r->seq[kmer2pos[kmer_hash][read_pos_idx + k]]) {
+						if(ref.seq[hit_offset + j + k] != r->seq[read_pos + k]) {
 							true_hit = false;
 							break;
 						}
-					}
-					if(!true_hit) continue;
+					} if(!true_hit) continue;
 
-					seed_t s(hit_offset + j, kmer2pos[kmer_hash][read_pos_idx], params->k);
+					// extend as much as possible to the right
+					uint32 e;
+					for(e = params->k; e < hit_len; e++) {
+						if(read_pos + e >= r->len) break;
+						if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break;
+					}
+
+					seed_t s(hit_offset + j, read_pos, e);
 					seeds.push_back(s);
 
-					std::cout << "SHARED SEEDS: " << std::endl;
-					printf("global_ref_pos %u local_ref_pos %u read_pos %u \n", hit_offset + j, j, kmer2pos[kmer_hash][read_pos_idx]);
-					for(uint32 k = 0; k < params->k; k++) {
-						printf("%c", (char)iupacChar[(int)ref.seq[hit_offset + j + k]]);
+					uint32 estep = e - params->k + 1;
+					if(estep < min_step) {
+						min_step = estep;
 					}
-					printf("\n");
+				}
+
+				// jump to next kmer position
+				if(min_step != UINT_MAX) {
+					step = min_step;
+				} else {
+					step = 1;
 				}
 			}
 		}
 	}
+	// TODO: remove duplicates/collapse seeds
 
-	// chain shared seeds
+	if(seeds.size() == 0) return;
 
-	// extend seeds with longest chains
+	// sort by length
+
+	// 2. chain seeds
+	std::vector<chain_t> chains;
+	kbtree_t(chn) *tree = kb_init(chn, KB_DEFAULT_SIZE);
+	for (uint32 i = 0; i < seeds.size(); i++) {
+		seed_t s = seeds[i];
+		chain_t tmp;
+		tmp.pos = s.ref_pos;
+		bool new_chain = false;
+		if (kb_size(tree)) {
+			chain_t *lower, *upper;
+			kb_intervalp(chn, tree, &tmp, &lower, &upper); // find the closest chain
+			if (!lower || !test_and_merge(params, lower, &s)) new_chain = true;
+		} else {
+			new_chain = true;
+		}
+		if (new_chain) { // add the seed as a new chain
+			tmp.seeds.push_back(s);
+			kb_putp(chn, tree, &tmp);
+		}
+	}
+
+	#define traverse_func(p_) (chains.push_back(*(p_)))
+	__kb_traverse(chain_t, tree, traverse_func);
+	#undef traverse_func
+
+	// 3. extend seeds with longest chains
 
 }
 
@@ -784,14 +354,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 				minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 				uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-				//r->ref_bucket_id_matches_by_table[t] = bucket_index;
 				if(bucket_index == ref.hash_tables[t].n_buckets) {
 					continue; // no reference window fell into this bucket
 				}
 				r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 			}
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
-			//printf("Collected read %u best %u \n", i, r->best_n_hits);
 
 			if(r->best_n_hits > 0) {
 				process_read_hits_se(ref, r, params);
@@ -846,367 +414,3 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
-
-// aligns the indexed reads to the indexed reference
-// using simhash and permutation tables
-void align_reads_lsh(ref_t& ref, reads_t& reads, const index_params_t* params) {
-//	printf("**** SRX Alignment: SimHash ****\n");
-//
-//	// 1. sort the reads by their simhash
-//	clock_t t = clock();
-//	sort_reads_hash(reads);
-//	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-//
-//	// 2. split reads into "clusters" based on their simhash
-//	t = clock();
-//	VectorClusters clusters;
-//	cluster_sorted_reads(reads, clusters);
-//	printf("Total number of read clusters = %zu \n", clusters.size());
-//	printf("Total clustering time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-//
-//	// 3. for each cluster simhash, find the neighbors in the reference
-//	static int perm[SIMHASH_BITLEN] = { 0 };
-//	for(int i = 0; i < SIMHASH_BITLEN; i++) {
-//		perm[i] = i;
-//	}
-//	t = clock();
-//	for(uint32 p = 0; p < params->p; p++) {
-//		printf("Permutation %d \n", p);
-//		if(p > 0) {
-//			// generate a new permutation
-//			shuffle(perm);
-//			permute_ref(ref, perm);
-//			sort_windows_hash(ref);
-//			permute_reads(clusters, perm);
-//		}
-//		for(uint32 i = 0; i < clusters.size(); i++) {
-//			if(clusters[i].acc == 1) continue;
-//
-//			// binary search to find the matching ref window(s)
-//			find_window_match_diffk(ref, &clusters[i], params);
-//			//if(p < params->p - 1) {
-//				//clusters->clusters[i].best_hamd = INT_MAX;
-//			//}
-//			eval_cluster_hit(&clusters[i]);
-//		}
-//	}
-//
-//	int hits = 0;
-//	int acc_hits = 0;
-//	int matched = 0;
-//	for(uint32 i = 0; i < clusters.size(); i++) {
-//		hits += clusters[i].ref_matches.size();
-//		if(clusters[i].ref_matches.size() == 0) continue;
-//		matched++;
-//		acc_hits += eval_cluster_hit(&clusters[i]);
-//		if(clusters[i].acc == 0) {
-//			//printf("hash = %llx \n", clusters->clusters[i].simhash);
-//			//print_read(clusters->clusters[i].reads[0]);
-//			//printf("best diff = %d \n", clusters->clusters[i].best_hamd);
-//			//printf("best pos = %llu \n", clusters->clusters[i].ref_matches[clusters->clusters[i].best_pos]);
-//		}
-//	}
-//	printf("Total number of clusters matched = %d \n", matched);
-//	printf("Total number of hits found = %d \n", hits);
-//	printf("Total number of accurate hits found = %d \n", acc_hits);
-//	printf("Total search time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-	
-	//get_stats(ref, clusters);
-}
-
-//uint32_t get_msbits32(const hash_t h, const index_params_t* params) {
-//	return (h >> (SIMHASH_BITLEN - params->msbits_match));
-//}
-
-// computes the idxs of the matching simhash windows
-// uses binary search
-// returns -1 if no matches were found
-int find_window_match_diffk(ref_t& ref, cluster_t* cluster, const index_params_t* params) {
-//	const uint32_t d_q = get_msbits32(cluster->simhash, params);
-
-//	seq_t low = 0;
-//	seq_t high = ref.windows.size() - 1;
-//	seq_t idx = -1;
-//	while(high >= low) {
-//		const seq_t mid = (low + high) / 2;
-//		const uint32_t d_win = get_msbits32(ref->windows[mid].simhash, params);
-//		if(d_win == d_q) {
-//			idx = mid;
-//			break;
-//		} else if (ref->windows[mid].simhash < cluster->simhash) {
-//			low = mid + 1;
-//		} else {
-//			high = mid - 1;
-//		}
-//		if(mid == 0) {
-//			return -1;
-//		}
-//	}
-//	if(idx == (seq_t) -1) {
-//		return -1;
-//	}
-//	// find all the matches that have the same d msbits
-//	seq_t l = idx;
-//	if(idx > 0) {
-//		l = idx - 1;
-//		while (1) {
-//			uint32_t d_win = get_msbits32(ref->windows[l].simhash, params);
-//			if(d_win != d_q) {
-//				break;
-//			}
-//			if(l == 0) {
-//				break;
-//			}
-//			l--;
-//		}
-//		l++;
-//	}
-//
-//	seq_t h = idx + 1;
-//	while (h < ref->num_windows) {
-//		uint32_t d_win = get_msbits32(ref->windows[h].simhash, params);
-//		if(d_win != d_q) {
-//			break;
-//		}
-//		h++;
-//	}
-//
-//	//printf("Range %llu %llu \n", l, h);
-//	if(cluster->ref_matches == NULL) {
-//		cluster->alloc_matches = h-l+1;
-//		cluster->ref_matches = (seq_t*) malloc(cluster->alloc_matches*sizeof(seq_t));
-//	}
-//	for(seq_t idx = l; idx < h; idx++) {
-//		// check the hamming distance
-//		int hammd = hamming_dist(ref->windows[idx].simhash, cluster->simhash);
-//		if((hammd <= params->max_hammd)) {// && (hammd <= cluster->best_hamd)) {
-//			if(cluster->num_matches == cluster->alloc_matches && cluster->alloc_matches != 0) {
-//				cluster->alloc_matches <<= 1;
-//				cluster->ref_matches = (seq_t*) realloc(cluster->ref_matches, cluster->alloc_matches*sizeof(seq_t));
-//				if(cluster->ref_matches == NULL) {
-//					printf("Could not allocate memory for the matches\n");
-//					return -1;
-//				}
-//			}
-//			if(hammd < cluster->best_hamd) {
-//				cluster->best_hamd = hammd;
-//				cluster->best_pos = cluster->num_matches;
-//			}
-//			cluster->ref_matches[cluster->num_matches] = ref->windows[idx].pos;
-//			cluster->num_matches++;
-//		}
-//	}
-	return 0;
-}
-
-void find_windows_exact(ref_t& ref, read_t* r, const index_params_t* params) {
-//	seq_t low = 0;
-//	seq_t high = ref->num_windows - 1;
-//	seq_t idx = -1;
-//	while(high >= low) {
-//		seq_t mid = (low + high) / 2;
-//		if(ref->windows[mid].simhash == r->simhash) {
-//			idx = mid;
-//			break;
-//		} else if (ref->windows[mid].simhash < r->simhash) {
-//			low = mid + 1;
-//		} else {
-//			high = mid - 1;
-//		}
-//		if(mid == 0) return;
-//	}
-//	if(idx == -1) return;
-//
-//	// find all the windows with the same simhash
-//	seq_t l;
-//	if(idx != 0) {
-//		l = idx - 1;
-//	} else {
-//		l = 0;
-//	}
-//	while (idx != 0 && l >= 0) {
-//		if(ref->windows[l].simhash != r->simhash) break;
-//		if(l == 0) break;
-//		l--;
-//	}
-//	if(idx != 0) l++;
-//	seq_t h = idx + 1;
-//	while (h < ref->num_windows) {
-//		if(ref->windows[h].simhash != r->simhash) break;
-//		h++;
-//	}
-//	h--;
-//
-//	if(r->ref_matches == NULL) {
-//		r->alloc_matches = h-l+1;
-//		r->ref_matches = (seq_t*) malloc(r->alloc_matches*sizeof(seq_t));
-//	}
-//	for(seq_t idx = l; idx <= h; idx++) {
-//		if(r->num_matches == r->alloc_matches) {
-//			r->alloc_matches <<= 1;
-//			r->ref_matches = (seq_t*) realloc(r->ref_matches, r->alloc_matches*sizeof(seq_t));
-//			if(r->ref_matches == NULL) {
-//				printf("Could not allocate memory for the matches\n");
-//				return;
-//			}
-//		}
-//		r->ref_matches[r->num_matches] = ref->windows[idx].pos;
-//		r->num_matches++;
-//	}
-}
-
-char get_bucket_bits(hash_t h, int bucket) {
-	char mask = 0xFF;
-	return h & mask;
-}
-
-void find_windows_exact_bucket(ref_t* ref, read_t* r, const index_params_t* params, int bucket) {
-//	seq_t low = 0;
-//	seq_t high = ref->num_windows - 1;
-//	seq_t idx = -1;
-//	while(high >= low) {
-//		seq_t mid = (low + high) / 2;
-//		char wb = get_bucket_bits(ref->windows[mid].simhash, bucket);
-//		char rb = get_bucket_bits(r->simhash, bucket);
-//		if(wb == rb) {
-//			idx = mid;
-//			break;
-//		} else if (wb < rb) {
-//			low = mid + 1;
-//		} else {
-//			high = mid - 1;
-//		}
-//		if(mid == 0) return;
-//	}
-//	if(idx == -1) return;
-//
-//	// find all the windows with the same simhash
-//	seq_t l;
-//	if(idx != 0) {
-//		l = idx - 1;
-//	} else {
-//		l = 0;
-//	}
-//	while (idx != 0 && l >= 0) {
-//		if(get_bucket_bits(ref->windows[l].simhash, bucket) != get_bucket_bits(r->simhash, bucket)) break;
-//		if(l == 0) break;
-//		l--;
-//	}
-//	if(idx != 0) l++;
-//	seq_t h = idx + 1;
-//	while (h < ref->num_windows) {
-//		if(get_bucket_bits(ref->windows[h].simhash, bucket) != get_bucket_bits(r->simhash, bucket)) break;
-//		h++;
-//	}
-//	h--;
-//
-//	if(r->ref_matches == NULL) {
-//		r->alloc_matches = h-l+1;
-//		r->ref_matches = (seq_t*) malloc(r->alloc_matches*sizeof(seq_t));
-//	}
-//	for(seq_t idx = l; idx <= h; idx++) {
-//		if(r->num_matches == r->alloc_matches) {
-//			r->alloc_matches <<= 1;
-//			r->ref_matches = (seq_t*) realloc(r->ref_matches, r->alloc_matches*sizeof(seq_t));
-//			if(r->ref_matches == NULL) {
-//				printf("Could not allocate memory for the matches\n");
-//				return;
-//			}
-//		}
-//		r->ref_matches[r->num_matches] = ref->windows[idx].pos;
-//		r->num_matches++;
-//	}
-}
-
-/* ---- Shifting/Permutation ----- */
-
-void shift_bucket_ref(ref_t* ref, int bucket) {
-//	for(seq_t i = 0; i < ref->num_windows; i++) {
-//		ref->windows[i].simhash >>= (bucket*MINHASH_BUCKET_SIZE);
-//	}
-}
-
-void shift_bucket_reads(reads_t* reads, int bucket) {
-//	for(seq_t i = 0; i < reads->count; i++) {
-//		reads->reads[i].simhash >>= (bucket*MINHASH_BUCKET_SIZE);
-//	}
-}
-
-// permutes a 64-bit integer
-// perm is a random permutation of integers 0..63
-void perm64(uint64_t* n, int* perm) {
-//	uint64_t p = 0;
-//	for(int i = 0; i < SIMHASH_BITLEN; i++) {
-//		int idx = perm[i];
-//		p |= (((*n >> idx) & 1) << i);
-//	}
-//	*n = p;
-}
-
-void permute_ref(ref_t& ref, int* perm) {
-//	for(seq_t i = 0; i < ref->num_windows; i++) {
-//		perm64(&(ref->windows[i].simhash), perm);
-//	}
-}
-
-void permute_reads(VectorClusters& clusters, int* perm) {
-//	for(seq_t i = 0; i < clusters->num_clusters; i++) {
-//		perm64(&(clusters->clusters[i].simhash), perm);
-//	}
-}
-
-/* random integer from 0 to n-1 */
-int irand(int n) {
-	int r, rand_max = RAND_MAX - (RAND_MAX % n);
-	/* reroll until r falls in a range that can be evenly
-	 * distributed in n bins.  Unless n is comparable to
-	 * to RAND_MAX, it's not *that* important really. */
-	while ((r = rand()) >= rand_max);
-	return r / (rand_max / n);
-}
-
-void shuffle(int *perm) {
-//	int tmp;
-//	int len = SIMHASH_BITLEN;
-//	while(len) {
-//		int j = irand(len);
-//		if (j != len - 1) {
-//			tmp = perm[j];
-//			perm[j] = perm[len-1];
-//			perm[len-1] = tmp;
-//		}
-//		len--;
-//	}
-}
-
-/* ---- Hit Evaluation ----- */
-
-// check how many reads in this cluster match the window positions
-int eval_cluster_hit(cluster_t* cluster) {
-    int matched = 0;
-    /*for(uint32 i = 0; i < cluster->reads.size(); i++) {
-        read_t r = *cluster->reads[i];
-        unsigned int pos_l, pos_r;
-        int strand;
-        //parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
-        //printf("lpos %llu rpos %llu \n", pos_l, pos_r);
-
-	int found = 0;
-        for(seq_t j = pos_l - 10; j <= pos_r + 10; j++) {
-        	for(seq_t idx = 0; idx < cluster->ref_matches.size(); idx++) {
-            	seq_t hit_pos = cluster->ref_matches[idx];
-            	if(hit_pos == j) {
-            		cluster->acc = 1;
-	                matched++;
-	                found = 1;
-	                break;
-	            }
-            }
-        	if(found == 1) {
-        		break;
-        	}
-        }
-    }*/
-    return matched;
-}
-

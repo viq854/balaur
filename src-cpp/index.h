@@ -37,6 +37,10 @@ typedef struct {
 	uint32 bucket_entry_coverage;
 	uint32 contig_gap;
 
+	// seed extension / chaining
+	uint32 bandw;
+	uint32 max_chain_gap;
+
 	// alignment evaluation
 	uint32 min_n_hits;
 	uint32 dist_best_hit; // how many fewer than best table hits to still keep
