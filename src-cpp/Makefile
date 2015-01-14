@@ -11,6 +11,9 @@ LIBS=		-lm -lz -ltbb -ltbbmalloc -lpthread -L/usr/local/bin -lmarisa -lrt
 .cc.o:
 		$(CC) -c $(CFLAGS) $(DFLAGS) $(INCLUDES) $< -o $@
 
+.c.o:
+		gcc -c -g  $(INCLUDES) $< -o $@
+
 all:$(PROG)
 		
 srx:$(OBJS)
