@@ -239,6 +239,7 @@ struct read_t {
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
+	char dp_hit_acc;
 
 };
 typedef std::vector<read_t> VectorReads;
