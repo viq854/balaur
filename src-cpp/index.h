@@ -40,6 +40,12 @@ typedef struct {
 	// seed extension / chaining
 	uint32 bandw;
 	uint32 max_chain_gap;
+	uint32 match;
+	uint32 mismatch;
+	uint32 gap_open;
+	uint32 gap_extend;
+	uint32 zdrop;
+	int8_t score_matrix[25];
 
 	// alignment evaluation
 	uint32 min_n_hits;
@@ -88,6 +94,25 @@ typedef struct {
 		max_suboptimal_hits = 500;
 
 		hit_collection_interval = 200000000;
+
+		bandw = 100;
+		max_chain_gap = 500;
+		match = 1;
+		mismatch = 4;
+		gap_open = 6;
+		gap_extend = 1;
+		zdrop = 100;
+		int i, j, k;
+		for (i = k = 0; i < 4; ++i) {
+			for (j = 0; j < 4; ++j) {
+				score_matrix[k++] = i == j? match : -mismatch;
+			}
+			score_matrix[k++] = -1; // ambiguous base
+		}
+		for (j = 0; j < 5; ++j) {
+			score_matrix[k++] = -1;
+		}
+
 	}
 
 	// set the initial kmer hash function (rolling hash)
@@ -180,6 +205,15 @@ struct ref_match_t {
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
 
+struct aln_t {
+	seq_t ref_start, ref_end; 	// [rb,re): reference sequence in the alignment
+	int read_start, read_end;   // [qb,qe): query sequence in the alignment
+	int score;      // best local SW score
+	int truesc;     // actual score corresponding to the aligned region; possibly smaller than $score
+	int sub;        // 2nd best SW score
+	int w;          // actual band width used in extension
+};
+
 struct read_t {
 	uint32_t len; 					// read length
 	std::string name; 				// read name
@@ -201,6 +235,7 @@ struct read_t {
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 	uint32 best_n_hits;
+	aln_t aln;
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
