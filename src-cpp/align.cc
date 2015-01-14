@@ -169,16 +169,14 @@ struct seed_t {
 	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len, uint32 _ref_contig_idx) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len), ref_contig_idx(_ref_contig_idx) {}
 };
 
-struct chain_t {
-	int32_t pos;
-	std::vector<seed_t> seeds;
-};
+typedef std::vector<seed_t> SeedChain;
 
-uint32 get_chain_weight(const chain_t* c) {
+
+uint32 get_chain_weight(const SeedChain& seeds) {
 	int32_t chain_end_pos = 0;
 	uint32 weight_read = 0;
-	for (uint32 i = 0; i < c->seeds.size(); i++) {
-		const seed_t s = c->seeds[i];
+	for (uint32 i = 0; i < seeds.size(); i++) {
+		const seed_t s = seeds[i];
 		if (s.read_pos >= chain_end_pos) {
 			weight_read += s.len;
 		} else if (s.read_pos + s.len > chain_end_pos) {
@@ -188,8 +186,8 @@ uint32 get_chain_weight(const chain_t* c) {
 	}
 	uint32 weight_ref = 0;
 	chain_end_pos = 0;
-	for (uint32 i = 0; i < c->seeds.size(); i++) {
-		const seed_t s = c->seeds[i];
+	for (uint32 i = 0; i < seeds.size(); i++) {
+		const seed_t s = seeds[i];
 		if (s.ref_pos >= chain_end_pos) {
 			weight_read += s.len;
 		} else if (s.ref_pos + s.len > chain_end_pos) {
@@ -201,21 +199,21 @@ uint32 get_chain_weight(const chain_t* c) {
 }
 
 // return 1 if the seed is merged into the chain
-static int add_seed(chain_t *c, const seed_t *s, const index_params_t* params) {
+static bool add_seed(std::vector<seed_t>& seeds, const seed_t s, const index_params_t* params) {
 	uint32 read_end, ref_end, x, y;
-	const seed_t *last = &c->seeds[c->seeds.size()-1];
+	const seed_t *last = seeds[seeds.size()-1];
 	read_end = last->read_pos + last->len;
 	ref_end = last->ref_pos + last->len;
-	if (s->read_pos >= c->seeds[0].read_pos && s->read_pos + s->len <= read_end && s->ref_pos >= c->seeds[0].ref_pos && s->ref_pos + s->len <= ref_end)
-		return 1; // contained seed; do nothing
+	if (s.read_pos >= seeds[0].read_pos && s.read_pos + s.len <= read_end && s.ref_pos >= seeds[0].ref_pos && s.ref_pos + s.len <= ref_end)
+		return true; // seed already in chain
 
-	x = s->read_pos - last->read_pos;
-	y = s->ref_pos - last->ref_pos; // always non-negtive
+	x = s.read_pos - last->read_pos;
+	y = s.ref_pos - last->ref_pos;
 	if (x >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last->len < params->max_chain_gap && y - last->len < params->max_chain_gap) { // grow the chain
-		c->seeds.push_back(*s);
-		return 1;
+		seeds.push_back(s);
+		return true;
 	}
-	return 0; // request to add a new chain
+	return false;
 }
 
 void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* params) {
@@ -297,14 +295,14 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	}
 
 	// 1. find seeds shared between the reference and the read and assemble seed chains
-	std::vector<chain_t*> chains;
+	std::vector<SeedChain> chains;
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
 		// REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		int hit_len = r->len + ref_contig.len;
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 
-		chain_t* last_chain;
+		SeedChain* last_chain = NULL;
 		uint32 step = 1;
 		for(uint32 j = 0; j <= hit_len - params->k; j += step) { // REF KMER
 			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
@@ -333,17 +331,15 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 				// check if seed should be added to the last chain or if it should be a new chain
 				bool new_chain = false;
-				if(last_chain == NULL) {
+				if(last_chain == 0) {
 					new_chain = true;
-				} else if(!add_seed(last_chain, &s, params)) {
+				} else if(!add_seed(*last_chain, s, params)) {
 					new_chain = true;
 				}
 				if(new_chain) {
-					chain_t* new_c = new chain_t();
-					new_c->pos = s.ref_pos;
-					new_c->seeds.push_back(s);
-					last_chain = new_c;
-					chains.push_back(new_c);
+					chains.push_back(SeedChain());
+					chains[chains.size()-1].push_back(s);
+					last_chain = &chains[chains.size()-1];
 				}
 
 				if(e < min_step) {
