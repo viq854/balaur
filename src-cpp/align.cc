@@ -461,6 +461,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
+	printf("Total DP number of accurate hits found = %d \n", acc_dp);
 	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
@@ -482,7 +483,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
-		   if(pos_l >= match.pos - match.len - 30 && pos_l <= match.pos + 30) {
+		   if(pos_l >= match.pos - match.len - 130 && pos_l <= match.pos + 130) {
 			   r->acc = 1;
 			   break;
 		   }
