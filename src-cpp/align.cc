@@ -136,7 +136,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint last_pos = -1;
-	std::bitset<T> occ;
+	std::bitset<32> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0];
 		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
@@ -193,16 +193,44 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 }
 
 struct seed_t {
-	const seq_t ref_pos;
-	const seq_t read_pos;
-	const uint32 len;
-	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len) {}
+	seq_t ref_pos;
+	seq_t read_pos;
+	uint32 len;
+	uint32 ref_contig_idx;
+	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len, uint32 _ref_contig_idx) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len), ref_contig_idx(_ref_contig_idx) {}
 };
 
 struct chain_t {
 	int32_t pos;
 	std::vector<seed_t> seeds;
 };
+
+uint32 get_chain_weight(const chain_t* c) {
+	int32_t chain_end_pos = 0;
+	uint32 weight_read = 0;
+	for (uint32 i = 0; i < c->seeds.size(); i++) {
+		const seed_t s = c->seeds[i];
+		if (s.read_pos >= chain_end_pos) {
+			weight_read += s.len;
+		} else if (s.read_pos + s.len > chain_end_pos) {
+			weight_read += s.read_pos + s.len - chain_end_pos;
+		}
+		chain_end_pos = chain_end_pos > s.read_pos + s.len ? chain_end_pos : s.read_pos + s.len;
+	}
+	uint32 weight_ref = 0;
+	chain_end_pos = 0;
+	for (uint32 i = 0; i < c->seeds.size(); i++) {
+		const seed_t s = c->seeds[i];
+		if (s.ref_pos >= chain_end_pos) {
+			weight_read += s.len;
+		} else if (s.ref_pos + s.len > chain_end_pos) {
+			weight_read += s.ref_pos + s.len - chain_end_pos;
+		}
+		chain_end_pos = chain_end_pos > s.ref_pos + s.len ? chain_end_pos : s.ref_pos + s.len;
+	}
+	return weight_ref > weight_read ? weight_ref : weight_read;
+}
+
 
 #include "kbtree.h"
 
@@ -227,6 +255,69 @@ static int test_and_merge(const index_params_t* params, chain_t *c, const seed_t
 	return 0; // request to add a new chain
 }
 
+void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* params) {
+	aln_t* aln = &r->aln;
+	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s->ref_contig_idx];
+	int hit_len = r->len + ref_contig.len;
+	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+
+	if (s->read_pos > 0) { // left extension
+		int qle, tle, gtle, gscore;
+
+		// populate the ref and read pieces
+		uint32_t ref_len = s->ref_pos - hit_offset;
+		uint8_t ref_seq[ref_len];
+		uint8_t read_seq[s->read_pos];
+		for (uint32 i = 0; i < s->read_pos; i++) {
+			read_seq[i] = r->seq[s->read_pos - 1 - i];
+		}
+		for (uint32 i = 0; i < ref_len; i++) {
+			ref_seq[i] = ref.seq[hit_offset + ref_len - 1 - i];
+		}
+		int offset;
+		aln->score = ksw_extend2(s->read_pos, read_seq, ref_len, ref_seq, 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
+					0, params->zdrop, s->len*params->match, &qle, &tle, &gtle, &gscore, &offset);
+
+		if (gscore >= 0) { // to-end
+			aln->read_start = 0;
+			aln->ref_start = s->ref_pos - gtle;
+			aln->truesc = gscore;
+		} else {
+			// TODO: did not reach the end of the query!
+			return;
+		}
+	} else {
+		aln->score = s->len * params->match;
+		aln->read_start = 0;
+		aln->ref_start = s->ref_pos;
+	}
+
+	if (s->read_pos + s->len != r->len) { // right extension
+		int qle, tle, qe, re, gtle, gscore;
+		int sc0 = aln->score;
+		uint32 read_len = r->len - (s->read_pos + s->len);
+		uint32 ref_len = hit_offset + hit_len - (s->ref_pos + s->len);
+		int offset;
+		aln->score = ksw_extend2(read_len, (const unsigned char*) r->seq.c_str(), ref_len, (const unsigned char*)ref.seq.c_str(), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
+				0, params->zdrop, sc0, &qle, &tle, &gtle, &gscore, &offset);
+
+		// similar to the above
+		if(gscore >= 0) { // to-end extension
+			aln->read_end = r->len;
+			aln->ref_end = s->ref_pos + s->len + gtle;
+			aln->truesc += gscore - sc0;
+		} else {
+			// TODO: did not reach the end of the query!
+			return;
+		}
+	} else {
+		aln->read_end = r->len;
+		aln->ref_end = s->ref_pos + s->len;
+	}
+}
+
+#define MAX_SEED_HITS 10
+
 void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
 	std::unordered_map<minhash_t, std::vector<uint32>> kmer2pos;
@@ -244,13 +335,13 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		int hit_len = r->len + ref_contig.len;
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-
 		uint32 step = 1;
 		for(uint32 j = 0; j < hit_len; j += step) {
 			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
 			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) { // found a shared kmer seed
 
 				uint32 min_step = UINT_MAX;
+				if(kmer2pos[kmer_hash].size() > MAX_SEED_HITS) continue; //skip if too frequent
 				for(uint32 read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
 					uint32 read_pos = kmer2pos[kmer_hash][read_pos_idx];
 					bool true_hit = true;
@@ -267,16 +358,12 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 						if(read_pos + e >= r->len) break;
 						if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break;
 					}
-
-					seed_t s(hit_offset + j, read_pos, e);
+					seed_t s(hit_offset + j, read_pos, e, i);
 					seeds.push_back(s);
-
-					uint32 estep = e - params->k + 1;
-					if(estep < min_step) {
-						min_step = estep;
+					if(e < min_step) {
+						min_step = e;
 					}
 				}
-
 				// jump to next kmer position
 				if(min_step != UINT_MAX) {
 					step = min_step;
@@ -286,11 +373,7 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 			}
 		}
 	}
-	// TODO: remove duplicates/collapse seeds
-
-	if(seeds.size() == 0) return;
-
-	// sort by length
+	if(seeds.size() == 0) return; // TODO: remove duplicates/collapse seeds
 
 	// 2. chain seeds
 	std::vector<chain_t> chains;
@@ -317,7 +400,40 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	__kb_traverse(chain_t, tree, traverse_func);
 	#undef traverse_func
 
-	// 3. extend seeds with longest chains
+	// find the longest chain
+	chain_t* max_chain = &chains[0];
+	uint32 max_weight = get_chain_weight(max_chain);
+	for (uint32 i = 1; i < chains.size(); i++) {
+			chain_t* c = &chains[i];
+			uint32 w = get_chain_weight(c);
+			if(w > max_weight) {
+				max_chain = c;
+				max_weight = w;
+			}
+	}
+
+	// 3. extend longest seeds with longest chains
+	uint32 max_len = max_chain->seeds[0].len;
+	seed_t* max_s = max_chain->seeds[0];
+	for (uint32 i = 1; i < max_chain->seeds.size(); i++) {
+		seed_t* s = &max_chain->seeds[i];
+		if(s->len > max_len) {
+			max_s = s;
+			max_len = s->len;
+		}
+	}
+	seed2alignment(max_s, ref, r, params);
+	printf("Score: %u \n", r->aln.truesc);
+
+	/*for (uint32 i = 0; i < chains.size(); i++) {
+		chain_t p = chains[i];
+		printf("* Found CHAIN(%d): num_seeds=%u \n", i, p.seeds.size());
+		for (uint32 j = 0; j < p.seeds.size(); j++) {
+			uint32 pos;
+			printf("\t seed_len=%u;read_pos=%u;ref_pos=%u", p.seeds[j].len,  p.seeds[j].read_pos, p.seeds[j].ref_pos);
+		}
+		printf("\n");
+	}*/
 
 }
 
