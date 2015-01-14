@@ -167,10 +167,13 @@ struct seed_t {
 	uint32 len;
 	uint32 ref_contig_idx;
 	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len, uint32 _ref_contig_idx) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len), ref_contig_idx(_ref_contig_idx) {}
+
+	bool operator<(const seed_t& s) const {
+	    return len < s.len;
+	}
 };
 
 typedef std::vector<seed_t> SeedChain;
-
 
 uint32 get_chain_weight(const SeedChain& seeds) {
 	int32_t chain_end_pos = 0;
@@ -216,7 +219,14 @@ static bool add_seed(std::vector<seed_t>& seeds, const seed_t s, const index_par
 	return false;
 }
 
-void seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_params_t* params) {
+struct comp_chains
+{
+    bool operator()(const SeedChain& a, const SeedChain& b) const {
+    	return get_chain_weight(a) < get_chain_weight(b);
+    }
+};
+
+bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_params_t* params) {
 	aln_t* aln = &r->aln;
 	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s.ref_contig_idx];
 	int hit_len = r->len + ref_contig.len;
@@ -248,7 +258,7 @@ void seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 			aln->truesc = gscore;
 		} else {
 			// TODO: did not reach the end of the query!
-			return;
+			return false;
 		}
 	} else {
 		aln->score = s.len * params->match;
@@ -273,12 +283,13 @@ void seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 			aln->truesc += gscore - sc0;
 		} else {
 			// TODO: did not reach the end of the query!
-			return;
+			return false;
 		}
 	} else {
 		aln->read_end = r->len;
 		aln->ref_end = s.ref_pos + s.len;
 	}
+	return true;
 }
 
 #define MAX_SEED_HITS 10
@@ -352,29 +363,25 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	}
 	if(chains.size() == 0) return;
 
-	// find the longest chain
-	SeedChain& max_chain = chains[0];
-	uint32 max_weight = get_chain_weight(chains[0]);
-	for (uint32 i = 1; i < chains.size(); i++) {
-		uint32 w = get_chain_weight(chains[i]);
-		if(w > max_weight) {
-			max_chain = chains[i];
-			max_weight = w;
-		}
-	}
-
 	// 3. extend longest seeds with longest chains
-	uint32 max_len = max_chain[0].len;
-	seed_t max_s = max_chain[0];
-	for (uint32 i = 1; i < max_chain.size(); i++) {
-		seed_t s = max_chain[i];
-		if(s.len > max_len) {
-			max_s = s;
-			max_len = s.len;
+	std::sort(chains.begin(), chains.end(), comp_chains());
+	std::sort(chains[0].begin(), chains[0].end());
+
+	bool matched;
+	for(uint32 i = 0; i < chains.size(); i++) {
+		for(uint32 j = 0; j < chains[i].size(); j++) {
+			if(seed2alignment(chains[i][j], ref, r, params)) {
+				matched = true;
+				break;
+			}
 		}
+		if(matched) break;
 	}
-	seed2alignment(max_s, ref, r, params);
-	printf("Score: %u \n", r->aln.truesc);
+	if(!matched) {
+		printf("NO MATCH");
+	} else {
+		printf("Score: %u \n", r->aln.truesc);
+	}
 
 	/*for (uint32 i = 0; i < chains.size(); i++) {
 		chain_t p = chains[i];
