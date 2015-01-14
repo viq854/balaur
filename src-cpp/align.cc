@@ -201,66 +201,66 @@ uint32 get_chain_weight(const SeedChain& seeds) {
 // return 1 if the seed is merged into the chain
 static bool add_seed(std::vector<seed_t>& seeds, const seed_t s, const index_params_t* params) {
 	uint32 read_end, ref_end, x, y;
-	const seed_t *last = seeds[seeds.size()-1];
-	read_end = last->read_pos + last->len;
-	ref_end = last->ref_pos + last->len;
+	const seed_t last = seeds[seeds.size()-1];
+	read_end = last.read_pos + last.len;
+	ref_end = last.ref_pos + last.len;
 	if (s.read_pos >= seeds[0].read_pos && s.read_pos + s.len <= read_end && s.ref_pos >= seeds[0].ref_pos && s.ref_pos + s.len <= ref_end)
 		return true; // seed already in chain
 
-	x = s.read_pos - last->read_pos;
-	y = s.ref_pos - last->ref_pos;
-	if (x >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last->len < params->max_chain_gap && y - last->len < params->max_chain_gap) { // grow the chain
+	x = s.read_pos - last.read_pos;
+	y = s.ref_pos - last.ref_pos;
+	if (x >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last.len < params->max_chain_gap && y - last.len < params->max_chain_gap) { // grow the chain
 		seeds.push_back(s);
 		return true;
 	}
 	return false;
 }
 
-void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* params) {
+void seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_params_t* params) {
 	aln_t* aln = &r->aln;
-	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s->ref_contig_idx];
+	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s.ref_contig_idx];
 	int hit_len = r->len + ref_contig.len;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 
 	//printf("HIT: contig_len = %u contig_pos = %u offset = %u, len = %u \n", ref_contig.len, ref_contig.pos, hit_offset, hit_len);
 	//printf("SEED: seed_len = %u seed_read_pos = %u seed_ref_pos = %u\n", s->len, s->read_pos, s->ref_pos);
-	if (s->read_pos > 0) { // left extension
+	if (s.read_pos > 0) { // left extension
 		int qle, tle, gtle, gscore;
 
 		// populate the ref and read pieces
-		uint32_t ref_len = s->ref_pos - hit_offset;
+		uint32_t ref_len = s.ref_pos - hit_offset;
 		uint8_t ref_seq[ref_len];
-		uint8_t read_seq[s->read_pos];
-		for (uint32 i = 0; i < s->read_pos; i++) {
-			read_seq[i] = r->seq[s->read_pos - 1 - i];
+		uint8_t read_seq[s.read_pos];
+		for (uint32 i = 0; i < s.read_pos; i++) {
+			read_seq[i] = r->seq[s.read_pos - 1 - i];
 		}
 		for (uint32 i = 0; i < ref_len; i++) {
 			ref_seq[i] = ref.seq[hit_offset + ref_len - 1 - i];
 		}
 		//printf("LEFT EXT: read_pos %u ref_pos %u ref_len %u\n", s->read_pos, s->ref_pos, ref_len);
 		int offset;
-		aln->score = ksw_extend2(s->read_pos, read_seq, ref_len, ref_seq, 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
-					0, params->zdrop, s->len*params->match, &qle, &tle, &gtle, &gscore, &offset);
+		aln->score = ksw_extend2(s.read_pos, read_seq, ref_len, ref_seq, 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
+					0, params->zdrop, s.len*params->match, &qle, &tle, &gtle, &gscore, &offset);
 
 		if (gscore >= 0) { // to-end
 			aln->read_start = 0;
-			aln->ref_start = s->ref_pos - gtle;
+			aln->ref_start = s.ref_pos - gtle;
 			aln->truesc = gscore;
 		} else {
 			// TODO: did not reach the end of the query!
 			return;
 		}
 	} else {
-		aln->score = s->len * params->match;
+		aln->score = s.len * params->match;
 		aln->read_start = 0;
-		aln->ref_start = s->ref_pos;
+		aln->ref_start = s.ref_pos;
 	}
 
-	if (s->read_pos + s->len != r->len) { // right extension
+	if (s.read_pos + s.len != r->len) { // right extension
 		int qle, tle, qe, re, gtle, gscore;
 		int sc0 = aln->score;
-		uint32 read_len = r->len - (s->read_pos + s->len);
-		uint32 ref_len = hit_offset + hit_len - (s->ref_pos + s->len);
+		uint32 read_len = r->len - (s.read_pos + s.len);
+		uint32 ref_len = hit_offset + hit_len - (s.ref_pos + s.len);
 		//printf("RIGHT EXT: read_pos %u read_len %u ref_pos %u ref_len %u\n", s->read_pos, read_len, s->ref_pos, ref_len);
 		int offset;
 		aln->score = ksw_extend2(read_len, (const unsigned char*) r->seq.c_str(), ref_len, (const unsigned char*)ref.seq.c_str(), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
@@ -269,7 +269,7 @@ void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* para
 		// similar to the above
 		if(gscore >= 0) { // to-end extension
 			aln->read_end = r->len;
-			aln->ref_end = s->ref_pos + s->len + gtle;
+			aln->ref_end = s.ref_pos + s.len + gtle;
 			aln->truesc += gscore - sc0;
 		} else {
 			// TODO: did not reach the end of the query!
@@ -277,7 +277,7 @@ void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* para
 		}
 	} else {
 		aln->read_end = r->len;
-		aln->ref_end = s->ref_pos + s->len;
+		aln->ref_end = s.ref_pos + s.len;
 	}
 }
 
@@ -353,25 +353,24 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	if(chains.size() == 0) return;
 
 	// find the longest chain
-	chain_t* max_chain = chains[0];
-	uint32 max_weight = get_chain_weight(max_chain);
+	SeedChain& max_chain = chains[0];
+	uint32 max_weight = get_chain_weight(chains[0]);
 	for (uint32 i = 1; i < chains.size(); i++) {
-			chain_t* c = chains[i];
-			uint32 w = get_chain_weight(c);
-			if(w > max_weight) {
-				max_chain = c;
-				max_weight = w;
-			}
+		uint32 w = get_chain_weight(chains[i]);
+		if(w > max_weight) {
+			max_chain = chains[i];
+			max_weight = w;
+		}
 	}
 
 	// 3. extend longest seeds with longest chains
-	uint32 max_len = max_chain->seeds[0].len;
-	seed_t* max_s = &max_chain->seeds[0];
-	for (uint32 i = 1; i < max_chain->seeds.size(); i++) {
-		seed_t* s = &max_chain->seeds[i];
-		if(s->len > max_len) {
+	uint32 max_len = max_chain[0].len;
+	seed_t max_s = max_chain[0];
+	for (uint32 i = 1; i < max_chain.size(); i++) {
+		seed_t s = max_chain[i];
+		if(s.len > max_len) {
 			max_s = s;
-			max_len = s->len;
+			max_len = s.len;
 		}
 	}
 	seed2alignment(max_s, ref, r, params);
