@@ -21,38 +21,7 @@
 
 #include "ksw.h"
 
-
-int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
-   unsigned int seq_id, pos_l, pos_r;
-   int strand;
-   parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
-   seq_id = seq_id - 1;
-   r->top_hit_acc = 0;
-
-   assert(seq_id >= 0);
-   if(ref.subsequence_offsets.size() > 1) {
-	   assert(seq_id < ref.subsequence_offsets.size());
-	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
-   }
-
-   assert(r->best_n_hits < params->n_tables);
-   for(int i = r->best_n_hits; i >= 0; i--) {
-	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
-		   ref_match_t match = r->ref_matches[i][j];
-		   if(pos_l >= match.pos - match.len - 30 && pos_l <= match.pos + 30) {
-			   r->acc = 1;
-			   break;
-		   }
-	   }
-	   if(r->acc == 1) {
-		   if((uint32) i == r->best_n_hits) {
-			  r->top_hit_acc = 1;
-		   }
-		   break;
-	   }
-   }
-   return (r->acc == 1);
-}
+int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 
 struct heap_entry_t {
 	seq_t pos;
@@ -231,25 +200,19 @@ uint32 get_chain_weight(const chain_t* c) {
 	return weight_ref > weight_read ? weight_ref : weight_read;
 }
 
-
-#include "kbtree.h"
-
-#define chain_cmp(a, b) (((b).pos < (a).pos) - ((a).pos < (b).pos))
-KBTREE_INIT(chn, chain_t, chain_cmp)
-
 // return 1 if the seed is merged into the chain
-static int test_and_merge(const index_params_t* params, chain_t *c, const seed_t *p) {
+static int add_seed(chain_t *c, const seed_t *s, const index_params_t* params) {
 	uint32 read_end, ref_end, x, y;
 	const seed_t *last = &c->seeds[c->seeds.size()-1];
 	read_end = last->read_pos + last->len;
 	ref_end = last->ref_pos + last->len;
-	if (p->read_pos >= c->seeds[0].read_pos && p->read_pos + p->len <= read_end && p->ref_pos >= c->seeds[0].ref_pos && p->ref_pos + p->len <= ref_end)
+	if (s->read_pos >= c->seeds[0].read_pos && s->read_pos + s->len <= read_end && s->ref_pos >= c->seeds[0].ref_pos && s->ref_pos + s->len <= ref_end)
 		return 1; // contained seed; do nothing
 
-	x = p->read_pos - last->read_pos; // always non-negtive
-	y = p->ref_pos - last->ref_pos;
-	if (y >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last->len < params->max_chain_gap && y - last->len < params->max_chain_gap) { // grow the chain
-		c->seeds.push_back(*p);
+	x = s->read_pos - last->read_pos;
+	y = s->ref_pos - last->ref_pos; // always non-negtive
+	if (x >= 0 && x - y <= params->bandw && y - x <= params->bandw && x - last->len < params->max_chain_gap && y - last->len < params->max_chain_gap) { // grow the chain
+		c->seeds.push_back(*s);
 		return 1;
 	}
 	return 0; // request to add a new chain
@@ -261,6 +224,8 @@ void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* para
 	int hit_len = r->len + ref_contig.len;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 
+	//printf("HIT: contig_len = %u contig_pos = %u offset = %u, len = %u \n", ref_contig.len, ref_contig.pos, hit_offset, hit_len);
+	//printf("SEED: seed_len = %u seed_read_pos = %u seed_ref_pos = %u\n", s->len, s->read_pos, s->ref_pos);
 	if (s->read_pos > 0) { // left extension
 		int qle, tle, gtle, gscore;
 
@@ -274,6 +239,7 @@ void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* para
 		for (uint32 i = 0; i < ref_len; i++) {
 			ref_seq[i] = ref.seq[hit_offset + ref_len - 1 - i];
 		}
+		//printf("LEFT EXT: read_pos %u ref_pos %u ref_len %u\n", s->read_pos, s->ref_pos, ref_len);
 		int offset;
 		aln->score = ksw_extend2(s->read_pos, read_seq, ref_len, ref_seq, 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
 					0, params->zdrop, s->len*params->match, &qle, &tle, &gtle, &gscore, &offset);
@@ -297,6 +263,7 @@ void seed2alignment(seed_t* s, ref_t& ref, read_t* r, const index_params_t* para
 		int sc0 = aln->score;
 		uint32 read_len = r->len - (s->read_pos + s->len);
 		uint32 ref_len = hit_offset + hit_len - (s->ref_pos + s->len);
+		//printf("RIGHT EXT: read_pos %u read_len %u ref_pos %u ref_len %u\n", s->read_pos, read_len, s->ref_pos, ref_len);
 		int offset;
 		aln->score = ksw_extend2(read_len, (const unsigned char*) r->seq.c_str(), ref_len, (const unsigned char*)ref.seq.c_str(), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
 				0, params->zdrop, sc0, &qle, &tle, &gtle, &gscore, &offset);
@@ -329,82 +296,71 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		kmer2pos[kmer_hash].push_back(i);
 	}
 
-	// 1. collect seeds shared between the reference and the read
-	std::vector<seed_t> seeds;
+	// 1. find seeds shared between the reference and the read and assemble seed chains
+	std::vector<chain_t*> chains;
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+		// REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		int hit_len = r->len + ref_contig.len;
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+
+		chain_t* last_chain;
 		uint32 step = 1;
-		for(uint32 j = 0; j < hit_len; j += step) {
+		for(uint32 j = 0; j <= hit_len - params->k; j += step) { // REF KMER
 			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
-			if(kmer2pos.find(kmer_hash) != kmer2pos.end()) { // found a shared kmer seed
-
-				uint32 min_step = UINT_MAX;
-				if(kmer2pos[kmer_hash].size() > MAX_SEED_HITS) continue; //skip if too frequent
-				for(uint32 read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
-					uint32 read_pos = kmer2pos[kmer_hash][read_pos_idx];
-					bool true_hit = true;
-					for(uint32 k = 0; k < params->k; k++) {
-						if(ref.seq[hit_offset + j + k] != r->seq[read_pos + k]) {
-							true_hit = false;
-							break;
-						}
-					} if(!true_hit) continue;
-
-					// extend as much as possible to the right
-					uint32 e;
-					for(e = params->k; e < hit_len; e++) {
-						if(read_pos + e >= r->len) break;
-						if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break;
+			if(kmer2pos.find(kmer_hash) == kmer2pos.end() || kmer2pos[kmer_hash].size() > MAX_SEED_HITS) continue;  //skip if too frequent
+			uint32 min_step = UINT_MAX;
+			for(uint32 read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
+				// READ HIT POS
+				uint32 read_pos = kmer2pos[kmer_hash][read_pos_idx];
+				bool true_hit = true;
+				for(uint32 k = 0; k < params->k; k++) { //check if it's a true shared kmer seed
+					if(ref.seq[hit_offset + j + k] != r->seq[read_pos + k]) {
+						true_hit = false;
+						break;
 					}
-					seed_t s(hit_offset + j, read_pos, e, i);
-					seeds.push_back(s);
-					if(e < min_step) {
-						min_step = e;
-					}
+				} if(!true_hit) continue;
+
+				// extend as much as possible to the right
+				uint32 e;
+				for(e = params->k; e < (hit_len-j); e++) {
+					if(read_pos + e >= r->len) break;
+					if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break;
 				}
-				// jump to next kmer position
-				if(min_step != UINT_MAX) {
-					step = min_step;
-				} else {
-					step = 1;
+
+				// create new seed
+				seed_t s(hit_offset + j, read_pos, e, i);
+
+				// check if seed should be added to the last chain or if it should be a new chain
+				bool new_chain = false;
+				if(last_chain == NULL) {
+					new_chain = true;
+				} else if(!add_seed(last_chain, &s, params)) {
+					new_chain = true;
+				}
+				if(new_chain) {
+					chain_t* new_c = new chain_t();
+					new_c->pos = s.ref_pos;
+					new_c->seeds.push_back(s);
+					last_chain = new_c;
+					chains.push_back(new_c);
+				}
+
+				if(e < min_step) {
+					min_step = e;
 				}
 			}
+			// skip positions guaranteed to mismatch with the read
+			step = min_step != UINT_MAX ? min_step : 1;
 		}
 	}
-	if(seeds.size() == 0) return; // TODO: remove duplicates/collapse seeds
-
-	// 2. chain seeds
-	std::vector<chain_t> chains;
-	kbtree_t(chn) *tree = kb_init(chn, KB_DEFAULT_SIZE);
-	for (uint32 i = 0; i < seeds.size(); i++) {
-		seed_t s = seeds[i];
-		chain_t tmp;
-		tmp.pos = s.ref_pos;
-		bool new_chain = false;
-		if (kb_size(tree)) {
-			chain_t *lower, *upper;
-			kb_intervalp(chn, tree, &tmp, &lower, &upper); // find the closest chain
-			if (!lower || !test_and_merge(params, lower, &s)) new_chain = true;
-		} else {
-			new_chain = true;
-		}
-		if (new_chain) { // add the seed as a new chain
-			tmp.seeds.push_back(s);
-			kb_putp(chn, tree, &tmp);
-		}
-	}
-
-	#define traverse_func(p_) (chains.push_back(*(p_)))
-	__kb_traverse(chain_t, tree, traverse_func);
-	#undef traverse_func
+	if(chains.size() == 0) return;
 
 	// find the longest chain
-	chain_t* max_chain = &chains[0];
+	chain_t* max_chain = chains[0];
 	uint32 max_weight = get_chain_weight(max_chain);
 	for (uint32 i = 1; i < chains.size(); i++) {
-			chain_t* c = &chains[i];
+			chain_t* c = chains[i];
 			uint32 w = get_chain_weight(c);
 			if(w > max_weight) {
 				max_chain = c;
@@ -414,7 +370,7 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// 3. extend longest seeds with longest chains
 	uint32 max_len = max_chain->seeds[0].len;
-	seed_t* max_s = max_chain->seeds[0];
+	seed_t* max_s = &max_chain->seeds[0];
 	for (uint32 i = 1; i < max_chain->seeds.size(); i++) {
 		seed_t* s = &max_chain->seeds[i];
 		if(s->len > max_len) {
@@ -434,7 +390,6 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		}
 		printf("\n");
 	}*/
-
 }
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -513,7 +468,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
-		//printf("Evaluating read %u \n", i);
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
@@ -530,3 +484,36 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
+
+int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
+   unsigned int seq_id, pos_l, pos_r;
+   int strand;
+   parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
+   seq_id = seq_id - 1;
+   r->top_hit_acc = 0;
+
+   assert(seq_id >= 0);
+   if(ref.subsequence_offsets.size() > 1) {
+	   assert(seq_id < ref.subsequence_offsets.size());
+	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+   }
+
+   assert(r->best_n_hits < params->n_tables);
+   for(int i = r->best_n_hits; i >= 0; i--) {
+	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
+		   ref_match_t match = r->ref_matches[i][j];
+		   if(pos_l >= match.pos - match.len - 30 && pos_l <= match.pos + 30) {
+			   r->acc = 1;
+			   break;
+		   }
+	   }
+	   if(r->acc == 1) {
+		   if((uint32) i == r->best_n_hits) {
+			  r->top_hit_acc = 1;
+		   }
+		   break;
+	   }
+   }
+   return (r->acc == 1);
+}
+
