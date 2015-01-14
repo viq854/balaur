@@ -267,7 +267,7 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 	}
 
 	if (s.read_pos + s.len != r->len) { // right extension
-		int qle, tle, qe, re, gtle, gscore;
+		int qle, tle, gtle, gscore;
 		int sc0 = aln->score;
 		uint32 read_len = r->len - (s.read_pos + s.len);
 		uint32 ref_len = hit_offset + hit_len - (s.ref_pos + s.len);
@@ -367,7 +367,7 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	std::sort(chains.begin(), chains.end(), comp_chains());
 	std::sort(chains[0].begin(), chains[0].end());
 
-	bool matched;
+	bool matched = false;
 	for(uint32 i = 0; i < chains.size(); i++) {
 		for(uint32 j = 0; j < chains[i].size(); j++) {
 			if(seed2alignment(chains[i][j], ref, r, params)) {
@@ -375,10 +375,10 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 				break;
 			}
 		}
-		if(matched) break;
+		if(matched) break;x
 	}
 	if(!matched) {
-		printf("NO MATCH");
+		printf("NO MATCH \n");
 	} else {
 		printf("Score: %u \n", r->aln.truesc);
 	}
@@ -467,12 +467,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int valid_hash = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
+	int acc_dp = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
+		acc_dp += reads.reads[i].dp_hit_acc;
 		valid_hash += reads.reads[i].valid_minhash;
 	}
 
@@ -516,6 +518,11 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 		   break;
 	   }
    }
+
+   if(pos_l >= r->aln.ref_start - 30 && pos_l <= r->aln.ref_start + 30) {
+	   r->dp_hit_acc = 1;
+   }
+
    return (r->acc == 1);
 }
 
