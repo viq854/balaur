@@ -375,13 +375,13 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 				break;
 			}
 		}
-		if(matched) break;x
+		if(matched) break;
 	}
-	if(!matched) {
-		printf("NO MATCH \n");
-	} else {
-		printf("Score: %u \n", r->aln.truesc);
-	}
+	//if(!matched) {
+	//	printf("NO MATCH \n");
+	//} else {
+	//	printf("Score: %u \n", r->aln.truesc);
+	//}
 
 	/*for (uint32 i = 0; i < chains.size(); i++) {
 		chain_t p = chains[i];
