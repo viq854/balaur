@@ -167,10 +167,6 @@ struct seed_t {
 	uint32 len;
 	uint32 ref_contig_idx;
 	seed_t(seq_t _ref_pos, seq_t _read_pos, uint32 _len, uint32 _ref_contig_idx) : ref_pos(_ref_pos), read_pos(_read_pos), len(_len), ref_contig_idx(_ref_contig_idx) {}
-
-	bool operator<(const seed_t& s) const {
-	    return len < s.len;
-	}
 };
 
 typedef std::vector<seed_t> SeedChain;
@@ -219,10 +215,17 @@ static bool add_seed(std::vector<seed_t>& seeds, const seed_t s, const index_par
 	return false;
 }
 
+struct comp_seeds
+{
+    bool operator()(const seed_t& a, const seed_t& b) const {
+    	return a.len > b.len;
+    }
+};
+
 struct comp_chains
 {
     bool operator()(const SeedChain& a, const SeedChain& b) const {
-    	return get_chain_weight(a) < get_chain_weight(b);
+    	return get_chain_weight(a) > get_chain_weight(b);
     }
 };
 
@@ -295,18 +298,16 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 #define MAX_SEED_HITS 10
 
 void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
-	// index the read sequence: generate and store all kmers
-	std::unordered_map<minhash_t, std::vector<uint32>> kmer2pos;
-	for(uint32 i = 0; i <= (r->len - params->k); i++) {
-		minhash_t kmer_hash = CityHash32(&r->seq[i], params->k);
-		if(kmer2pos.find(kmer_hash) != kmer2pos.end()) {
-			kmer2pos.emplace(std::make_pair(kmer_hash, std::vector<uint32>()));
-		}
-		kmer2pos[kmer_hash].push_back(i);
+	// 1. index the read sequence: generate and store all kmers
+	std::unordered_map<std::string, std::vector<uint32>> kmer2pos;
+	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
+		std::vector<uint32>& pos_vec = kmer2pos[std::string(&r->seq[i], params->k)];
+		pos_vec.push_back(i);
 	}
 
-	// 1. find seeds shared between the reference and the read and assemble seed chains
+	// 2. find seeds shared between the reference and the read and assemble seed chains
 	std::vector<SeedChain> chains;
+	chains.reserve(r->ref_matches[r->best_n_hits].size());
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
 		// REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
@@ -316,38 +317,19 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		SeedChain* last_chain = NULL;
 		uint32 step = 1;
 		for(uint32 j = 0; j <= hit_len - params->k; j += step) { // REF KMER
-			minhash_t kmer_hash = CityHash32(&ref.seq[hit_offset + j], params->k);
-			if(kmer2pos.find(kmer_hash) == kmer2pos.end() || kmer2pos[kmer_hash].size() > MAX_SEED_HITS) continue;  //skip if too frequent
+			std::vector<uint32>& ref_kmer_hits = kmer2pos[std::string(&ref.seq[hit_offset + j], params->k)];
+			if(ref_kmer_hits.size() == 0 || ref_kmer_hits.size() > MAX_SEED_HITS) continue;  //skip if absent or too frequent
 			uint32 min_step = UINT_MAX;
-			for(uint32 read_pos_idx = 0; read_pos_idx < kmer2pos[kmer_hash].size(); read_pos_idx++) {
-				// READ HIT POS
-				uint32 read_pos = kmer2pos[kmer_hash][read_pos_idx];
-				bool true_hit = true;
-				for(uint32 k = 0; k < params->k; k++) { //check if it's a true shared kmer seed
-					if(ref.seq[hit_offset + j + k] != r->seq[read_pos + k]) {
-						true_hit = false;
-						break;
-					}
-				} if(!true_hit) continue;
-
-				// extend as much as possible to the right
+			for(uint32 read_pos_idx = 0; read_pos_idx < ref_kmer_hits.size(); read_pos_idx++) { // READ HIT POS
+				uint32 read_pos = ref_kmer_hits[read_pos_idx];
 				uint32 e;
-				for(e = params->k; e < (hit_len-j); e++) {
-					if(read_pos + e >= r->len) break;
-					if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break;
+				for(e = params->k; e < (hit_len-j); e++) { // extend as much as possible to the right
+					if(read_pos + e >= r->len) break; // reached the end of the read
+					if(ref.seq[hit_offset + j + e] != r->seq[read_pos + e]) break; // reached a mismatch
 				}
 
-				// create new seed
-				seed_t s(hit_offset + j, read_pos, e, i);
-
-				// check if seed should be added to the last chain or if it should be a new chain
-				bool new_chain = false;
-				if(last_chain == 0) {
-					new_chain = true;
-				} else if(!add_seed(*last_chain, s, params)) {
-					new_chain = true;
-				}
-				if(new_chain) {
+				seed_t s(hit_offset + j, read_pos, e, i); // new seed
+				if(last_chain == 0 || !add_seed(*last_chain, s, params)) { // check if seed should be added to the last chain or if it should be a new chain
 					chains.push_back(SeedChain());
 					chains[chains.size()-1].push_back(s);
 					last_chain = &chains[chains.size()-1];
@@ -365,10 +347,9 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// 3. extend longest seeds with longest chains
 	std::sort(chains.begin(), chains.end(), comp_chains());
-	std::sort(chains[0].begin(), chains[0].end());
-
 	bool matched = false;
 	for(uint32 i = 0; i < chains.size(); i++) {
+		std::sort(chains[i].begin(), chains[i].end(), comp_seeds());
 		for(uint32 j = 0; j < chains[i].size(); j++) {
 			if(seed2alignment(chains[i][j], ref, r, params)) {
 				matched = true;
@@ -377,11 +358,6 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 		}
 		if(matched) break;
 	}
-	//if(!matched) {
-	//	printf("NO MATCH \n");
-	//} else {
-	//	printf("Score: %u \n", r->aln.truesc);
-	//}
 
 	/*for (uint32 i = 0; i < chains.size(); i++) {
 		chain_t p = chains[i];
