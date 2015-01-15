@@ -229,11 +229,14 @@ struct comp_chains
     }
 };
 
+#define CONTIG_PADDING 100
+
 bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_params_t* params) {
 	aln_t* aln = &r->aln;
 	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s.ref_contig_idx];
 	int hit_len = r->len + ref_contig.len;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 
 	//printf("HIT: contig_len = %u contig_pos = %u offset = %u, len = %u \n", ref_contig.len, ref_contig.pos, hit_offset, hit_len);
 	//printf("SEED: seed_len = %u seed_read_pos = %u seed_ref_pos = %u\n", s->len, s->read_pos, s->ref_pos);
@@ -241,14 +244,14 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 		int qle, tle, gtle, gscore;
 
 		// populate the ref and read pieces
-		uint32_t ref_len = s.ref_pos - hit_offset;
+		uint32_t ref_len = s.ref_pos - padded_hit_offset;
 		uint8_t ref_seq[ref_len];
 		uint8_t read_seq[s.read_pos];
 		for (uint32 i = 0; i < s.read_pos; i++) {
 			read_seq[i] = r->seq[s.read_pos - 1 - i];
 		}
 		for (uint32 i = 0; i < ref_len; i++) {
-			ref_seq[i] = ref.seq[hit_offset + ref_len - 1 - i];
+			ref_seq[i] = ref.seq[padded_hit_offset + ref_len - 1 - i];
 		}
 		//printf("LEFT EXT: read_pos %u ref_pos %u ref_len %u\n", s->read_pos, s->ref_pos, ref_len);
 		int offset;
@@ -276,7 +279,7 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 		uint32 ref_len = hit_offset + hit_len - (s.ref_pos + s.len);
 		//printf("RIGHT EXT: read_pos %u read_len %u ref_pos %u ref_len %u\n", s->read_pos, read_len, s->ref_pos, ref_len);
 		int offset;
-		aln->score = ksw_extend2(read_len, (const unsigned char*) r->seq.c_str(), ref_len, (const unsigned char*)ref.seq.c_str(), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
+		aln->score = ksw_extend2(read_len, (const unsigned char*) &(r->seq.c_str()[s.read_pos + s.len]), ref_len, (const unsigned char*)&(ref.seq.c_str()[s.ref_pos + s.len]), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
 				0, params->zdrop, sc0, &qle, &tle, &gtle, &gscore, &offset);
 
 		// similar to the above
@@ -349,8 +352,10 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	std::sort(chains.begin(), chains.end(), comp_chains());
 	bool matched = false;
 	for(uint32 i = 0; i < chains.size(); i++) {
+		//printf("chain %u len %u \n", i, chains[i].size());
 		std::sort(chains[i].begin(), chains[i].end(), comp_seeds());
 		for(uint32 j = 0; j < chains[i].size(); j++) {
+			//printf("seed %u len %u \n", j, chains[i][j].len);
 			if(seed2alignment(chains[i][j], ref, r, params)) {
 				matched = true;
 				break;
