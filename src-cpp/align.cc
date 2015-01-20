@@ -412,6 +412,51 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	}*/
 }
 
+void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* params) {
+	// 1. index the read sequence: generate and store all kmers
+	std::unordered_map<std::string, uint32> kmer2pos;
+	kmer2pos[std::string(&r->seq[0], params->k)] = (uint32) -1;
+	for(uint32 i = 1; i < (r->len - params->k + 1); i++) {
+		uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
+		if(pos == 0) pos = i; // save the first occurrence
+	}
+
+	// 2. find seeds shared between the reference and the read and assemble seed chains
+	bool matched = false;
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + 200;
+
+		uint32 step = 1;
+		for(uint32 j = 0; j <= search_len; j += step) { // REF KMER
+			uint32& read_pos = kmer2pos[std::string(&ref.seq[padded_hit_offset + j], params->k)];
+			if(read_pos == 0) {  //skip if absent
+				continue;
+			}
+			if(read_pos == (uint32) -1) {
+				read_pos = 0;
+			}
+
+			uint32 e;
+			for(e = params->k; e < (search_len-j); e++) { // extend as much as possible to the right
+				if(read_pos + e >= r->len) break; // reached the end of the read
+				if(ref.seq[padded_hit_offset + j + e] != r->seq[read_pos + e]) break; // reached a mismatch
+			}
+			seed_t s(padded_hit_offset + j, read_pos, e, i); // new seed
+			// 3. extend the seed
+			if(seed2alignment(s, ref, r, params)) {
+				matched = true;
+				break;
+			}
+			step = e; // skip positions guaranteed to mismatch with the read
+		}
+		if(matched) break;
+	}
+}
+
+
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
@@ -453,8 +498,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 
 			if(r->best_n_hits > 0) {
-				//process_read_hits_se(ref, r, params);
-				process_read_hits_global(ref, r, params);
+				process_read_hits_se(ref, r, params);
+				//process_read_hits_global(ref, r, params);
 			}
 
 			// stats
