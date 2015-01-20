@@ -277,10 +277,21 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 		int sc0 = aln->score;
 		uint32 read_len = r->len - (s.read_pos + s.len);
 		uint32 ref_len = hit_offset + hit_len - (s.ref_pos + s.len);
-		//printf("RIGHT EXT: read_pos %u read_len %u ref_pos %u ref_len %u\n", s->read_pos, read_len, s->ref_pos, ref_len);
+		//printf("RIGHT EXT: read_pos %u read_len %u ref_pos %u ref_len %u\n", s.read_pos, read_len, s.ref_pos, ref_len);
 		int offset;
 		aln->score = ksw_extend2(read_len, (const unsigned char*) &(r->seq.c_str()[s.read_pos + s.len]), ref_len, (const unsigned char*)&(ref.seq.c_str()[s.ref_pos + s.len]), 5, params->score_matrix, params->gap_open, params->gap_extend, params->gap_open, params->gap_extend, params->bandw,
 				0, params->zdrop, sc0, &qle, &tle, &gtle, &gscore, &offset);
+
+		/*printf("REF: \n");
+		for(uint32 i = 0; i < ref_len + s.len; i++) {
+			printf("%c", iupacChar[(int)ref.seq.c_str()[s.ref_pos + i]]);
+	   	} printf("\n");
+
+	    printf("READ: \n");
+		for(uint32 i = 0; i < read_len + s.len; i++) {
+			printf("%c", iupacChar[(int)r->seq.c_str()[s.read_pos + i]]);
+		} printf("\n");
+		*/
 
 		// similar to the above
 		if(gscore >= 0) { // to-end extension
@@ -298,13 +309,38 @@ bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_par
 	return true;
 }
 
+void global_alignment(const ref_match_t ref_contig, const ref_t& ref, read_t* r, const index_params_t* params) {
+	aln_t* aln = &r->aln;
+	int hit_len = r->len + ref_contig.len;
+	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+	uint32_t ref_len = hit_len + 2*CONTIG_PADDING;
+
+	int n_cigar;
+	uint32_t* cigar;
+
+	aln->score = ksw_global(r->len,  (const unsigned char*) r->seq.c_str(),
+			ref_len, (const unsigned char*)ref.seq.c_str(),
+			5, params->score_matrix, params->gap_open, params->gap_extend, params->bandw,
+			&n_cigar, &cigar);
+}
+
 #define MAX_SEED_HITS 10
+
+void process_read_hits_global(ref_t& ref, read_t* r, const index_params_t* params) {
+
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		global_alignment(ref_contig, ref, r, params);
+	}
+}
 
 void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 	// 1. index the read sequence: generate and store all kmers
 	std::unordered_map<std::string, std::vector<uint32>> kmer2pos;
 	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
 		std::vector<uint32>& pos_vec = kmer2pos[std::string(&r->seq[i], params->k)];
+		if(pos_vec.size() == 0) pos_vec.reserve(MAX_SEED_HITS);
 		pos_vec.push_back(i);
 	}
 
@@ -334,6 +370,7 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 				seed_t s(hit_offset + j, read_pos, e, i); // new seed
 				if(last_chain == 0 || !add_seed(*last_chain, s, params)) { // check if seed should be added to the last chain or if it should be a new chain
 					chains.push_back(SeedChain());
+					chains[chains.size()-1].reserve(10);
 					chains[chains.size()-1].push_back(s);
 					last_chain = &chains[chains.size()-1];
 				}
@@ -416,7 +453,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 
 			if(r->best_n_hits > 0) {
-				process_read_hits_se(ref, r, params);
+				//process_read_hits_se(ref, r, params);
+				process_read_hits_global(ref, r, params);
 			}
 
 			// stats
