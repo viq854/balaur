@@ -72,7 +72,7 @@ void sift_down(heap_entry_t* heap, uint32 n, int i) {
 	}
 	if (min != i) {
 		swap(&heap[i], &heap[min]);
-	    sift_down(smallest);
+	    sift_down(heap, n, min);
 	}
 }
 
@@ -490,6 +490,49 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 	}
 }
 
+void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
+	// index the read sequence: generate and store all kmers
+	std::vector<minhash_t> kmers((r->len - params->k + 1));
+	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
+		kmers[i] = CityHash32(&r->seq[i], params->k);
+	}
+	std::sort(kmers.begin(), kmers.end());
+
+	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
+
+		std::vector<minhash_t> kmers_ref((search_len - params->k + 1));
+		for(uint32 j = 0; j < search_len; j++) {
+			kmers_ref[j] = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+		}
+		std::sort(kmers_ref.begin(), kmers_ref.end());
+
+		// find how many kmers are in common
+		int idx_q = 0;
+		int idx_r = 0;
+		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
+			if(kmers[idx_q] == kmers[idx_r]) {
+				kmers_votes[i]++;
+				idx_q++;
+				idx_r++;
+			} else if(kmers[idx_q] < kmers[idx_r]) {
+				idx_q++;
+			} else {
+				idx_r++;
+			}
+		}
+	}
+
+	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
+	ref_match_t tmp = r->ref_matches[r->best_n_hits][top_contig_idx];
+	r->ref_matches[r->best_n_hits].resize(1);
+	r->ref_matches[r->best_n_hits][0] = tmp;
+}
+
 #define MAX_TOP_HITS 100
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -535,6 +578,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
+				process_read_hits_se_votes_opt(ref, r, params);
 			}
 
 			// stats
