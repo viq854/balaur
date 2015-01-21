@@ -414,13 +414,10 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// 1. index the read sequence: generate and store all kmers
-	std::unordered_map<minhash_t, uint32> kmer2pos;
-	minhash_t kmer_hash = CityHash32(&r->seq[0], params->k);
-	kmer2pos[kmer_hash] = (uint32) -1;
+	std::unordered_map<std::string, uint32> kmer2pos;
+	kmer2pos[std::string(&r->seq[0], params->k)] = (uint32) -1;
 	for(uint32 i = 1; i < (r->len - params->k + 1); i++) {
-		kmer_hash = CityHash32(&r->seq[i], params->k);
-		uint32& pos = kmer2pos[kmer_hash];
-		//uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
+		uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
 		if(pos == 0) pos = i; // save the first occurrence
 	}
 
@@ -435,27 +432,13 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 		uint32 step = 1;
 		for(uint32 j = 0; j <= search_len; j += step) { // REF KMER
 			step = 1;
-			minhash_t kmer_hash = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
-			uint32& read_pos = kmer2pos[kmer_hash];
+			uint32& read_pos = kmer2pos[std::string(&ref.seq[padded_hit_offset + j], params->k)];
 			if(read_pos == 0) {  //skip if absent
 				continue;
 			}
-			bool true_hit = true;
-			uint32 k;
-			for(k = 0; k < params->k; k++) { // skip if not true hit
-				if(ref.seq[padded_hit_offset + j + k] != r->seq[read_pos + k]) {
-					true_hit = false;
-					break;
-				}
-			}
-			step = k + 1;
-			if(!true_hit) continue;
-
-
 			if(read_pos == (uint32) -1) {
 				read_pos = 0;
 			}
-
 			uint32 e;
 			for(e = params->k; e < (search_len-j); e++) { // extend as much as possible to the right
 				if(read_pos + e >= r->len) break; // reached the end of the read
