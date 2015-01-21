@@ -499,6 +499,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::sort(kmers.begin(), kmers.end());
 
 	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
+	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
@@ -514,12 +515,17 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		// find how many kmers are in common
 		int idx_q = 0;
 		int idx_r = 0;
+		bool first_match = true;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-			if(kmers[idx_q] == kmers_ref[idx_r]) {
+			if(kmers[idx_q].first == kmers_ref[idx_r].first) {
+				if(first_match) {
+					first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
+					first_match = false;
+				}
 				kmers_votes[i]++;
 				idx_q++;
 				idx_r++;
-			} else if(kmers[idx_q] < kmers_ref[idx_r]) {
+			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
 				idx_q++;
 			} else {
 				idx_r++;
@@ -528,9 +534,14 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	}
 
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
-	ref_match_t tmp = r->ref_matches[r->best_n_hits][top_contig_idx];
-	r->ref_matches[r->best_n_hits].clear();
-	r->ref_matches[r->best_n_hits].push_back(tmp);
+	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
+	seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx); // new seed
+	if(seed2alignment(s, ref, r, params)) {
+		break;
+	}
+
+	//r->ref_matches[r->best_n_hits].clear();
+	//r->ref_matches[r->best_n_hits].push_back(top_contig);
 }
 
 #define MAX_TOP_HITS 100
