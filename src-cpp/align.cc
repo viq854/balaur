@@ -414,14 +414,16 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// 1. index the read sequence: generate and store all kmers
-	std::unordered_map<std::string, uint32> kmer2pos;
+	std::unordered_map<minhash_t, uint32> kmer2pos;
 	kmer2pos[std::string(&r->seq[0], params->k)] = (uint32) -1;
 	for(uint32 i = 1; i < (r->len - params->k + 1); i++) {
-		uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
+		minhash_t kmer_hash = CityHash32(&r->seq[i], params->k);
+		uint32& pos = kmer2pos[kmer_hash];
+		//uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
 		if(pos == 0) pos = i; // save the first occurrence
 	}
 
-	// 2. find seeds shared between the reference and the read and assemble seed chains
+	// 2. find seeds shared between the reference and the read
 	bool matched = false;
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
@@ -431,10 +433,24 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 
 		uint32 step = 1;
 		for(uint32 j = 0; j <= search_len; j += step) { // REF KMER
-			uint32& read_pos = kmer2pos[std::string(&ref.seq[padded_hit_offset + j], params->k)];
+			step = 1;
+			minhash_t kmer_hash = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+			uint32& read_pos = kmer2pos[kmer_hash];
 			if(read_pos == 0) {  //skip if absent
 				continue;
 			}
+			bool true_hit = true;
+			uint32 k;
+			for(k = 0; k < params->k; k++) { // skip if not true hit
+				if(ref.seq[padded_hit_offset + j + k] != r->seq[read_pos + k]) {
+					true_hit = false;
+					break;
+				}
+			}
+			step = k + 1;
+			if(!true_hit) continue;
+
+
 			if(read_pos == (uint32) -1) {
 				read_pos = 0;
 			}
@@ -456,6 +472,7 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 	}
 }
 
+#define MAX_TOP_HITS 100
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
@@ -497,8 +514,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 
-			if(r->best_n_hits > 0) {
-				process_read_hits_se(ref, r, params);
+			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+				process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
 			}
 
