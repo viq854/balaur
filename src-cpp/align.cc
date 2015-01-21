@@ -54,6 +54,37 @@ void heap_update(heap_entry_t* heap, uint32 n) {
 	heap[i] = tmp;
 }
 
+// min-heap
+
+void swap(heap_entry_t*x, heap_entry_t*y) {
+	heap_entry_t temp = *x;  *x = *y;  *y = temp;
+}
+
+void sift_down(heap_entry_t* heap, uint32 n, int i) {
+	int l = 2*i + 1;
+	int r = 2*i + 2;
+	int min = i;
+	if (l < n && heap[l].pos < heap[i].pos) {
+		min = l;
+	}
+	if (r < n && heap[r].pos < heap[min].pos) {
+		min = r;
+	}
+	if (min != i) {
+		swap(&heap[i], &heap[min]);
+	    sift_down(smallest);
+	}
+}
+
+void heap_create(heap_entry_t* heap, int n) {
+	int i = (n-1)/2;
+	while(i >= 0) {
+		sift_down(heap, n, i);
+		i--;
+	}
+}
+
+
 inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	if(n <= 1) return;
 	if(heap[1].pos >= heap[0].pos) return; // nothing to shift
@@ -100,14 +131,15 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
-	heap_sort(heap, heap_size);
+	//heap_sort(heap, heap_size); // build heap
+	heap_create(heap, heap_size);
 
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint last_pos = -1;
 	std::bitset<32> occ;
 	while(heap_size > 0) {
-		heap_entry_t e = heap[0];
+		heap_entry_t e = heap[0]; // get min
 		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
 			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
@@ -137,10 +169,12 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
 			heap[0].tid = e.tid;
 			heap[0].next_idx = e.next_idx+1;
-			heap_update(heap, heap_size);
+			//heap_update(heap, heap_size);
+			sift_down(heap, heap_size, 0);
 		} else { // no more entries in this bucket
 			heap[0].pos = UINT_MAX;
-			heap_update(heap, heap_size);
+			//heap_update(heap, heap_size);
+			sift_down(heap, heap_size, 0);
 			heap_size--;
 		}
 	}
@@ -499,7 +533,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
 
 			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
-				process_read_hits_se_opt(ref, r, params);
+				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
 			}
 
