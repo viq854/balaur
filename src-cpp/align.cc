@@ -415,9 +415,10 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// 1. index the read sequence: generate and store all kmers
 	std::unordered_map<minhash_t, uint32> kmer2pos;
-	kmer2pos[std::string(&r->seq[0], params->k)] = (uint32) -1;
+	minhash_t kmer_hash = CityHash32(&r->seq[0], params->k);
+	kmer2pos[kmer_hash] = (uint32) -1;
 	for(uint32 i = 1; i < (r->len - params->k + 1); i++) {
-		minhash_t kmer_hash = CityHash32(&r->seq[i], params->k);
+		kmer_hash = CityHash32(&r->seq[i], params->k);
 		uint32& pos = kmer2pos[kmer_hash];
 		//uint32& pos = kmer2pos[std::string(&r->seq[i], params->k)];
 		if(pos == 0) pos = i; // save the first occurrence
