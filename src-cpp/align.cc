@@ -508,7 +508,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 		std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
 		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
-			kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), j);
+			kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
 		}
 		std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -535,10 +535,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
 	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
-	seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx); // new seed
-	if(seed2alignment(s, ref, r, params)) {
-		break;
-	}
+	 //printf("%u %u %u %u \n", top_contig.pos, top_contig.len, first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second);
+	seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
+	seed2alignment(s, ref, r, params);
 
 	//r->ref_matches[r->best_n_hits].clear();
 	//r->ref_matches[r->best_n_hits].push_back(top_contig);
