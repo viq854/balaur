@@ -490,6 +490,14 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 	}
 }
 
+
+struct comp_shared_seeds
+{
+    bool operator()(const std::pair<minhash_t, uint32>& a, const std::pair<minhash_t, uint32>& b) const {
+    	return a.second < b.second;
+    }
+};
+
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
 	std::vector<std::pair<minhash_t, uint32>> kmers((r->len - params->k + 1));
@@ -499,33 +507,35 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::sort(kmers.begin(), kmers.end());
 
 	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
-	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
+	//std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 
-		std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
+		//std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
+		std::vector<minhash_t> kmers_ref((search_len - params->k + 1));
 		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
-			kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
+			kmers_ref[j] = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+			//kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
 		}
 		std::sort(kmers_ref.begin(), kmers_ref.end());
 
 		// find how many kmers are in common
 		int idx_q = 0;
 		int idx_r = 0;
-		bool first_match = true;
+		//bool first_match = true;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-			if(kmers[idx_q].first == kmers_ref[idx_r].first) {
-				if(first_match) {
+			if(kmers[idx_q].first == kmers_ref[idx_r]) {
+				/*if(first_match) {
 					first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
 					first_match = false;
-				}
+				}*/
 				kmers_votes[i]++;
 				idx_q++;
 				idx_r++;
-			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
+			} else if(kmers[idx_q].first < kmers_ref[idx_r]) {
 				idx_q++;
 			} else {
 				idx_r++;
@@ -533,14 +543,27 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		}
 	}
 
+	std::sort(kmers.begin(), kmers.end(), comp_shared_seeds()); // re-sort read kmers by position
+	int idx_q = 0;
+
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
 	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
-	 //printf("%u %u %u %u \n", top_contig.pos, top_contig.len, first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second);
-	seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
-	seed2alignment(s, ref, r, params);
-
-	//r->ref_matches[r->best_n_hits].clear();
-	//r->ref_matches[r->best_n_hits].push_back(top_contig);
+	seq_t hit_offset = top_contig.pos - top_contig.len + 1;
+	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+	uint32 search_len = top_contig.len + 2*CONTIG_PADDING + r->len;
+	for(uint32 j = 0; j < search_len - params->k + 1; j++) {
+		minhash_t h = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+		while(idx_q < kmers.size() && (kmers[idx_q].first < h)) {
+			idx_q++;
+		}
+		if(idx_q >= kmers.size()) break;
+		if(kmers[idx_q].first == h) {
+			// found match
+			seed_t s(kmers[idx_q].second, padded_hit_offset + j, params->k, top_contig_idx);
+			seed2alignment(s, ref, r, params);
+			break;
+		}
+	}
 }
 
 #define MAX_TOP_HITS 100
