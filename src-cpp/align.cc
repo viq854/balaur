@@ -525,7 +525,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		int idx_r = 0;
 		bool first_match = true;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-			if(kmers[idx_q].first == kmers_ref[idx_r]) {
+			if(kmers[idx_q].first == kmers_ref[idx_r].first) {
 				if(first_match) {
 					first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
 					first_match = false;
@@ -533,7 +533,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 				kmers_votes[i]++;
 				idx_q++;
 				idx_r++;
-			} else if(kmers[idx_q].first < kmers_ref[idx_r]) {
+			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
 				idx_q++;
 			} else {
 				idx_r++;
