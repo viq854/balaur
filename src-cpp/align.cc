@@ -165,17 +165,33 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			occ.set(e.tid);
 		}
 		// push the next match from this bucket
-		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
-			heap[0].tid = e.tid;
-			heap[0].next_idx = e.next_idx+1;
-			//heap_update(heap, heap_size);
-			sift_down(heap, heap_size, 0);
-		} else { // no more entries in this bucket
-			heap[0].pos = UINT_MAX;
-			//heap_update(heap, heap_size);
-			sift_down(heap, heap_size, 0);
-			heap_size--;
+		if(heap_size == 1) {
+			if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+				break;
+			} else {
+				uint32 last_entry_idx = (*r->ref_bucket_matches_by_table[e.tid]).size() - 1;
+				len += (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx] - last_pos;
+				last_pos = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx];
+				break;
+			}
+		} else {
+			while(1) {
+				if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+					break;
+				}
+				e.pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
+				if(e.pos > heap[1].pos) break;
+				e.next_idx = e.next_idx+1;
+			}
+			if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+				heap[0].pos = e.pos;
+				heap[0].next_idx = e.next_idx+1;
+				sift_down(heap, heap_size, 0);
+			} else { // no more entries in this bucket
+				heap[0].pos = UINT_MAX;
+				sift_down(heap, heap_size, 0);
+				heap_size--;
+			}
 		}
 	}
 
@@ -581,17 +597,18 @@ void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t
 	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
 		kmers[i] = std::make_pair(CityHash32(&r->seq[i], params->k), i);
 	}
-	std::sort(kmers.begin(), kmers.end());
+	std::sort(kmers.begin(), kmers.end(), comp_kmers());
 
 	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
-	bool first_match = true;
+
 	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
 		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 
+		bool first_match = true;
 		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
 			const minhash_t h = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
 			std::vector<std::pair<minhash_t, uint32>>::iterator it = std::lower_bound(kmers.begin(), kmers.end(), std::make_pair(h, (uint32) 0), comp_kmers());
@@ -654,7 +671,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
-				process_read_hits_se_votes_opt2(ref, r, params);
+				process_read_hits_se_votes_opt(ref, r, params);
 			}
 
 			// stats
