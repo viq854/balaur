@@ -542,8 +542,10 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	}
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
 	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
-	seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
-	seed2alignment(s, ref, r, params);
+	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
+
+	//seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
+	//seed2alignment(s, ref, r, params);
 
 	/*std::sort(kmers.begin(), kmers.end(), comp_shared_seeds()); // re-sort read kmers by position
 	seq_t hit_offset = top_contig.pos - top_contig.len + 1;
@@ -564,6 +566,45 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			break;
 		}
 	}*/
+}
+
+uint32 binary_search(const std::vector<std::pair<minhash_t, uint32>>& kmers, const minhash_t h) {
+
+	return (uint32) -1;
+}
+
+void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t* params) {
+	// index the read sequence: generate and store all kmers
+	std::vector<std::pair<minhash_t, uint32>> kmers((r->len - params->k + 1));
+	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
+		kmers[i] = std::make_pair(CityHash32(&r->seq[i], params->k), i);
+	}
+	std::sort(kmers.begin(), kmers.end());
+
+	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
+	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
+	bool first_match = true;
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
+		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
+
+		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
+			minhash_t h = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+			std::vector<std::pair<minhash_t, uint32>>::iterator it = std::lower_bound(kmers.begin(), kmers.end(), std::make_pair(h, 0));
+			if(it != kmers.end() && !(h < (*it).first)) {
+				kmers_votes[i]++; // found match
+				if(first_match) {
+					first_kmer_match[i] = std::make_pair(padded_hit_offset + j, (*it).second);
+					first_match = false;
+				}
+			}
+		}
+	}
+	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
+	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
+	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 }
 
 #define MAX_TOP_HITS 100
@@ -611,7 +652,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
-				process_read_hits_se_votes_opt(ref, r, params);
+				process_read_hits_se_votes_opt2(ref, r, params);
 			}
 
 			// stats
