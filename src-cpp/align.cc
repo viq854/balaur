@@ -568,10 +568,12 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	}*/
 }
 
-uint32 binary_search(const std::vector<std::pair<minhash_t, uint32>>& kmers, const minhash_t h) {
-
-	return (uint32) -1;
-}
+struct comp_kmers
+{
+    bool operator()(const std::pair<minhash_t, uint32>& a, const std::pair<minhash_t, uint32>& b) const {
+    	return a.first < b.first;
+    }
+};
 
 void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
@@ -591,8 +593,8 @@ void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t
 		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 
 		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
-			minhash_t h = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
-			std::vector<std::pair<minhash_t, uint32>>::iterator it = std::lower_bound(kmers.begin(), kmers.end(), std::make_pair(h, 0));
+			const minhash_t h = CityHash32(&ref.seq[padded_hit_offset + j], params->k);
+			std::vector<std::pair<minhash_t, uint32>>::iterator it = std::lower_bound(kmers.begin(), kmers.end(), std::make_pair(h, (uint32) 0), comp_kmers());
 			if(it != kmers.end() && !(h < (*it).first)) {
 				kmers_votes[i]++; // found match
 				if(first_match) {
