@@ -175,6 +175,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 				break;
 			}
 		} else {
+			uint32 init_idx = e.next_idx;
 			while(1) {
 				if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
 					break;
@@ -191,6 +192,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 				heap[0].pos = UINT_MAX;
 				sift_down(heap, heap_size, 0);
 				heap_size--;
+			}
+			if(init_idx != e.next_idx) {
+				len += (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1] - last_pos;
+				last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx - 1];
 			}
 		}
 	}
