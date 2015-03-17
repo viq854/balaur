@@ -130,15 +130,15 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->bucket_sizes.resize(buckets->n_buckets, 0);
 
 		// per thread buckets
+		buckets->per_thread_next_free_bucket_index.resize(params->n_threads, 0);
+		buckets->per_thread_bucket_indices.resize(buckets->n_buckets);
 		buckets->per_thread_buckets_data_vectors.resize(buckets->n_buckets);
 		buckets->per_thread_bucket_sizes.resize(buckets->n_buckets);
 		for(uint32 i = 0; i < buckets->n_buckets; i++) {
+			buckets->per_thread_bucket_indices[i].resize(params->n_threads, buckets->n_buckets);
 			buckets->per_thread_buckets_data_vectors[i].resize(params->n_threads);
-		}
-		for(uint32 i = 0; i < buckets->n_buckets; i++) {
 			buckets->per_thread_bucket_sizes[i].resize(params->n_threads, 0);
 		}
-
 	}
 
 	// initialize additional per-thread storage
@@ -207,7 +207,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    				t*params->sketch_proj_len);
 
 	    		buckets_t* buckets = &ref.hash_tables[t];
-	    		omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
+
+	    		/*omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
 	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
 	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the global bucket
 	    			omp_set_lock(&buckets->lock);
@@ -216,7 +217,15 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			buckets->bucket_indices[bucket_hash] = bucket_index;
 	    			omp_unset_lock(&buckets->lock);
 	    		}
-	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);
+	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);*/
+
+	    		uint32 bucket_index = buckets->per_thread_bucket_indices[bucket_hash][tid];
+				if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
+					bucket_index = buckets->per_thread_next_free_bucket_index[tid];
+					buckets->per_thread_next_free_bucket_index[tid]++;
+					buckets->per_thread_bucket_indices[bucket_hash][tid] = bucket_index;
+				}
+
 	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
 	    		if(bucket.size() == 0) {
 	    			// first item in this thread bucket
@@ -235,8 +244,18 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					if(epos >= L) {
 						store_pos = false;
 					}
+					/*loc_t* epos = &bucket[curr_size-1];
+					if((epos->pos + epos->len) == pos) {
+						epos->len++;
+						store_pos = false;
+					}*/
 				}
 				if(store_pos) {
+					/*loc_t new_loc;
+					new_loc.pos = pos;
+					new_loc.len = 1;
+					bucket[curr_size] = new_loc;*/
+
 					bucket[curr_size] = pos;
 					buckets->per_thread_bucket_sizes[bucket_index][tid]++;
 					n_bucket_entries++;
@@ -286,6 +305,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
 			std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b]);
+			//std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b], comp_loc());
 		}
 	}
 	end_time = omp_get_wtime();

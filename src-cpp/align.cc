@@ -92,7 +92,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	heap_entry_t tmp = heap[0];
 	if(heap[n-1].pos <= heap[0].pos) { // shift all
 		memmove(heap, heap+1, (n-1)*sizeof(heap_entry_t));
-		heap[n-1] = heap[0];
+		heap[n-1] = tmp;
 	} else { // binary search: find the first element > tmp
 		int i, j, k;
 		i = 1;
@@ -131,8 +131,13 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
-	//heap_sort(heap, heap_size); // build heap
-	heap_create(heap, heap_size);
+	heap_sort(heap, heap_size); // build heap
+	//heap_create(heap, heap_size);
+	uint32 init_heap_size = heap_size;
+	//printf("HEAP INIT \n");
+	//for(uint32 i = 0; i < heap_size; i++) {
+	//        printf("%u \n", heap[i].pos);
+	//}
 
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
@@ -175,28 +180,49 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 				break;
 			}
 		} else {
-			uint32 init_idx = e.next_idx;
-			while(1) {
-				if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-					break;
-				}
-				e.pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
-				if(e.pos > heap[1].pos) break;
-				e.next_idx = e.next_idx+1;
-			}
+			//uint32 init_idx = e.next_idx;
+			//printf("INIT IDX %u \n", init_idx);
+			/*while(1) {
+					if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+							//printf("END of bucket next_idx %u size %u \n", e.next_idx, (*r->ref_bucket_matches_by_table[e.tid]).size());
+							break;
+					}
+					e.pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];
+					if(e.pos > heap[1].pos || (e.pos > (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1] + params->contig_gap)) {
+							//printf("GREATER pos %u min %u \n", e.pos, heap[1].pos);
+							break;
+					}
+					e.next_idx = e.next_idx+1;
+					//printf("INC IDX %u \n", e.next_idx);
+			}*/
 			if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-				heap[0].pos = e.pos;
-				heap[0].next_idx = e.next_idx+1;
-				sift_down(heap, heap_size, 0);
+					heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx];//e.pos;
+					heap[0].next_idx = e.next_idx+1;
+					heap_update_memmove(heap, heap_size);
+					//sift_down(heap, init_heap_size, 0);
+					//printf("1. not end: sift down %u \n", e.pos);
+					//printf("HEAP \n");
+					//for(uint32 i = 0; i < heap_size; i++) {
+					//      printf("%u \n", heap[i].pos);
+					//}
 			} else { // no more entries in this bucket
-				heap[0].pos = UINT_MAX;
-				sift_down(heap, heap_size, 0);
-				heap_size--;
+					heap[0].pos = UINT_MAX;
+					heap_update_memmove(heap, heap_size);
+					//sift_down(heap, init_heap_size, 0);
+					heap_size--;
+					//printf("2. end heap size = %u \n", heap_size);
+					//printf("HEAP \n");
+					//for(uint32 i = 0; i < heap_size; i++) {
+					//      printf("%u \n", heap[i].pos);
+					//}
+
 			}
-			if(init_idx != e.next_idx) {
-				len += (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1] - last_pos;
-				last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx - 1];
-			}
+			/*if(init_idx != e.next_idx) {
+					len += (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1] - last_pos;
+					//printf("old last_pos %u \n", last_pos);
+					last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx - 1];
+					//printf("new len %u prev pos %u new last_pos %u \n", len, (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1], last_pos);
+			}*/
 		}
 	}
 
@@ -209,6 +235,11 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			ref_match_t rm(last_pos, len);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
+	}
+
+	printf("HEAP \n");
+	for(uint32 i = 0; i < heap_size; i++) {
+		printf("%u \n", heap[i].pos);
 	}
 
 	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
@@ -643,7 +674,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the reads across the threads
-	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) reduction(max:max_windows_matched)
+	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) //reduction(max:max_windows_matched)
 	{
 		int tid = omp_get_thread_num();
 		int n_threads = omp_get_num_threads();
