@@ -292,10 +292,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[bucket_index][tid]);
 			}
 		}
-		std::vector<VectorSeqPos>().swap(buckets->per_thread_bucket_indices);
-		std::vector<VectorSeqPos>().swap(buckets->per_thread_bucket_sizes);
-		std::vector<VectorSeqPos>().swap(buckets->per_thread_next_free_bucket_index);
-		std::vector<VectorSeqPos>().swap(buckets->per_thread_buckets_data_vectors);
+		std::vector<VectorPerThreadIndices>().swap(buckets->per_thread_bucket_indices);
+		std::vector<VectorPerThreadSizes>().swap(buckets->per_thread_bucket_sizes);
+		std::vector<VectorU32>().swap(buckets->per_thread_next_free_bucket_index);
+		std::vector<VectorPerThreadBuckets>().swap(buckets->per_thread_buckets_data_vectors);
 	}
 	end_time = omp_get_wtime();
 	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_coll_sort);
