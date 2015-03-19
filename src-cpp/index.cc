@@ -121,11 +121,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
 		buckets->next_free_bucket_index = 0;
 		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
-		buckets->bucket_index_locks.resize(buckets->n_buckets);
+		/*buckets->bucket_index_locks.resize(buckets->n_buckets);
 		for(uint32 l = 0; l < buckets->n_buckets; l++) {
 			omp_init_lock(&buckets->bucket_index_locks[l]);
 		}
-		omp_init_lock(&buckets->lock);
+		omp_init_lock(&buckets->lock);*/
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
 		buckets->bucket_sizes.resize(buckets->n_buckets, 0);
 
@@ -274,24 +274,28 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	double start_coll_sort = omp_get_wtime();
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 		buckets_t* buckets = &ref.hash_tables[t];
-		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
-			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			uint32 bsize = 0; // count the size of the global bucket
-			for(uint32 i = 0; i < params->n_threads; i++) {
-				bsize += buckets->per_thread_bucket_sizes[b][i];
+		for(uint32 b = 0; b < buckets->n_buckets; b++) {
+			uint32 global_bucket_index = buckets->bucket_indices[b];
+			if(global_bucket_index == buckets->n_buckets) {
+				global_bucket_index = buckets->next_free_bucket_index;
+				buckets->next_free_bucket_index++;
+				buckets->bucket_indices[b] = global_bucket_index;
 			}
-			bucket.resize(bsize);
-
-			for(uint32 i = 0; i < params->n_threads; i++) {
-				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[b][i];
-				for(uint32 j = 0; j < buckets->per_thread_bucket_sizes[b][i]; j++) {
-					bucket[buckets->bucket_sizes[b]] = thread_bucket[j];
-					buckets->bucket_sizes[b]++;
+			VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
+			for(uint32 tid = 0; tid < params->n_threads; tid++) {
+				uint32 bucket_index = buckets->per_thread_bucket_indices[b][tid];
+				if(bucket_index == buckets->n_buckets) continue;
+				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+				for(uint32 j = 0; j < buckets->per_thread_bucket_sizes[bucket_index][tid]; j++) {
+					global_bucket.push_back(thread_bucket[j]);
 				}
-				 VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[b][i]);
+				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[bucket_index][tid]);
 			}
-			std::vector<VectorSeqPos>().swap(buckets->per_thread_buckets_data_vectors[b]);
 		}
+		std::vector<VectorSeqPos>().swap(buckets->per_thread_bucket_indices);
+		std::vector<VectorSeqPos>().swap(buckets->per_thread_bucket_sizes);
+		std::vector<VectorSeqPos>().swap(buckets->per_thread_next_free_bucket_index);
+		std::vector<VectorSeqPos>().swap(buckets->per_thread_buckets_data_vectors);
 	}
 	end_time = omp_get_wtime();
 	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_coll_sort);

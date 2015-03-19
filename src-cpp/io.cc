@@ -168,7 +168,7 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 				continue;
 			}
 			const VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
-			size = buckets.bucket_sizes[buckets.bucket_indices[j]];
+			size = bucket.size();//buckets.bucket_sizes[buckets.bucket_indices[j]];
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k]), sizeof(seq_t));
