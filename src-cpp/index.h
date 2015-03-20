@@ -170,12 +170,11 @@ typedef std::vector<VectorU32> VectorPerThreadIndices;
 // min-hash signature index
 struct buckets_t {
 	uint32 n_buckets;
+
+	// global
 	uint32 next_free_bucket_index;
 	VectorU32 bucket_indices;
-	omp_lock_t lock;
-	VectorLocks bucket_index_locks;
 	VectorBuckets buckets_data_vectors;
-	VectorU32 bucket_sizes;
 
 	// per thread buckets
 	VectorU32 per_thread_next_free_bucket_index;
