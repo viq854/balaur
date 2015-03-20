@@ -112,6 +112,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	double end_time = omp_get_wtime();
 	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 
+	mark_windows_to_discard(ref, params);
+
 	// 3. hash each valid window
 
 	// initialize the hash tables
@@ -169,10 +171,12 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
 	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
+	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
-	    	/*if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
-				continue;
-			}*/
+	    	if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
+	    		init_minhash = true;
+	    		continue;
+			}
 	    	n_valid_windows++;
 	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
 	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
@@ -182,12 +186,13 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    	VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
 	    	minhash_matrix_t& rolling_minhash_matrix = minhash_matrices[tid];
 	    	bool valid_hash;
-	    	if(pos == chunk_start) {
+	    	if(init_minhash == true) { //if(pos == chunk_start) {
 	    		valid_hash = minhash_rolling_init(ref.seq.c_str(), pos, params->ref_window_size,
 	    					rolling_minhash_matrix,
 							ref.ignore_kmer_bitmask, params,
 							hasher_thread_vectors[0],
 							minhashes);
+	    		init_minhash = false;
 	    	} else {
 	    		valid_hash = minhash_rolling(ref.seq.c_str(), pos, params->ref_window_size,
 	    					rolling_minhash_matrix,
