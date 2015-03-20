@@ -234,7 +234,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		// add to the bucket (if size allows)
 	    		uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
 	    		if(curr_size + 1 >= bucket.size()) {
-	    			bucket.resize(curr_size + 100);
+	    			bucket.resize(curr_size + 1000);
 	    		}
 				bool store_pos = true;
 				// don't store if near-by sequence present, need to check the last value only
@@ -275,20 +275,19 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->n_buckets; b++) {
-			uint32 global_bucket_index = buckets->bucket_indices[b];
-			if(global_bucket_index == buckets->n_buckets) {
-				global_bucket_index = buckets->next_free_bucket_index;
-				buckets->next_free_bucket_index++;
-				buckets->bucket_indices[b] = global_bucket_index;
-			}
-			VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
 			for(uint32 tid = 0; tid < params->n_threads; tid++) {
 				uint32 bucket_index = buckets->per_thread_bucket_indices[b][tid];
 				if(bucket_index == buckets->n_buckets) continue;
 				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
-				for(uint32 j = 0; j < buckets->per_thread_bucket_sizes[bucket_index][tid]; j++) {
-					global_bucket.push_back(thread_bucket[j]);
+
+				uint32 global_bucket_index = buckets->bucket_indices[b];
+				if(global_bucket_index == buckets->n_buckets) {
+					global_bucket_index = buckets->next_free_bucket_index;
+					buckets->next_free_bucket_index++;
+					buckets->bucket_indices[b] = global_bucket_index;
 				}
+				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
+				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[bucket_index][tid]);
 				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[bucket_index][tid]);
 			}
 		}
@@ -308,7 +307,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b]);
+			std::sort(bucket.begin(), bucket.end());
 			//std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b], comp_loc());
 		}
 	}
