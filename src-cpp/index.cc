@@ -103,16 +103,16 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// 2. load the frequency of each kmer and collect high-frequency kmers
+	printf("Loading frequent kmers... \n");
 	double start_time = omp_get_wtime();
 	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
 	mark_freq_kmers(ref, params);
-	double end_time = omp_get_wtime();
-	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
+	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
-	mark_windows_to_discard(ref, params);
+	//mark_windows_to_discard(ref, params);
 
 	// 3. hash each valid window
 
@@ -121,25 +121,21 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	for(uint32 t = 0; t < params->n_tables; t++) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		buckets->n_buckets = pow(2, params->n_buckets_pow2);
+
+		// initialize global buckets
 		buckets->next_free_bucket_index = 0;
 		buckets->bucket_indices.resize(buckets->n_buckets, buckets->n_buckets);
-		/*buckets->bucket_index_locks.resize(buckets->n_buckets);
-		for(uint32 l = 0; l < buckets->n_buckets; l++) {
-			omp_init_lock(&buckets->bucket_index_locks[l]);
-		}
-		omp_init_lock(&buckets->lock);*/
 		buckets->buckets_data_vectors.resize(buckets->n_buckets);
-		buckets->bucket_sizes.resize(buckets->n_buckets, 0);
 
-		// per thread buckets
+		// initialize per thread buckets
 		buckets->per_thread_next_free_bucket_index.resize(params->n_threads, 0);
-		buckets->per_thread_bucket_indices.resize(buckets->n_buckets);
-		buckets->per_thread_buckets_data_vectors.resize(buckets->n_buckets);
-		buckets->per_thread_bucket_sizes.resize(buckets->n_buckets);
-		for(uint32 i = 0; i < buckets->n_buckets; i++) {
-			buckets->per_thread_bucket_indices[i].resize(params->n_threads, buckets->n_buckets);
-			buckets->per_thread_buckets_data_vectors[i].resize(params->n_threads);
-			buckets->per_thread_bucket_sizes[i].resize(params->n_threads, 0);
+		buckets->per_thread_bucket_indices.resize(params->n_threads);
+		buckets->per_thread_buckets_data_vectors.resize(params->n_threads);
+		buckets->per_thread_bucket_sizes.resize(params->n_threads);
+		for(uint32 tid = 0; tid < params->n_threads; tid++) {
+			buckets->per_thread_bucket_indices[tid].resize(buckets->n_buckets, buckets->n_buckets);
+			buckets->per_thread_buckets_data_vectors[tid].resize(buckets->n_buckets);
+			buckets->per_thread_bucket_sizes[tid].resize(buckets->n_buckets, 0);
 		}
 	}
 
@@ -173,10 +169,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
-	    	if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
+	    	/*if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
 	    		init_minhash = true;
 	    		continue;
-			}
+			}*/
 	    	n_valid_windows++;
 	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
 	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
@@ -213,37 +209,24 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	    		buckets_t* buckets = &ref.hash_tables[t];
 
-	    		/*omp_set_lock(&buckets->bucket_index_locks[bucket_hash]);
-	    		uint32 bucket_index = buckets->bucket_indices[bucket_hash];
-	    		if(bucket_index == buckets->n_buckets) { // this is the first entry in the global bucket
-	    			omp_set_lock(&buckets->lock);
-	    			bucket_index = buckets->next_free_bucket_index;
-	    			buckets->next_free_bucket_index++;
-	    			buckets->bucket_indices[bucket_hash] = bucket_index;
-	    			omp_unset_lock(&buckets->lock);
-	    		}
-	    		omp_unset_lock(&buckets->bucket_index_locks[bucket_hash]);*/
-
-	    		uint32 bucket_index = buckets->per_thread_bucket_indices[bucket_hash][tid];
+	    		uint32 bucket_index = buckets->per_thread_bucket_indices[tid][bucket_hash];
 				if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
 					bucket_index = buckets->per_thread_next_free_bucket_index[tid];
 					buckets->per_thread_next_free_bucket_index[tid]++;
-					buckets->per_thread_bucket_indices[bucket_hash][tid] = bucket_index;
+					buckets->per_thread_bucket_indices[tid][bucket_hash] = bucket_index;
 				}
 
-	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
-	    		if(bucket.size() == 0) {
-	    			// first item in this thread bucket
+	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_index];
+	    		if(bucket.size() == 0) { // first item in this thread bucket
 	    			bucket.resize(params->bucket_size);
 	    		}
-	    		// add to the bucket (if size allows)
-	    		uint32 curr_size = buckets->per_thread_bucket_sizes[bucket_index][tid];
+	    		// add to the bucket
+	    		uint32 curr_size = buckets->per_thread_bucket_sizes[tid][bucket_index];
 	    		if(curr_size + 1 >= bucket.size()) {
 	    			bucket.resize(curr_size + 1000);
 	    		}
 				bool store_pos = true;
-				// don't store if near-by sequence present, need to check the last value only
-				if(curr_size > 0) {
+				if(curr_size > 0) { // don't store if near-by sequence present, need to check the last value only
 					seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
 					seq_t epos = bucket[curr_size-1];
 					if(epos >= L) {
@@ -262,7 +245,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					bucket[curr_size] = new_loc;*/
 
 					bucket[curr_size] = pos;
-					buckets->per_thread_bucket_sizes[bucket_index][tid]++;
+					buckets->per_thread_bucket_sizes[tid][bucket_index]++;
 					n_bucket_entries++;
 				} else {
 					n_filtered++;
@@ -271,8 +254,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	    }
 	}
-	end_time = omp_get_wtime();
-	printf("Populated all the buckets. Time : %.2f sec\n", end_time - start_time);
+	printf("Populated all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_time);
 
 	// 4. collect per thread results
 	printf("Collecting thread buckets... \n");
@@ -281,9 +263,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->n_buckets; b++) {
 			for(uint32 tid = 0; tid < params->n_threads; tid++) {
-				uint32 bucket_index = buckets->per_thread_bucket_indices[b][tid];
+				uint32 bucket_index = buckets->per_thread_bucket_indices[tid][b];
 				if(bucket_index == buckets->n_buckets) continue;
-				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[bucket_index][tid];
+				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_index];
 
 				uint32 global_bucket_index = buckets->bucket_indices[b];
 				if(global_bucket_index == buckets->n_buckets) {
@@ -292,8 +274,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					buckets->bucket_indices[b] = global_bucket_index;
 				}
 				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
-				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[bucket_index][tid]);
-				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[bucket_index][tid]);
+				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[tid][bucket_index]);
+				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][bucket_index]);
 			}
 		}
 		VectorPerThreadIndices().swap(buckets->per_thread_bucket_indices);
@@ -301,8 +283,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		VectorU32().swap(buckets->per_thread_next_free_bucket_index);
 		VectorPerThreadBuckets().swap(buckets->per_thread_buckets_data_vectors);
 	}
-	end_time = omp_get_wtime();
-	printf("Collected all the buckets. Time : %.2f sec\n", end_time - start_coll_sort);
+	printf("Collected all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_coll_sort);
 
 	// 5. sort each bucket!
 	printf("Sorting buckets... \n");
@@ -316,16 +297,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			//std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b], comp_loc());
 		}
 	}
-	end_time = omp_get_wtime();
-	printf("Total sort time : %.2f sec\n", end_time - start_time_sort);
+	printf("Total sort time : %.2f sec\n", omp_get_wtime() - start_time_sort);
 
 	printf("Total number of valid reference windows: %u \n", n_valid_windows);
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %llu \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %llu \n", n_filtered);
 	printf("Total number of window bucket entries dropped: %llu \n", n_dropped);
-	end_time = omp_get_wtime();
-	printf("Total hashing time: %.2f sec\n", end_time - start_time);
+	printf("Total hashing time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
 void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
