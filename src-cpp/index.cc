@@ -77,7 +77,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 }
 
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
-	ref.ignore_window_bitmask.resize(ref.len- params->ref_window_size + 1);
+	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
 		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
@@ -112,10 +112,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	mark_freq_kmers(ref, params);
 	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
-	//mark_windows_to_discard(ref, params);
+	mark_windows_to_discard(ref, params);
+	store_valid_window_mask(fastaFname, ref);
+	//load_valid_window_mask(fastaFname, ref, params);
 
 	// 3. hash each valid window
-
 	// initialize the hash tables
 	ref.hash_tables.resize(params->n_tables);
 	for(uint32 t = 0; t < params->n_tables; t++) {
@@ -263,9 +264,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->n_buckets; b++) {
 			for(uint32 tid = 0; tid < params->n_threads; tid++) {
-				uint32 bucket_index = buckets->per_thread_bucket_indices[tid][b];
-				if(bucket_index == buckets->n_buckets) continue;
-				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_index];
+				uint32 thread_bucket_index = buckets->per_thread_bucket_indices[tid][b];
+				if(thread_bucket_index == buckets->n_buckets) continue;
 
 				uint32 global_bucket_index = buckets->bucket_indices[b];
 				if(global_bucket_index == buckets->n_buckets) {
@@ -274,8 +274,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					buckets->bucket_indices[b] = global_bucket_index;
 				}
 				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
-				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[tid][bucket_index]);
-				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][bucket_index]);
+				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[tid][thread_bucket_index];
+				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[tid][thread_bucket_index]);
+				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][thread_bucket_index]);
 			}
 		}
 		VectorPerThreadIndices().swap(buckets->per_thread_bucket_indices);

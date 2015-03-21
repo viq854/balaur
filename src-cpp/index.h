@@ -169,7 +169,7 @@ typedef std::vector<VectorU32> VectorPerThreadIndices;
 
 // min-hash signature index
 struct buckets_t {
-	uint32 n_buckets;
+	uint32 n_buckets; // B
 
 	// global
 	uint32 next_free_bucket_index;
@@ -196,7 +196,7 @@ typedef struct {
 	VectorBool ignore_kmer_bitmask;
 	VectorBool ignore_window_bitmask;
 
-	VectorBucketTables hash_tables;		// LSH min-hash index
+	VectorBucketTables hash_tables;		// LSH min-hash index, T
 } ref_t;
 
 // **** Read Set Index ****
