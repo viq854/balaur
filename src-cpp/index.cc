@@ -228,24 +228,23 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		}
 				bool store_pos = true;
 				if(curr_size > 0) { // don't store if near-by sequence present, need to check the last value only
-					seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
+					/*seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
 					seq_t epos = bucket[curr_size-1];
 					if(epos >= L) {
 						store_pos = false;
-					}
-					/*loc_t* epos = &bucket[curr_size-1];
+					}*/
+					loc_t* epos = &bucket[curr_size-1];
 					if((epos->pos + epos->len) == pos) {
 						epos->len++;
 						store_pos = false;
-					}*/
+					}
 				}
 				if(store_pos) {
-					/*loc_t new_loc;
+					loc_t new_loc;
 					new_loc.pos = pos;
 					new_loc.len = 1;
-					bucket[curr_size] = new_loc;*/
-
-					bucket[curr_size] = pos;
+					bucket[curr_size] = new_loc;
+					//bucket[curr_size] = pos;
 					buckets->per_thread_bucket_sizes[tid][bucket_index]++;
 					n_bucket_entries++;
 				} else {
@@ -294,8 +293,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			std::sort(bucket.begin(), bucket.end());
-			//std::sort(bucket.begin(), bucket.begin() + buckets->bucket_sizes[b], comp_loc());
+			//std::sort(bucket.begin(), bucket.end());
+			std::sort(bucket.begin(), bucket.end(), comp_loc());
 		}
 	}
 	printf("Total sort time : %.2f sec\n", omp_get_wtime() - start_time_sort);
