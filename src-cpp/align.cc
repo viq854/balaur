@@ -141,12 +141,13 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	std::bitset<32> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
-		if(last_pos == (uint32) -1 || (e.pos <= last_pos + params->contig_gap)) { // first contig or extending contig
+		uint16_t contig_len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
+		if(last_pos == (uint32) -1 || (e.pos <= last_pos)) { // first contig or extending contig
 			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
 			}
-			len += e.pos - last_pos;
-			last_pos = e.pos;
+			len += last_pos > e.pos + contig_len - 1 ? 0 : (e.pos + contig_len - 1) - last_pos;
+			last_pos = last_pos > e.pos + contig_len - 1 ? last_pos : e.pos + contig_len - 1;
 			occ.set(e.tid);
 		} else { // found a boundary, store last contig
 			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
@@ -160,8 +161,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			}
 			// start a new contig
 			n_diff_table_hits = 1;
-			len = 0;
-			last_pos = e.pos;
+			len = contig_len - 1;
+			last_pos = e.pos + contig_len - 1;
 			occ.reset();
 			occ.set(e.tid);
 		}
@@ -171,13 +172,17 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 				break;
 			} else {
 				uint32 last_entry_idx = (*r->ref_bucket_matches_by_table[e.tid]).size() - 1;
-				len += (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos - last_pos;
-				last_pos = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos;
+				seq_t p = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos;
+				uint16_t clen = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].len;
+				len += last_pos > p + clen - 1 ? 0 : (p + clen - 1) - last_pos;
+				last_pos = last_pos > p + clen - 1 ? last_pos : p + clen - 1;
+				//len += (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos - last_pos;
+				//last_pos = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos;
 				break;
 			}
 		} else {
 			if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-					heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;//e.pos;
+					heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
 					heap[0].next_idx = e.next_idx+1;
 					heap_update_memmove(heap, heap_size);
 					//sift_down(heap, init_heap_size, 0);
