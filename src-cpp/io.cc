@@ -262,9 +262,9 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 			bucket.resize(size);
 			// note: bucket size can now be the length of the vector
 			for(uint32 k = 0; k < size; k++) {
-				file.read(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				file.read(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
-				file.read(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
+				file.read(reinterpret_cast<char*>(&bucket[k].pos), sizeof(seq_t));
+				file.read(reinterpret_cast<char*>(&bucket[k].chr), sizeof(uint16_t));
+				file.read(reinterpret_cast<char*>(&bucket[k].len), sizeof(uint16_t));
 				//file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
 			}
 		}
