@@ -112,11 +112,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	mark_freq_kmers(ref, params);
 	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
-	mark_windows_to_discard(ref, params);
-	store_valid_window_mask(fastaFname, ref);
-	//load_valid_window_mask(fastaFname, ref, params);
+	//mark_windows_to_discard(ref, params);
+	//store_valid_window_mask(fastaFname, ref);
+	load_valid_window_mask(fastaFname, ref, params);
 
-	// 3. hash each valid window
 	// initialize the hash tables
 	ref.hash_tables.resize(params->n_tables);
 	for(uint32 t = 0; t < params->n_tables; t++) {
@@ -152,6 +151,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 	std::vector<minhash_matrix_t> minhash_matrices(params->n_threads);
 
+	// 3. hash each valid window
 	printf("Hashing reference windows... \n");
 	uint32 n_valid_windows = 0;
 	uint32 n_valid_hashes = 0;
@@ -170,10 +170,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
-	    	/*if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
+	    	if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
 	    		init_minhash = true;
 	    		continue;
-			}*/
+			}
 	    	n_valid_windows++;
 	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
 	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);

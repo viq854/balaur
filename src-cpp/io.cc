@@ -149,7 +149,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref) {
 		printf("store_valid_window_mask: Cannot open the mask file %s!\n", fname.c_str());
 		exit(1);
 	}
-	for (int i = 0; i < ref.ignore_window_bitmask; i++) {
+	for (int i = 0; i < ref.ignore_window_bitmask.size(); i++) {
 		if(ref.ignore_window_bitmask[i]) {
 			char b = '1';
 			file.write(reinterpret_cast<char*>(&b), sizeof(char));
@@ -162,7 +162,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref) {
 	file.close();
 }
 
-void load_valid_window_mask(const char* refFname, const ref_t& ref, const index_params_t* params) {
+void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".window_mask");
 
