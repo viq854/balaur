@@ -148,7 +148,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
 			}
-			if(last_pos < e_last_pos) {
+			if(last_pos == (uint32) -1) {
+				len = e.len - 1;
+				last_pos = e_last_pos;
+			} else if(last_pos < e_last_pos) {
 				len += e_last_pos - last_pos;
 				last_pos = e_last_pos;
 			}
@@ -171,34 +174,17 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			occ.set(e.tid);
 		}
 		// push the next match from this bucket
-		if(heap_size == 1) {
-			if(e.next_idx >= (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-				break;
-			} else {
-				uint32 last_entry_idx = (*r->ref_bucket_matches_by_table[e.tid]).size() - 1;
-				seq_t p = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].pos;
-				uint16_t l = (*r->ref_bucket_matches_by_table[e.tid])[last_entry_idx].len;
-				len += last_pos > p + l - 1 ? 0 : (p + l - 1) - last_pos;
-				last_pos = last_pos > p + l - 1 ? last_pos : p + l - 1;
-				break;
-			}
-		} else {
-			if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-					heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
-					heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
-					heap[0].next_idx = e.next_idx+1;
-					heap_update_memmove(heap, heap_size);
-					//sift_down(heap, init_heap_size, 0);
-			} else { // no more entries in this bucket
-					heap[0].pos = UINT_MAX;
-					heap_update_memmove(heap, heap_size);
-					//sift_down(heap, init_heap_size, 0);
-					heap_size--;
-			}
-			/*if(init_idx != e.next_idx) {
-					len += (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx-1] - last_pos;
-					last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx - 1];
-			}*/
+		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
+			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
+			heap[0].next_idx = e.next_idx+1;
+			heap_update_memmove(heap, heap_size);
+			//sift_down(heap, init_heap_size, 0);
+		} else { // no more entries in this bucket
+			heap[0].pos = UINT_MAX;
+			heap_update_memmove(heap, heap_size);
+			//sift_down(heap, init_heap_size, 0);
+			heap_size--;
 		}
 	}
 
