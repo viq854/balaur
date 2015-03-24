@@ -93,6 +93,9 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 // - generate valid windows (sliding window)
 // - compute the hash of each window
 // - sort
+
+#define MAX_NTABLES_NO_DISK 32
+
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("**** SRX Reference Indexing ****\n");
 		
@@ -168,8 +171,24 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
 	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
+	    int file_nsync_points = 0;
+	    int sync_point = 1;
+	    if(params->n_tables > MAX_NTABLES_NO_DISK) {
+	    	file_nsync_points = params->n_tables / MAX_NTABLES_NO_DISK - 1;
+	    }
+
 	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
+
+	    	// check if we should write to file
+	    	if(file_nsync_points > 0) {
+	    		int sync_chunk_size = (chunk_end - chunk_start + 1)/file_nsync_points;
+	    		if(pos == chunk_start + sync_chunk_size*sync_point) {
+	    			store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
+	    			sync_point++;
+	    		}
+	    	}
+
 	    	if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
 	    		init_minhash = true;
 	    		continue;
@@ -227,12 +246,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			bucket.resize(curr_size + 1000);
 	    		}
 				bool store_pos = true;
-				if(curr_size > 0) { // don't store if near-by sequence present, need to check the last value only
-					/*seq_t L = pos > params->bucket_entry_coverage ? pos - params->bucket_entry_coverage : 0;
-					seq_t epos = bucket[curr_size-1];
-					if(epos >= L) {
-						store_pos = false;
-					}*/
+				if(curr_size > 0) {
 					loc_t* epos = &bucket[curr_size-1];
 					if((epos->pos + epos->len) == pos) {
 						epos->len++;
@@ -244,14 +258,12 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					new_loc.pos = pos;
 					new_loc.len = 1;
 					bucket[curr_size] = new_loc;
-					//bucket[curr_size] = pos;
 					buckets->per_thread_bucket_sizes[tid][bucket_index]++;
 					n_bucket_entries++;
 				} else {
 					n_filtered++;
 				}
 	    	}
-
 	    }
 	}
 	printf("Populated all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_time);
@@ -265,7 +277,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			for(uint32 tid = 0; tid < params->n_threads; tid++) {
 				uint32 thread_bucket_index = buckets->per_thread_bucket_indices[tid][b];
 				if(thread_bucket_index == buckets->n_buckets) continue;
-
 				uint32 global_bucket_index = buckets->bucket_indices[b];
 				if(global_bucket_index == buckets->n_buckets) {
 					global_bucket_index = buckets->next_free_bucket_index;
@@ -278,11 +289,17 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][thread_bucket_index]);
 			}
 		}
-		VectorPerThreadIndices().swap(buckets->per_thread_bucket_indices);
+		//VectorPerThreadIndices().swap(buckets->per_thread_bucket_indices);
 		VectorPerThreadSizes().swap(buckets->per_thread_bucket_sizes);
 		VectorU32().swap(buckets->per_thread_next_free_bucket_index);
 		VectorPerThreadBuckets().swap(buckets->per_thread_buckets_data_vectors);
 	}
+	if(params->n_tables > MAX_NTABLES_NO_DISK) { // read partial files from disk
+		for(uint32 tid = 0; tid < params->n_threads; tid++) {
+			load_ref_idx_per_thread(tid, fastaFname, ref, params);
+		}
+	}
+
 	printf("Collected all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_coll_sort);
 
 	// 5. sort each bucket!

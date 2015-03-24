@@ -112,7 +112,6 @@ typedef struct {
 		for (j = 0; j < 5; ++j) {
 			score_matrix[k++] = -1;
 		}
-
 	}
 
 	// set the initial kmer hash function (rolling hash)
