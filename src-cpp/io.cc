@@ -291,7 +291,7 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
 		buckets_t& buckets = ref.hash_tables[i];
 		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			file.write(reinterpret_cast<const char*>(&buckets.per_thread_bucket_indices[j]), sizeof(uint32));
+			file.write(reinterpret_cast<const char*>(&buckets.per_thread_bucket_indices[tid][j]), sizeof(buckets.per_thread_bucket_indices[tid][j]));
 		}
 		for(uint32 j = 0; j < buckets.n_buckets; j++) {
 			if(buckets.per_thread_bucket_indices[tid][j] == buckets.n_buckets) {
@@ -328,12 +328,11 @@ void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, in
 
 	for(uint32 i = 0; i < params->n_tables; i++) {
 		buckets_t* buckets = &ref.hash_tables[i];
-		VectorU32 local_bucket_indices(buckets->n_buckets);
 		for(uint32 j = 0; j < buckets->n_buckets; j++) {
-			file.read(reinterpret_cast<char*>(&local_bucket_indices[j]), sizeof(local_bucket_indices[j]));
+			file.read(reinterpret_cast<char*>(&buckets->per_thread_bucket_indices[tid][j]), sizeof(buckets->per_thread_bucket_indices[tid][j]));
 		}
 		for(uint32 b = 0; b < buckets->n_buckets; b++) {
-			if(local_bucket_indices[b] == buckets->n_buckets) {
+			if(buckets->per_thread_bucket_indices[tid][b] == buckets->n_buckets) {
 				continue;
 			}
 			uint32 global_bucket_index = buckets->bucket_indices[b];
