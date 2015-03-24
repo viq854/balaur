@@ -279,9 +279,9 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 
 	std::ofstream file;
 	if(first_entry) {
-		file.open(fname.c_str(), std::ios::out | std::ios::binary | std::ios::app);
-	} else {
 		file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	} else {
+		file.open(fname.c_str(), std::ios::out | std::ios::binary | std::ios::app);
 	}
 	if (!file.is_open()) {
 		printf("store_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
@@ -318,7 +318,7 @@ void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, in
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
-		cerr << "Error: " << strerror(errno);
+		cerr << "Error: " << strerror(errno) << "\n";
 		exit(1);
 	}
 
