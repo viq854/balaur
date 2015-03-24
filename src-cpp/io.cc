@@ -272,6 +272,83 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	file.close();
 }
 
+void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, const ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".idx_tid");
+	fname += std::string(tid);
+
+	std::ofstream file;
+	if(first_entry) {
+		file.open(fname.c_str(), std::ios::out | std::ios::binary | std::ios::app);
+	} else {
+		file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	}
+	if (!file.is_open()) {
+		printf("store_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
+		const buckets_t& buckets = ref.hash_tables[i];
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			if(buckets.per_thread_bucket_indices[tid][j] == buckets.n_buckets) {
+				continue;
+			}
+			VectorSeqPos& bucket = buckets.per_thread_buckets_data_vectors[tid][buckets.per_thread_bucket_indices[tid][j]];
+			uint32 size = buckets.per_thread_bucket_sizes[tid][buckets.per_thread_bucket_indices[tid][j]];
+			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+			for(uint32 k = 0; k < size; k++) {
+				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
+			}
+			bucket.resize(params->bucket_size, 0);
+		}
+		buckets.per_thread_bucket_sizes[tid].resize(buckets.n_buckets, 0);
+	}
+	file.close();
+}
+
+void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".idx_tid");
+	fname += std::string(tid);
+
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		cerr << "Error: " << strerror(errno);
+		exit(1);
+	}
+
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		buckets_t* buckets = &ref.hash_tables[i];
+		for(uint32 b = 0; b < buckets->n_buckets; b++) {
+			if(buckets->per_thread_bucket_indices[b] == buckets->n_buckets) {
+				continue;
+			}
+			uint32 global_bucket_index = buckets->bucket_indices[b];
+			if(global_bucket_index == buckets->n_buckets) {
+				global_bucket_index = buckets->next_free_bucket_index;
+				buckets->next_free_bucket_index++;
+				buckets->bucket_indices[b] = global_bucket_index;
+			}
+			VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
+			uint32 size;
+			file.read(reinterpret_cast<char*>(&size), sizeof(size));
+			for(uint32 k = 0; k < size; k++) {
+				loc_t w;
+				file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
+				file.read(reinterpret_cast<char*>(&w.chr), sizeof(uint16_t));
+				file.read(reinterpret_cast<char*>(&w.len), sizeof(uint16_t));
+				global_bucket.push_back(w);
+			}
+		}
+	}
+	file.close();
+}
+
 void store_perm( const char* permFname, const VectorU32& perm) {
 	std::ofstream file;
 	file.open(permFname, std::ios::out | std::ios::app | std::ios::binary);
