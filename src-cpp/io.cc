@@ -313,7 +313,9 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 	file.close();
 }
 
-void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, index_params_t* params) {
+void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFname, ref_t& ref, index_params_t* params) {
+	if(nloads == 0) return;
+
 	std::string fname(refFname);
 	fname += std::string(".idx_tid");
 	fname += std::to_string(tid);
@@ -326,30 +328,32 @@ void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, in
 		exit(1);
 	}
 
-	for(uint32 i = 0; i < params->n_tables; i++) {
-		buckets_t* buckets = &ref.hash_tables[i];
-		for(uint32 j = 0; j < buckets->n_buckets; j++) {
-			file.read(reinterpret_cast<char*>(&buckets->per_thread_bucket_indices[tid][j]), sizeof(buckets->per_thread_bucket_indices[tid][j]));
-		}
-		for(uint32 b = 0; b < buckets->n_buckets; b++) {
-			if(buckets->per_thread_bucket_indices[tid][b] == buckets->n_buckets) {
-				continue;
+	for(int l = 0; l < nloads; l++) {
+		for(uint32 i = 0; i < params->n_tables; i++) {
+			buckets_t* buckets = &ref.hash_tables[i];
+			for(uint32 j = 0; j < buckets->n_buckets; j++) {
+				file.read(reinterpret_cast<char*>(&buckets->per_thread_bucket_indices[tid][j]), sizeof(buckets->per_thread_bucket_indices[tid][j]));
 			}
-			uint32 global_bucket_index = buckets->bucket_indices[b];
-			if(global_bucket_index == buckets->n_buckets) {
-				global_bucket_index = buckets->next_free_bucket_index;
-				buckets->next_free_bucket_index++;
-				buckets->bucket_indices[b] = global_bucket_index;
-			}
-			VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
-			uint32 size;
-			file.read(reinterpret_cast<char*>(&size), sizeof(size));
-			for(uint32 k = 0; k < size; k++) {
-				loc_t w;
-				file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
-				file.read(reinterpret_cast<char*>(&w.chr), sizeof(uint16_t));
-				file.read(reinterpret_cast<char*>(&w.len), sizeof(uint16_t));
-				global_bucket.push_back(w);
+			for(uint32 b = 0; b < buckets->n_buckets; b++) {
+				if(buckets->per_thread_bucket_indices[tid][b] == buckets->n_buckets) {
+					continue;
+				}
+				uint32 global_bucket_index = buckets->bucket_indices[b];
+				if(global_bucket_index == buckets->n_buckets) {
+					global_bucket_index = buckets->next_free_bucket_index;
+					buckets->next_free_bucket_index++;
+					buckets->bucket_indices[b] = global_bucket_index;
+				}
+				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
+				uint32 size;
+				file.read(reinterpret_cast<char*>(&size), sizeof(size));
+				for(uint32 k = 0; k < size; k++) {
+					loc_t w;
+					file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
+					file.read(reinterpret_cast<char*>(&w.chr), sizeof(uint16_t));
+					file.read(reinterpret_cast<char*>(&w.len), sizeof(uint16_t));
+					global_bucket.push_back(w);
+				}
 			}
 		}
 	}

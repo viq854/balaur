@@ -166,6 +166,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	if(params->n_tables > MAX_NTABLES_NO_DISK) {
 		file_nsync_points = params->n_tables / MAX_NTABLES_NO_DISK - 1;
 	}
+	VectorU32 nsync_per_thread(params->n_threads);
 
 	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
@@ -188,6 +189,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    			printf("Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
 	    			store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
 	    			sync_point++;
+	    			nsync_per_thread[tid]++;
 	    		}
 	    	}
 
@@ -298,7 +300,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 	if(file_nsync_points > 0) { // read partial files from disk
 		for(uint32 tid = 0; tid < params->n_threads; tid++) {
-			load_ref_idx_per_thread(tid, fastaFname, ref, params);
+			load_ref_idx_per_thread(tid, nsync_per_thread[tid], fastaFname, ref, params);
 		}
 	}
 
