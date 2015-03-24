@@ -184,7 +184,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    	// check if we should write to file
 	    	if(file_nsync_points > 0) {
 	    		int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
-	    		if(pos == chunk_start + sync_chunk_size*sync_point) {
+	    		if(n_valid_windows == sync_chunk_size*sync_point) {
 	    			printf("Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
 	    			store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
 	    			sync_point++;

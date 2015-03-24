@@ -302,9 +302,10 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
 				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
 			}
-			bucket.resize(params->bucket_size);
+			bucket.resize(0);
+			bucket.shrink_to_fit();
 		}
-		buckets.per_thread_bucket_sizes[tid].resize(buckets.n_buckets);
+		std::fill(buckets.per_thread_bucket_sizes[tid].begin(), buckets.per_thread_bucket_sizes[tid].end(), 0);
 	}
 	file.close();
 }
