@@ -47,7 +47,7 @@ void store_perm(const char* permFname, const VectorU32& perm);
 void load_perm(const char* permFname, VectorU32& perm);
 void store_hash_pads(const char* permFname, const VectorHash& perm);
 void load_hash_pads(const char* permFname, VectorHash& perm);
-void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, const ref_t& ref, const index_params_t* params);
+void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params);
 void load_ref_idx_per_thread(const int tid, const char* refFname, ref_t& ref, index_params_t* params);
 
 // compression
