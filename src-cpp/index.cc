@@ -161,6 +161,12 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint64 n_bucket_entries = 0;
 	uint64 n_filtered = 0;
 	uint64 n_dropped = 0;
+
+	int file_nsync_points = 0;
+	if(params->n_tables > MAX_NTABLES_NO_DISK) {
+		file_nsync_points = params->n_tables / MAX_NTABLES_NO_DISK - 1;
+	}
+
 	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered, n_dropped)
@@ -171,19 +177,15 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
 	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
-	    int file_nsync_points = 0;
 	    int sync_point = 1;
-	    if(params->n_tables > MAX_NTABLES_NO_DISK) {
-	    	file_nsync_points = params->n_tables / MAX_NTABLES_NO_DISK - 1;
-	    }
-
 	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
 
 	    	// check if we should write to file
 	    	if(file_nsync_points > 0) {
-	    		int sync_chunk_size = (chunk_end - chunk_start + 1)/file_nsync_points;
+	    		int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
 	    		if(pos == chunk_start + sync_chunk_size*sync_point) {
+	    			printf("Thread %d sync point: %u \n", tid, pos);
 	    			store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
 	    			sync_point++;
 	    		}
@@ -294,7 +296,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		VectorU32().swap(buckets->per_thread_next_free_bucket_index);
 		VectorPerThreadBuckets().swap(buckets->per_thread_buckets_data_vectors);
 	}
-	if(params->n_tables > MAX_NTABLES_NO_DISK) { // read partial files from disk
+	if(file_nsync_points > 0) { // read partial files from disk
 		for(uint32 tid = 0; tid < params->n_threads; tid++) {
 			load_ref_idx_per_thread(tid, fastaFname, ref, params);
 		}
