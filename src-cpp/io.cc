@@ -272,7 +272,7 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	file.close();
 }
 
-void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, const ref_t& ref, const index_params_t* params) {
+void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".idx_tid");
 	fname += std::to_string(tid);
