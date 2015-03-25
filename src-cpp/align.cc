@@ -139,7 +139,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
 	uint32 last_pos = -1;
-	std::bitset<32> occ;
+	std::bitset<256> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
 		seq_t e_last_pos = e.pos + e.len - 1;
@@ -513,43 +513,66 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
 
-	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
-	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
-		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-
-		std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
-		for(uint32 j = 0; j < search_len - params->k + 1; j++) {
-			kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
+	int n_top_buckets = 1;
+	int n_collected_hits = 0;
+	int n_collected_buckets = 0;
+	int idx = 0;
+	while(n_collected_buckets < n_top_buckets) {
+		if(r->best_n_hits - idx < 0) break;
+		if(r->ref_matches[r->best_n_hits - idx].size() != 0) {
+			n_collected_hits += r->ref_matches[r->best_n_hits - idx].size();
+			n_collected_buckets++;
 		}
-		std::sort(kmers_ref.begin(), kmers_ref.end());
+		idx++;
+	}
+	std::vector<uint32> kmers_votes(n_collected_hits);
+	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
 
-		// find how many kmers are in common
-		std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
-		if(ref_contig.rc) {
-			kmers = kmers_rc;
+	int n_proc_buckets = 0;
+	int idx = 0;
+	while(n_proc_buckets < n_collected_buckets) {
+		if(r->ref_matches[r->best_n_hits - idx].size() == 0) {
+			idx++;
+			continue;
 		}
-		int idx_q = 0;
-		int idx_r = 0;
-		bool first_match = true;
-		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-			if(kmers[idx_q].first == kmers_ref[idx_r].first) {
-				if(first_match) {
-					first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
-					first_match = false;
+
+		for(uint32 i = 0; i < r->ref_matches[r->best_n_hits - idx].size(); i++) { // REF CANDIDATE CONTIG
+			ref_match_t ref_contig = r->ref_matches[r->best_n_hits - idx][i];
+			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
+
+			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
+			for(uint32 j = 0; j < search_len - params->k + 1; j++) {
+				kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
+			}
+			std::sort(kmers_ref.begin(), kmers_ref.end());
+
+			// find how many kmers are in common
+			std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
+			if(ref_contig.rc) {
+				kmers = kmers_rc;
+			}
+			int idx_q = 0;
+			int idx_r = 0;
+			bool first_match = true;
+			while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
+				if(kmers[idx_q].first == kmers_ref[idx_r].first) {
+					if(first_match) {
+						first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
+						first_match = false;
+					}
+					kmers_votes[i]++;
+					idx_q++;
+					idx_r++;
+				} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
+					idx_q++;
+				} else {
+					idx_r++;
 				}
-				kmers_votes[i]++;
-				idx_q++;
-				idx_r++;
-			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
-				idx_q++;
-			} else {
-				idx_r++;
 			}
 		}
+		n_proc_buckets++;
 	}
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
 	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
