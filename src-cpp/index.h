@@ -203,7 +203,8 @@ typedef struct {
 struct ref_match_t {
 	seq_t pos;
 	uint32 len;
-	ref_match_t(seq_t _pos, uint32 _len) : pos(_pos), len(_len) {}
+	bool rc;
+	ref_match_t(seq_t _pos, uint32 _len, bool _rc) : pos(_pos), len(_len), rc(_rc) {}
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
 
@@ -227,6 +228,9 @@ struct read_t {
 	VectorMinHash minhashes;		// minhash vector
 	char valid_minhash;
 
+	VectorMinHash minhashes_rc;		// minhash vector for the reverse complement
+	char valid_minhash_rc;
+
 	// original mapping information
 	int strand;
 	uint32_t ref_pos_l;
@@ -236,7 +240,8 @@ struct read_t {
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
-	uint32 best_n_hits;
+
+	int best_n_hits;
 	aln_t aln;
 
 	char acc; // DEBUG: whether read matched accurately

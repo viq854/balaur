@@ -164,7 +164,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	int file_nsync_points = 0;
 	if(params->n_tables > MAX_NTABLES_NO_DISK) {
-		file_nsync_points = params->n_tables / MAX_NTABLES_NO_DISK - 1;
+		file_nsync_points = 42*params->n_tables/128; //params->n_tables / MAX_NTABLES_NO_DISK - 1;
 	}
 	VectorU32 nsync_per_thread(params->n_threads);
 
@@ -389,6 +389,7 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	// 3. compute the min-hash signature of each read
+	printf("Hashing reads...\n");
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
@@ -401,6 +402,14 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 				marisa::Trie(), params,
 				params->kmer_hasher, false,
 				r->minhashes);
+
+		r->minhashes_rc.resize(params->h);
+		r->valid_minhash_rc = minhash(r->rc.c_str(), 0, r->len,
+				ref.high_freq_kmer_trie,
+				ref.ignore_kmer_bitmask,
+				marisa::Trie(), params,
+				params->kmer_hasher, false,
+				r->minhashes_rc);
 	}
 	double end_time = omp_get_wtime();
 	printf("Total read hashing time: %.2f sec\n", end_time - start_time);
