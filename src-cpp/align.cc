@@ -529,7 +529,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
 
 	int n_proc_buckets = 0;
-	int idx = 0;
+	idx = 0;
 	while(n_proc_buckets < n_collected_buckets) {
 		if(r->ref_matches[r->best_n_hits - idx].size() == 0) {
 			idx++;
