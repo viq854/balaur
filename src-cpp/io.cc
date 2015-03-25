@@ -464,7 +464,10 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 			exit(1);
 		}
 
-		// TODO: compute the reverse complement
+		// compute the reverse complement
+		for(int i = 0; i < r.len; i++) {
+			r.rc.append(1, nt4_complement[(int)r.seq.at(r.len-i-1)]);
+		}
 
 		r.acc = 0;
 		reads.reads.push_back(r);

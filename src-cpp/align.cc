@@ -112,9 +112,8 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 }
 
 // output matches (ordered by the number of projections matched)
-void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index_params_t* params) {
+void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	r->ref_matches.resize(params->n_tables);
-	int n_best_hits = 0; // best number of table hits found so far
 
 	// priority heap of matched positions
 	heap_entry_t heap[params->n_tables];
@@ -157,12 +156,12 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 			}
 			occ.set(e.tid);
 		} else { // found a boundary, store last contig
-			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
-				if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-					n_best_hits = n_diff_table_hits;
+			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_hits - 1)) {
+				if(n_diff_table_hits > r->best_n_hits) { // if more hits than best so far
+					r->best_n_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, len);
+					ref_match_t rm(last_pos, len, rc);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			}
@@ -189,19 +188,15 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const index
 	}
 
 	// add the last position
-	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (n_best_hits - 1)) {
-		if(n_diff_table_hits > n_best_hits) { // if more hits than best so far
-			n_best_hits = n_diff_table_hits;
+	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_hits - 1)) {
+		if(n_diff_table_hits > r->best_n_hits) { // if more hits than best so far
+			r->best_n_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			ref_match_t rm(last_pos, len);
+			ref_match_t rm(last_pos, len, rc);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
 	}
-
-	r->best_n_hits = (n_best_hits > 0) ? n_best_hits - 1 : 0;
-	assert(r->best_n_hits < params->n_tables);
-	std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 }
 
 struct seed_t {
@@ -509,11 +504,14 @@ struct comp_shared_seeds
 
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
-	std::vector<std::pair<minhash_t, uint32>> kmers((r->len - params->k + 1));
+	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k + 1));
+	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k + 1));
 	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
-		kmers[i] = std::make_pair(CityHash32(&r->seq[i], params->k), i);
+		kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k), i);
+		kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k), i);
 	}
-	std::sort(kmers.begin(), kmers.end());
+	std::sort(kmers_f.begin(), kmers_f.end());
+	std::sort(kmers_rc.begin(), kmers_rc.end());
 
 	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
@@ -530,6 +528,12 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		std::sort(kmers_ref.begin(), kmers_ref.end());
 
 		// find how many kmers are in common
+		std::vector<std::pair<minhash_t, uint32>>& kmers;
+		if(ref_contig.rc) {
+			kmers = kmers_rc;
+		} else {
+			kmers = kmers_f;
+		}
 		int idx_q = 0;
 		int idx_r = 0;
 		bool first_match = true;
@@ -648,18 +652,34 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			read_t* r = &reads.reads[i];
 			r->best_n_hits = 0;
-			if(!r->valid_minhash) continue;
-			//r->ref_bucket_id_matches_by_table.resize(params->n_tables);
+			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
-			for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-				minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-				uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-				if(bucket_index == ref.hash_tables[t].n_buckets) {
-					continue; // no reference window fell into this bucket
+			r->best_n_hits = 0;
+			if(r->valid_minhash) { // FORWARD
+				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
+					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
+					if(bucket_index == ref.hash_tables[t].n_buckets) {
+						continue; // no reference window fell into this bucket
+					}
+					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
-				r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
+				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
 			}
-			collect_read_hits_contigs_inssort_pqueue(ref, r, params);
+			if(r->valid_minhash_rc) { // RC
+				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
+					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
+					if(bucket_index_rc == ref.hash_tables[t].n_buckets) {
+						continue; // no reference window fell into this bucket
+					}
+					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
+				}
+				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+			}
+			r->best_n_hits = (r->best_n_hits > 0) ? r->best_n_hits - 1 : 0;
+			assert(r->best_n_hits < params->n_tables);
+			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
 			if(r->best_n_hits > 0 && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				//process_read_hits_se_opt(ref, r, params);
