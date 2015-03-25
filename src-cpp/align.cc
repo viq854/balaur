@@ -528,11 +528,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		std::sort(kmers_ref.begin(), kmers_ref.end());
 
 		// find how many kmers are in common
-		std::vector<std::pair<minhash_t, uint32>>& kmers;
+		std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
 		if(ref_contig.rc) {
 			kmers = kmers_rc;
-		} else {
-			kmers = kmers_f;
 		}
 		int idx_q = 0;
 		int idx_r = 0;
