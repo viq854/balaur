@@ -94,7 +94,7 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 // - compute the hash of each window
 // - sort
 
-#define MAX_NTABLES_NO_DISK 32
+#define MAX_NTABLES_NO_DISK 1024
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("**** SRX Reference Indexing ****\n");

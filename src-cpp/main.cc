@@ -101,12 +101,13 @@ int main(int argc, char *argv[]) {
 	params.set_default_index_params();
 
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:s:d:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:s:d:v:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
 			case 'w': params.ref_window_size = atoi(optarg); break;
 			case 'k': params.k = atoi(optarg); break;
+			case 'v': params.k2 = atoi(optarg); break;
 			case 'h': params.h = atoi(optarg); break;
 			case 'H': params.max_count = atoi(optarg); break;
 			case 'L': params.min_count = atoi(optarg); break;
