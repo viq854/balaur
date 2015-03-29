@@ -748,6 +748,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int acc_top = 0;
 	int acc_dp = 0;
 	int n_max_votes = 0;
+	int best_hits = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
@@ -757,6 +758,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		acc_dp += reads.reads[i].dp_hit_acc;
 		valid_hash += reads.reads[i].valid_minhash;
 		n_max_votes += reads.reads[i].n_max_votes;
+		best_hits += reads.reads[i].best_n_hits;
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
@@ -764,6 +766,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/acc_hits);
 	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/acc_hits);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/acc_hits);
+	printf("Avg number of best hits per read %.8f \n", (float) best_hits/acc_hits);
 	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
