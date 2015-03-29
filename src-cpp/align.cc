@@ -504,11 +504,11 @@ struct comp_shared_seeds
 
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
-	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k + 1));
-	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k + 1));
-	for(uint32 i = 0; i < (r->len - params->k + 1); i++) {
-		kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k), i);
-		kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k), i);
+	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
+	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
+	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
+		kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
+		kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
 	}
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
@@ -526,6 +526,8 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		idx++;
 	}
 	std::vector<uint32> kmers_votes(n_collected_hits);
+	std::vector<uint32> hit_bucket_index(n_collected_hits);
+	std::vector<uint32> hit_bucket_pos(n_collected_hits);
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
 
 	int n_proc_buckets = 0;
@@ -542,9 +544,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 
-			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k + 1));
-			for(uint32 j = 0; j < search_len - params->k + 1; j++) {
-				kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k), padded_hit_offset+j);
+			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
+			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
+				kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -571,11 +573,18 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					idx_r++;
 				}
 			}
+			hit_bucket_index[i] = r->best_n_hits - idx;
+			hit_bucket_pos[i] = i;
 		}
 		n_proc_buckets++;
 	}
-	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
-	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
+	VectorU32::iterator max_iter = std::max_element(kmers_votes.begin(), kmers_votes.end());
+	int max_count = *max_iter;
+	r->n_max_votes = std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
+	uint32 top_contig_idx = std::distance(kmers_votes.begin(), max_iter);
+	int bucket_index = hit_bucket_index[top_contig_idx];
+	int bucket_pos = hit_bucket_pos[top_contig_idx];
+	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 
 	//seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
@@ -738,6 +747,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int acc_hits = 0;
 	int acc_top = 0;
 	int acc_dp = 0;
+	int n_max_votes = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash) continue;
@@ -746,11 +756,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		acc_top += reads.reads[i].top_hit_acc;
 		acc_dp += reads.reads[i].dp_hit_acc;
 		valid_hash += reads.reads[i].valid_minhash;
+		n_max_votes += reads.reads[i].n_max_votes;
 	}
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
+	printf("Number of valid reads %u \n", valid_hash);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/acc_hits);
 	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/acc_hits);
+	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/acc_hits);
 	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Avg diff of top 2 hits per read %.8f \n", (float) diff_num_top_hits/reads.reads.size());
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
@@ -777,7 +790,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    for(int i = r->best_n_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
-		   if(pos_l >= match.pos - match.len - 130 && pos_l <= match.pos + 130) {
+		   if(pos_l >= match.pos - match.len - 1300 && pos_l <= match.pos + 1300) {
 			   r->acc = 1;
 			   break;
 		   }

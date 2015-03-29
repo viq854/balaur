@@ -18,6 +18,7 @@ typedef struct {
 	// sequence hashing parameters => to produce sequence sketches
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 k; 						// length of the sequence kmers
+	uint32 k2; 						// length of the sequence kmers for vote counting
 	uint32 kmer_dist;				// shift between consecutive kmers
 	CyclicHash* kmer_hasher;			// function used to generate kmer hashes for the sequence set
 	uint32 h; 						// number of hash functions for min-hash sketches
@@ -70,6 +71,7 @@ typedef struct {
 		kmer_type = OVERLAP;
 		ref_window_size = 150;
 		k = 16;
+		k2 = 16;
 		kmer_dist = 1;
 		h = 64;
 		max_count = 200;
@@ -242,6 +244,7 @@ struct read_t {
 	std::vector<VectorRefMatches> ref_matches;
 
 	int best_n_hits;
+	int n_max_votes;
 	aln_t aln;
 
 	char acc; // DEBUG: whether read matched accurately
