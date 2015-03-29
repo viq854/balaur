@@ -725,7 +725,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			for(uint32 t = 0; t < params->n_tables; t++) {
 				n_contigs += r->ref_matches[t].size();
 				if(t == r->best_n_hits) {
-					top_contigs += n_contigs;;
+					top_contigs += r->ref_matches[t].size();
 				}
 				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
 				   ref_match_t match = r->ref_matches[t][j];
