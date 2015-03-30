@@ -10,6 +10,9 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 #include "hash.h"
 #include <tbb/tbb.h>
 
+#define INDEX_READS_RC 0
+#define DISK_SYNC_PARTIAL_TABLES 0
+
 // program parameters
 typedef struct {	
 	algorithm alg; 					// LSH scheme to use
@@ -187,15 +190,18 @@ typedef std::vector<buckets_t> VectorBucketTables;
 
 // reference genome index
 typedef struct {
-	std::string seq; 					// reference sequence data
+	std::string seq; 					// reference sequence
+	std::string seq_RC; 				// reference RC
 	seq_t len;							// reference sequence length
-
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	marisa::Trie high_freq_kmer_trie;
+	marisa::Trie high_freq_kmer_trie;	// frequent reference kmers
+	marisa::Trie high_freq_kmer_trie_RC;// frequent RC kmers
 	VectorBool ignore_kmer_bitmask;
+	VectorBool ignore_kmer_bitmask_RC;
 	VectorBool ignore_window_bitmask;
+	VectorBool ignore_window_bitmask_RC;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index, T
 } ref_t;
