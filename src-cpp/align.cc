@@ -747,6 +747,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int mapped = 0;
+	int confident = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
 	int acc_dp = 0;
@@ -766,10 +767,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		n_max_votes += reads.reads[i].n_max_votes;
 		best_hits += reads.reads[i].best_n_bucket_hits;
 		score += reads.reads[i].aln.score;
+		if(reads.reads[i].n_max_votes == 1) {
+			confident++;
+		}
 	}
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads %u \n", mapped);
+	printf("Number of confidently mapped reads %u \n", confident);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
 	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
