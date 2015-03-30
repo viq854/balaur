@@ -95,7 +95,7 @@ typedef struct {
 
 		min_n_hits = 2;
 		dist_best_hit = 2;
-		max_best_hits = 1000;
+		max_best_hits = 100000;
 		max_suboptimal_hits = 500;
 
 		hit_collection_interval = 200000000;
