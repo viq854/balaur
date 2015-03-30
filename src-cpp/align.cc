@@ -156,7 +156,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			}
 			occ.set(e.tid);
 		} else { // found a boundary, store last contig
-			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_bucket_hits - 1)) {
+			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 				if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 					r->best_n_bucket_hits = n_diff_table_hits;
 				}
@@ -188,7 +188,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	}
 
 	// add the last position
-	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_bucket_hits - 1)) {
+	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
