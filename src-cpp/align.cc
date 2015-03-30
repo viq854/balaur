@@ -156,9 +156,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			}
 			occ.set(e.tid);
 		} else { // found a boundary, store last contig
-			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_hits - 1)) {
-				if(n_diff_table_hits > r->best_n_hits) { // if more hits than best so far
-					r->best_n_hits = n_diff_table_hits;
+			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_bucket_hits - 1)) {
+				if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
+					r->best_n_bucket_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 					ref_match_t rm(last_pos, len, rc);
@@ -188,9 +188,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	}
 
 	// add the last position
-	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_hits - 1)) {
-		if(n_diff_table_hits > r->best_n_hits) { // if more hits than best so far
-			r->best_n_hits = n_diff_table_hits;
+	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (r->best_n_bucket_hits - 1)) {
+		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
+			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
@@ -271,7 +271,7 @@ struct comp_chains
 
 bool seed2alignment(const seed_t s, const ref_t& ref, read_t* r, const index_params_t* params) {
 	aln_t* aln = &r->aln;
-	ref_match_t ref_contig = r->ref_matches[r->best_n_hits][s.ref_contig_idx];
+	ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][s.ref_contig_idx];
 	int hit_len = r->len + ref_contig.len;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
@@ -367,8 +367,8 @@ void global_alignment(const ref_match_t ref_contig, const ref_t& ref, read_t* r,
 
 void process_read_hits_global(ref_t& ref, read_t* r, const index_params_t* params) {
 
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits].size(); i++) {
+		ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][i];
 		global_alignment(ref_contig, ref, r, params);
 	}
 }
@@ -384,10 +384,10 @@ void process_read_hits_se(ref_t& ref, read_t* r, const index_params_t* params) {
 
 	// 2. find seeds shared between the reference and the read and assemble seed chains
 	std::vector<SeedChain> chains;
-	chains.reserve(r->ref_matches[r->best_n_hits].size());
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) {
+	chains.reserve(r->ref_matches[r->best_n_bucket_hits].size());
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits].size(); i++) {
 		// REF CANDIDATE CONTIG
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+		ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][i];
 		int hit_len = r->len + ref_contig.len;
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 
@@ -461,8 +461,8 @@ void process_read_hits_se_opt(ref_t& ref, read_t* r, const index_params_t* param
 
 	// 2. find seeds shared between the reference and the read
 	bool matched = false;
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits].size(); i++) { // REF CANDIDATE CONTIG
+		ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][i];
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + 200;
@@ -518,9 +518,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int n_collected_buckets = 0;
 	int idx = 0;
 	while(n_collected_buckets < n_top_buckets) {
-		if(r->best_n_hits - idx < 0) break;
-		if(r->ref_matches[r->best_n_hits - idx].size() != 0) {
-			n_collected_hits += r->ref_matches[r->best_n_hits - idx].size();
+		if(r->best_n_bucket_hits - idx < 0) break;
+		if(r->ref_matches[r->best_n_bucket_hits - idx].size() != 0) {
+			n_collected_hits += r->ref_matches[r->best_n_bucket_hits - idx].size();
 			n_collected_buckets++;
 		}
 		idx++;
@@ -533,13 +533,13 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int n_proc_buckets = 0;
 	idx = 0;
 	while(n_proc_buckets < n_collected_buckets) {
-		if(r->ref_matches[r->best_n_hits - idx].size() == 0) {
+		if(r->ref_matches[r->best_n_bucket_hits - idx].size() == 0) {
 			idx++;
 			continue;
 		}
 
-		for(uint32 i = 0; i < r->ref_matches[r->best_n_hits - idx].size(); i++) { // REF CANDIDATE CONTIG
-			ref_match_t ref_contig = r->ref_matches[r->best_n_hits - idx][i];
+		for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits - idx].size(); i++) { // REF CANDIDATE CONTIG
+			ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits - idx][i];
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
@@ -573,7 +573,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					idx_r++;
 				}
 			}
-			hit_bucket_index[i] = r->best_n_hits - idx;
+			hit_bucket_index[i] = r->best_n_bucket_hits - idx;
 			hit_bucket_pos[i] = i;
 		}
 		n_proc_buckets++;
@@ -627,11 +627,11 @@ void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t
 	}
 	std::sort(kmers.begin(), kmers.end(), comp_kmers());
 
-	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_hits].size());
-	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_hits].size());
+	std::vector<uint32> kmers_votes(r->ref_matches[r->best_n_bucket_hits].size());
+	std::vector<std::pair<uint32, uint32>> first_kmer_match(r->ref_matches[r->best_n_bucket_hits].size());
 
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_hits].size(); i++) { // REF CANDIDATE CONTIG
-		ref_match_t ref_contig = r->ref_matches[r->best_n_hits][i];
+	for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits].size(); i++) { // REF CANDIDATE CONTIG
+		ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][i];
 		seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 		seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 		uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
@@ -650,7 +650,7 @@ void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t
 		}
 	}
 	uint32 top_contig_idx = std::distance(kmers_votes.begin(), std::max_element(kmers_votes.begin(), kmers_votes.end()));
-	ref_match_t top_contig = r->ref_matches[r->best_n_hits][top_contig_idx];
+	ref_match_t top_contig = r->ref_matches[r->best_n_bucket_hits][top_contig_idx];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 }
 
@@ -682,7 +682,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
 			read_t* r = &reads.reads[i];
-			r->best_n_hits = 0;
+			r->best_n_bucket_hits = 0;
+			r->any_bucket_hits = false;
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
 			if(r->valid_minhash) { // FORWARD
@@ -692,6 +693,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_index == ref.hash_tables[t].n_buckets) {
 						continue; // no reference window fell into this bucket
 					}
+					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
@@ -707,11 +709,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
 			}
-			r->best_n_hits = r->best_n_hits - 1; //(r->best_n_hits > 0) ? r->best_n_hits - 1 : 0;
-			assert(r->best_n_hits < params->n_tables);
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if(r->best_n_hits >= 0) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+			if(r->any_bucket_hits) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
+				assert(r->best_n_bucket_hits < params->n_tables);
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
 				process_read_hits_se_votes_opt(ref, r, params);
@@ -723,7 +725,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			uint32 contig_length = 0;
 			for(uint32 t = 0; t < params->n_tables; t++) {
 				n_contigs += r->ref_matches[t].size();
-				if(t == r->best_n_hits) {
+				if(r->any_bucket_hits && t == r->best_n_bucket_hits) {
 					top_contigs += r->ref_matches[t].size();
 				}
 				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
@@ -755,14 +757,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
 		valid_hash++;
-		if(reads.reads[i].best_n_hits < 0) continue;
+		if(!reads.reads[i].any_bucket_hits) continue;
 		mapped++;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
 		acc_dp += reads.reads[i].dp_hit_acc;
 		n_max_votes += reads.reads[i].n_max_votes;
-		best_hits += reads.reads[i].best_n_hits;
+		best_hits += reads.reads[i].best_n_bucket_hits;
 		score += reads.reads[i].aln.score;
 	}
 
@@ -794,8 +796,8 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
    }
 
-   assert(r->best_n_hits < params->n_tables);
-   for(int i = r->best_n_hits; i >= 0; i--) {
+   assert(r->best_n_bucket_hits < params->n_tables);
+   for(int i = r->best_n_bucket_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
 		   if(pos_l >= match.pos - match.len - 1300 && pos_l <= match.pos + 1300) {
@@ -804,7 +806,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 		   }
 	   }
 	   if(r->acc == 1) {
-		   if((uint32) i == r->best_n_hits) {
+		   if((uint32) i == r->best_n_bucket_hits) {
 			  r->top_hit_acc = 1;
 		   }
 		   break;
