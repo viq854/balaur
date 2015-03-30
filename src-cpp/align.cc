@@ -766,11 +766,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	printf("Max number of windows matched by read %u \n", max_windows_matched);
 	printf("Number of valid reads %u \n", valid_hash);
-	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/acc_hits);
-	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/acc_hits);
-	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/acc_hits);
-	printf("Avg number of best hits per read %.8f \n", (float) best_hits/acc_hits);
-	printf("Avg score per read %.8f \n", (float) score/acc_hits);
+	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/valid_hash);
+	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/valid_hash);
+	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/valid_hash);
+	printf("Avg number of best hits per read %.8f \n", (float) best_hits/valid_hash);
+	printf("Avg score per read %.8f \n", (float) score/valid_hash);
 	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);

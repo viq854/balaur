@@ -4,42 +4,15 @@
 #include <omp.h>
 #include <algorithm>
 #include <time.h>
-
-#include <omp.h>
 #include "types.h"
 #include "index.h"
 #include "lsh.h"
 #include "io.h"
 #include "hash.h"
 
-
-// checks if the given sequence is informative or not
-// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
-int is_inform_ref_window(const char* seq, const uint32_t len) {
-	uint32 base_counts[5] = { 0 };
-	for(uint32 i = 0; i < len; i++) {
-		base_counts[(int) seq[i]]++;
-	}
-	if(base_counts[4] > 10) { // N ambiguous bases
-		return 0;
-	}
-	uint32 n_empty = 0;
-	for(uint32 i = 0; i < 4; i++) {
-		if(base_counts[i] == 0) {
-			n_empty++;
-		}
-	}
-	if(n_empty > 1) { // repetitions of 2 or 1 base
-		return 0;
-	}
-
-	return 1;
-}
-
 // compute and store the frequency of each kmer in the given sequence
-void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_params_t* params,
-		MapKmerCounts& hist) {
-	for(seq_t j = 0; j <= (seq_len - params->k); j++) {
+void compute_kmer_histogram(const char* seq, const seq_t seq_len, const index_params_t* params, MapKmerCounts& hist) {
+	for(int j = 0; j <= (seq_len - params->k); j++) {
 		uint32_t kmer;
 		if(pack_32(&seq[j], params->k, &kmer) < 0) {
 			continue;
@@ -48,40 +21,65 @@ void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_param
 	}
 }
 
-void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
-	clock_t t = clock();
-	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
-	omp_set_num_threads(params->n_threads); // split the windows across the threads
-	#pragma omp parallel
-	{
-		int tid = omp_get_thread_num();
-		int n_threads = omp_get_num_threads();
-		seq_t chunk_start = tid*(ref.len - params->k + 1) / n_threads;
-		seq_t chunk_end = (tid + 1)*(ref.len - params->k + 1) / n_threads;
-
-		marisa::Agent agent;
-		for(seq_t i = chunk_start; i < chunk_end; i++) {
-			for (uint32 k = 0; k < params->k; k++) {
-				if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
-					ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
-					break;
-				}
-			}
-			agent.set_query(&ref.seq.c_str()[i], params->k);
-			if(ref.high_freq_kmer_trie.lookup(agent)) {
-				ref.ignore_kmer_bitmask[i] = 1;
-			}
+// returns true if the kmer is uninformative
+bool filter_kmer(const std::string& seq, const seq_t i, const marisa::Trie& high_freq_kmer_trie, const index_params_t* params) {
+	for (uint32 k = 0; k < params->k; k++) {
+		if(seq.c_str()[i+k] == BASE_IGNORE) {
+			return true; // contains ambiguous bases
 		}
 	}
-	printf("Done marking frequent kmers time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
+	marisa::Agent query_agent;
+	query_agent.set_query(&seq.c_str()[i], params->k);
+	if(high_freq_kmer_trie.lookup(query_agent)) {
+		return true; // high-frequency kmer
+	}
+	return false;
+}
+
+// populates the forward and reverse complement filtered kmer bitmasks
+void mark_kmers_to_discard(ref_t& ref, const index_params_t* params) {
+	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
+	ref.ignore_kmer_bitmask_RC.resize(ref.len - params->k);
+	#pragma omp parallel for
+	for(seq_t i = 0; i < ref.len - params->k + 1; i++) {
+		if(filter_kmer(ref.seq, i, ref.high_freq_kmer_trie, params)) {
+			ref.ignore_kmer_bitmask[i] = true;
+			ref.ignore_kmer_bitmask_RC[ref.len - i - params->k] = true;
+		}
+	}
+}
+
+// checks if the given sequence is informative or not
+// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
+bool filter_window(const char* seq, const uint32_t len) {
+	uint32 base_counts[5] = { 0 };
+	for(uint32 i = 0; i < len; i++) {
+		base_counts[(int) seq[i]]++;
+	}
+	if(base_counts[4] > 10) { // N ambiguous bases
+		return true;
+	}
+	uint32 n_empty = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] == 0) {
+			n_empty++;
+		}
+	}
+	if(n_empty > 1) { // repetitions of 2 or 1 base
+		return true;
+	}
+
+	return false;
 }
 
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
+	ref.ignore_window_bitmask_RC.resize(ref.len - params->ref_window_size + 1);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
-		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
-			ref.ignore_window_bitmask[pos] = 1; // discard windows with low information content
+		if(filter_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
+			ref.ignore_window_bitmask[pos] = true; // discard windows with low information content
+			ref.ignore_window_bitmask_RC[ref.len - pos - params->ref_window_size] = true;
 		}
 	}
 }
@@ -94,7 +92,49 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 // - compute the hash of each window
 // - sort
 
-#define MAX_NTABLES_NO_DISK 1024
+int add_window_to_buckets(const seq_t window_pos, const int tid, const VectorMinHash& minhashes, const index_params_t* params, ref_t& ref, const uint16_t rc) {
+	int n_new_entries = 0;
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
+		minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(
+				minhashes,
+				params->sketch_proj_indices,
+				t*params->sketch_proj_len);
+
+		buckets_t* buckets = &ref.hash_tables[t];
+		uint32 bucket_index = buckets->per_thread_bucket_indices[tid][bucket_hash];
+		if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
+			bucket_index = buckets->per_thread_next_free_bucket_index[tid];
+			buckets->per_thread_next_free_bucket_index[tid]++;
+			buckets->per_thread_bucket_indices[tid][bucket_hash] = bucket_index;
+		}
+
+		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_index];
+		if(bucket.size() == 0) { // first item in this thread bucket
+			bucket.resize(params->bucket_size);
+		}
+		// add to the bucket
+		uint32 curr_size = buckets->per_thread_bucket_sizes[tid][bucket_index];
+		if(curr_size + 1 >= bucket.size()) {
+			bucket.resize(curr_size + 500);
+		}
+		if(curr_size > 0) {
+			loc_t* epos = &bucket[curr_size-1];
+			if((epos->pos + epos->len) == window_pos) {
+				epos->len++; // extend the existing contig
+				continue;
+			}
+		}
+		// add a new entry
+		loc_t new_loc;
+		new_loc.pos = window_pos;
+		new_loc.rc = rc;
+		new_loc.len = 1;
+		bucket[curr_size] = new_loc;
+		buckets->per_thread_bucket_sizes[tid][bucket_index]++;
+		n_new_entries++;
+	}
+	return n_new_entries;
+}
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("**** SRX Reference Indexing ****\n");
@@ -108,11 +148,11 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	// 2. load the frequency of each kmer and collect high-frequency kmers
 	printf("Loading frequent kmers... \n");
 	double start_time = omp_get_wtime();
-	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+	//compute_kmer_histogram(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
-	mark_freq_kmers(ref, params);
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, ref.high_freq_kmer_trie_RC, params->max_count);
+	mark_kmers_to_discard(ref, params);
 	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
 	//mark_windows_to_discard(ref, params);
@@ -143,6 +183,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	}
 
 	// initialize additional per-thread storage
+	std::vector<minhash_matrix_t> minhash_matrices(params->n_threads);
 	std::vector<VectorMinHash> minhash_thread_vectors(params->n_threads);
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		minhash_thread_vectors[i].resize(params->h);
@@ -152,7 +193,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	for(uint32 i = 0; i < params->n_threads; i++) {
 		hasher_thread_vectors[i] = new CyclicHash(params->k, 32);
 	}
-	std::vector<minhash_matrix_t> minhash_matrices(params->n_threads);
 
 	// 3. hash each valid window
 	printf("Hashing reference windows... \n");
@@ -160,11 +200,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_valid_hashes = 0;
 	uint64 n_bucket_entries = 0;
 	uint64 n_filtered = 0;
-	uint64 n_dropped = 0;
 
 	int file_nsync_points = 0;
-	if(params->n_tables > MAX_NTABLES_NO_DISK) {
-		file_nsync_points = 42*params->n_tables/128; //params->n_tables / MAX_NTABLES_NO_DISK - 1;
+	if(DISK_SYNC_PARTIAL_TABLES) {
+		file_nsync_points = 52*params->n_tables/128;
 	}
 	VectorU32 nsync_per_thread(params->n_threads);
 
@@ -176,98 +215,96 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    int n_threads = omp_get_num_threads();
 	    seq_t chunk_start = ((ref.len - params->ref_window_size + 1) / n_threads)*tid;
 	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
-	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
+	    printf("Thread %d windows: %u - %u \n", tid, chunk_start, chunk_end);
 
+	    VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
+	    minhash_matrix_t& rolling_minhash_matrix = minhash_matrices[tid];
 	    int sync_point = 1;
 	    bool init_minhash = true;
-	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
+	    for(seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
+	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
+				printf("[PROGRESS] Thread %d processed %u valid windows \n", tid, pos - chunk_start);
+			}
 
-	    	// check if we should write to file
-	    	if(file_nsync_points > 0) {
+	    	if(DISK_SYNC_PARTIAL_TABLES && file_nsync_points > 0) { // check if we should write partial results to disk
 	    		int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
 	    		if(n_valid_windows == sync_chunk_size*sync_point) {
-	    			printf("Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
+	    			printf("[DISK] Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
 	    			store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
 	    			sync_point++;
 	    			nsync_per_thread[tid]++;
 	    		}
 	    	}
 
+	    	// FORWARD
 	    	if(ref.ignore_window_bitmask[pos]) { // discard windows with low information content
 	    		init_minhash = true;
-	    		continue;
-			}
-	    	n_valid_windows++;
-	    	if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
-	    		printf("Thread %d processed %u valid windows \n", tid, pos - chunk_start);
-	    	}
-
-	    	// get the min-hash signature for the window
-	    	VectorMinHash& minhashes = minhash_thread_vectors[tid]; // each thread indexes into its pre-allocated buffer
-	    	minhash_matrix_t& rolling_minhash_matrix = minhash_matrices[tid];
-	    	bool valid_hash;
-	    	if(init_minhash == true) { //if(pos == chunk_start) {
-	    		valid_hash = minhash_rolling_init(ref.seq.c_str(), pos, params->ref_window_size,
-	    					rolling_minhash_matrix,
-							ref.ignore_kmer_bitmask, params,
-							hasher_thread_vectors[0],
-							minhashes);
-	    		init_minhash = false;
-	    	} else {
-	    		valid_hash = minhash_rolling(ref.seq.c_str(), pos, params->ref_window_size,
-	    					rolling_minhash_matrix,
-							ref.ignore_kmer_bitmask, params,
-							hasher_thread_vectors[0],
-							minhashes);
-	    	}
-	    	if(!valid_hash) {
-	    		continue;
-	    	}
-	    	n_valid_hashes++;
-
-	    	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
-	    		minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(
-	    				minhashes,
-	    				params->sketch_proj_indices,
-	    				t*params->sketch_proj_len);
-
-	    		buckets_t* buckets = &ref.hash_tables[t];
-
-	    		uint32 bucket_index = buckets->per_thread_bucket_indices[tid][bucket_hash];
-				if(bucket_index == buckets->n_buckets) { // this is the first entry in the bucket
-					bucket_index = buckets->per_thread_next_free_bucket_index[tid];
-					buckets->per_thread_next_free_bucket_index[tid]++;
-					buckets->per_thread_bucket_indices[tid][bucket_hash] = bucket_index;
-				}
-
-	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_index];
-	    		if(bucket.size() == 0) { // first item in this thread bucket
-	    			bucket.resize(params->bucket_size);
-	    		}
-	    		// add to the bucket
-	    		uint32 curr_size = buckets->per_thread_bucket_sizes[tid][bucket_index];
-	    		if(curr_size + 1 >= bucket.size()) {
-	    			bucket.resize(curr_size + 1000);
-	    		}
-				bool store_pos = true;
-				if(curr_size > 0) {
-					loc_t* epos = &bucket[curr_size-1];
-					if((epos->pos + epos->len) == pos) {
-						epos->len++;
-						store_pos = false;
-					}
-				}
-				if(store_pos) {
-					loc_t new_loc;
-					new_loc.pos = pos;
-					new_loc.len = 1;
-					bucket[curr_size] = new_loc;
-					buckets->per_thread_bucket_sizes[tid][bucket_index]++;
-					n_bucket_entries++;
+			} else {
+				n_valid_windows++;
+				bool valid_hash;
+				if(init_minhash == true) {
+					valid_hash = minhash_rolling_init(ref.seq.c_str(), pos, params->ref_window_size,
+								rolling_minhash_matrix,
+								ref.ignore_kmer_bitmask, params,
+								hasher_thread_vectors[0],
+								minhashes);
+					init_minhash = false;
 				} else {
-					n_filtered++;
+					valid_hash = minhash_rolling(ref.seq.c_str(), pos, params->ref_window_size,
+								rolling_minhash_matrix,
+								ref.ignore_kmer_bitmask, params,
+								hasher_thread_vectors[0],
+								minhashes);
 				}
-	    	}
+				if(valid_hash) {
+					n_valid_hashes++;
+					int n_new_entries = add_window_to_buckets(pos, tid, minhashes, params, ref, 0);
+					n_bucket_entries += n_new_entries;
+					n_filtered += params->n_tables - n_new_entries;
+				}
+			}
+	    }
+	    // REVERSE COMPLEMENT
+	    std::fill(minhash_thread_vectors[tid].begin(), minhash_thread_vectors[tid].end(), UINT_MAX);
+	    init_minhash = true;
+	    for(seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's RC chunk
+			if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
+				printf("[PROGRESS] Thread %d processed %u valid RC windows \n", tid, pos - chunk_start);
+			}
+
+			if(DISK_SYNC_PARTIAL_TABLES && file_nsync_points > 0) { // check if we should write partial results to disk
+				int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
+				if(n_valid_windows == sync_chunk_size*sync_point) {
+					printf("[DISK] Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
+					store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
+					sync_point++;
+					nsync_per_thread[tid]++;
+				}
+			}
+	    	if(ref.ignore_window_bitmask_RC[pos]) { // discard windows with low information content
+	    		init_minhash = true;
+	    	} else {
+	    		n_valid_windows++;
+				bool valid_hash;
+				if(init_minhash == true) {
+					valid_hash = minhash_rolling_init(ref.seq_RC.c_str(), pos, params->ref_window_size,
+								rolling_minhash_matrix,
+								ref.ignore_kmer_bitmask_RC, params,
+								hasher_thread_vectors[0],
+								minhashes);
+					init_minhash = false;
+				} else {
+					valid_hash = minhash_rolling(ref.seq_RC.c_str(), pos, params->ref_window_size,
+								rolling_minhash_matrix,
+								ref.ignore_kmer_bitmask_RC, params,
+								hasher_thread_vectors[0],
+								minhashes);
+				}
+				if(valid_hash) {
+					add_window_to_buckets(pos, tid, minhashes, params, ref, 1);
+				}
+			}
+
 	    }
 	}
 	printf("Populated all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_time);
@@ -298,15 +335,14 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		VectorU32().swap(buckets->per_thread_next_free_bucket_index);
 		VectorPerThreadBuckets().swap(buckets->per_thread_buckets_data_vectors);
 	}
-	if(file_nsync_points > 0) { // read partial files from disk
+	if(DISK_SYNC_PARTIAL_TABLES && file_nsync_points > 0) { // read partial files from disk
 		for(uint32 tid = 0; tid < params->n_threads; tid++) {
 			load_ref_idx_per_thread(tid, nsync_per_thread[tid], fastaFname, ref, params);
 		}
 	}
-
 	printf("Collected all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_coll_sort);
 
-	// 5. sort each bucket!
+	// 5. sort each bucket
 	printf("Sorting buckets... \n");
 	double start_time_sort = omp_get_wtime();
 	#pragma omp parallel for
@@ -314,7 +350,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			//std::sort(bucket.begin(), bucket.end());
 			std::sort(bucket.begin(), bucket.end(), comp_loc());
 		}
 	}
@@ -324,7 +359,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %llu \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %llu \n", n_filtered);
-	printf("Total number of window bucket entries dropped: %llu \n", n_dropped);
 	printf("Total hashing time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
@@ -343,16 +377,11 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	load_ref_idx(fastaFname, ref, params);
 	printf("Reference index loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 3. load the frequency of each kmer and collect high-frequency kmers
-	double start_time = omp_get_wtime();
-	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
-	//store_kmer_hist(fastaFname, ref.kmer_hist);
-	//ref.kmer_hist = MapKmerCounts(); // free memory
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
-	//mark_freq_kmers(ref, params);
-	double end_time = omp_get_wtime();
-	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
-
+	// 3. load the high-frequency kmers
+	printf("Loading high-frequency kmers trie... \n");
+	t = clock();
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, ref.high_freq_kmer_trie_RC, params->max_count);
+	printf("Total kmer trie load time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 
 
@@ -380,7 +409,7 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	if(params->min_count != 0) {
 		/*for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
 			read_t r = reads.reads[i];
-			//compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
+			//compute_kmer_histogram(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
 		find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
 		reads.kmer_hist = MapKmerCounts(); // free memory
@@ -403,13 +432,15 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 				params->kmer_hasher, false,
 				r->minhashes);
 
-		r->minhashes_rc.resize(params->h);
-		r->valid_minhash_rc = minhash(r->rc.c_str(), 0, r->len,
-				ref.high_freq_kmer_trie,
-				ref.ignore_kmer_bitmask,
-				marisa::Trie(), params,
-				params->kmer_hasher, false,
-				r->minhashes_rc);
+		if(INDEX_READS_RC) {
+			r->minhashes_rc.resize(params->h);
+			r->valid_minhash_rc = minhash(r->rc.c_str(), 0, r->len,
+					ref.high_freq_kmer_trie,
+					ref.ignore_kmer_bitmask,
+					marisa::Trie(), params,
+					params->kmer_hasher, false,
+					r->minhashes_rc);
+		}
 	}
 	double end_time = omp_get_wtime();
 	printf("Total read hashing time: %.2f sec\n", end_time - start_time);

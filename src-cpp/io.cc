@@ -46,6 +46,10 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 		}
 	}
 	ref.len = ref.seq.size();
+	// compute the reverse complement
+	for(int i = 0; i < ref.len; i++) {
+		ref.seq_RC.append(1, nt4_complement[(int)ref.seq.at(ref.len-i-1)]);
+	}
 	printf("Done reading FASTA file. Number of subsequences: %zu. Total sequence length read = %u\n", ref.subsequence_offsets.size(), ref.len);
 	fclose(fastaFile);
 }
@@ -104,7 +108,7 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
-void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
+void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, marisa::Trie& freq_trie_rc, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 
@@ -117,6 +121,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 	}
 
 	marisa::Keyset keys;
+	marisa::Keyset keys_rc;
 	uint32 kmer, count;
 	uint32 filtered = 0;
 	int map_size;
@@ -129,11 +134,20 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 			unpack_32(kmer, seq, 16);
 			seq[16] = '\0';
 			keys.push_back((const char*) seq);
+
+			// RC kmer
+			unsigned char* seq_rc = (unsigned char*) malloc(17*sizeof(char));
+			for(int i = 0; i < 16; i++) {
+				seq_rc[i] = nt4_complement[(int) seq[16-i-1]];
+			}
+			seq_rc[16] = '\0';
+			keys_rc.push_back((const char*) seq_rc);
 			filtered++;
 		}
 		map_size--;
 	}
 	freq_trie.build(keys, 0);
+	freq_trie_rc.build(keys_rc, 0);
 	file.close();
 	printf("Filtered %u kmers \n", filtered);
 }
@@ -178,7 +192,8 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&b), sizeof(char));
 		if(b == '1') {
-			ref.ignore_window_bitmask[pos] = 1;
+			ref.ignore_window_bitmask[pos] = true;
+			ref.ignore_window_bitmask_RC[ref.len - pos - params->ref_window_size] = true;
 		}
 	}
 	file.close();

@@ -20,17 +20,16 @@ typedef uint32 seq_t;
 
 struct loc_t {
 	seq_t pos;
-	uint16_t chr;
-	uint16_t len;
+	uint16_t rc : 1, len : 15;
 };
 
 struct comp_loc
 {
     bool operator()(const loc_t& a, const loc_t& b) const {
-    	if(a.chr == b.chr) {
+    	if(a.rc == b.rc) {
     		return a.pos < b.pos;
     	}
-    	return a.chr < b.chr;
+    	return a.rc < b.rc;
     }
 };
 
