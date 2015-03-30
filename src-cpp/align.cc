@@ -707,11 +707,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
 			}
-			r->best_n_hits = (r->best_n_hits > 0) ? r->best_n_hits - 1 : 0;
+			r->best_n_hits = r->best_n_hits - 1; //(r->best_n_hits > 0) ? r->best_n_hits - 1 : 0;
 			assert(r->best_n_hits < params->n_tables);
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if(r->best_n_hits > 0) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+			if(r->best_n_hits >= 0) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
 				process_read_hits_se_votes_opt(ref, r, params);
@@ -755,7 +755,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
 		valid_hash++;
-		if(reads.reads[i].best_n_hits <= 0) continue;
+		if(reads.reads[i].best_n_hits < 0) continue;
 		mapped++;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
