@@ -440,6 +440,8 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 					marisa::Trie(), params,
 					params->kmer_hasher, false,
 					r->minhashes_rc);
+		} else {
+			r->valid_minhash_rc = 0;
 		}
 	}
 	double end_time = omp_get_wtime();
