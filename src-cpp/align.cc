@@ -711,7 +711,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if(r->any_bucket_hits) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
 				assert(r->best_n_bucket_hits < params->n_tables);
 				//process_read_hits_se_opt(ref, r, params);
