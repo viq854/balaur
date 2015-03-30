@@ -744,6 +744,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
+	int mapped = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
 	int acc_dp = 0;
@@ -752,24 +753,26 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int score = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
+		valid_hash++;
 		if(reads.reads[i].best_n_hits <= 0) continue;
+		mapped++;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
 		acc_dp += reads.reads[i].dp_hit_acc;
-		valid_hash += reads.reads[i].valid_minhash;
 		n_max_votes += reads.reads[i].n_max_votes;
 		best_hits += reads.reads[i].best_n_hits;
 		score += reads.reads[i].aln.score;
 	}
 
-	printf("Number of valid reads %u \n", valid_hash);
-	printf("Max number of windows matched by read %u \n", max_windows_matched);
-	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/valid_hash);
-	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/valid_hash);
-	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/valid_hash);
-	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/valid_hash);
-	printf("Avg score per read %.8f \n", (float) score/valid_hash);
+	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
+	printf("Number of mapped reads %u \n", mapped);
+	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
+	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
+	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
+	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/mapped);
+	printf("Avg score per read %.8f \n", (float) score/mapped);
 	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
