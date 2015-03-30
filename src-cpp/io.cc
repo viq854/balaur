@@ -189,6 +189,7 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	}
 	char b;
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
+	ref.ignore_window_bitmask_RC.resize(ref.len - params->ref_window_size + 1);
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&b), sizeof(char));
 		if(b == '1') {
