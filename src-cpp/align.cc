@@ -685,7 +685,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->best_n_hits = 0;
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
-			r->best_n_hits = 0;
 			if(r->valid_minhash) { // FORWARD
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
@@ -753,7 +752,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int score = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		if(!reads.reads[i].valid_minhash) continue;
+		if(!reads.reads[i].best_n_hits <= 0) continue;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
@@ -764,12 +763,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		score += reads.reads[i].aln.score;
 	}
 
-	printf("Max number of windows matched by read %u \n", max_windows_matched);
 	printf("Number of valid reads %u \n", valid_hash);
+	printf("Max number of windows matched by read %u \n", max_windows_matched);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/valid_hash);
-	printf("Avg number of top contigs matched per read %.8f \n", (float) total_top_contigs/valid_hash);
+	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/valid_hash);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/valid_hash);
-	printf("Avg number of best hits per read %.8f \n", (float) best_hits/valid_hash);
+	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/valid_hash);
 	printf("Avg score per read %.8f \n", (float) score/valid_hash);
 	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
