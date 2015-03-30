@@ -249,7 +249,8 @@ struct read_t {
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 
-	int best_n_hits;
+	int best_n_bucket_hits;
+	bool any_bucket_hits;
 	int n_max_votes;
 	aln_t aln;
 
