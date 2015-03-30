@@ -209,7 +209,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 
 	start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
-	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered, n_dropped)
+	#pragma omp parallel reduction(+:n_valid_windows, n_valid_hashes, n_bucket_entries, n_filtered)
 	{
 	    int tid = omp_get_thread_num();
 	    int n_threads = omp_get_num_threads();
