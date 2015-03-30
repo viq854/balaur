@@ -232,8 +232,10 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
+				uint16_t rc = bucket[k].rc;
+				uint16_t len = bucket[k].len;
+				file.write(reinterpret_cast<const char*>(&rc), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&len), sizeof(uint16_t));
 				//file.write(reinterpret_cast<const char*>(&bucket[k]), sizeof(seq_t));
 			}
 		}
@@ -278,8 +280,11 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 			// note: bucket size can now be the length of the vector
 			for(uint32 k = 0; k < size; k++) {
 				file.read(reinterpret_cast<char*>(&bucket[k].pos), sizeof(seq_t));
-				file.read(reinterpret_cast<char*>(&bucket[k].chr), sizeof(uint16_t));
-				file.read(reinterpret_cast<char*>(&bucket[k].len), sizeof(uint16_t));
+				uint16_t rc, len;
+				file.read(reinterpret_cast<char*>(&rc), sizeof(uint16_t));
+				file.read(reinterpret_cast<char*>(&len), sizeof(uint16_t));
+				bucket[k].rc = rc;
+				bucket[k].len = len;
 				//file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
 			}
 		}
@@ -317,8 +322,10 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
+				uint16_t rc = bucket[k].rc;
+				uint16_t len = bucket[k].len;
+				file.write(reinterpret_cast<const char*>(&rc), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&len), sizeof(uint16_t));
 			}
 			bucket.resize(0);
 			bucket.shrink_to_fit();
@@ -365,8 +372,11 @@ void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFna
 				for(uint32 k = 0; k < size; k++) {
 					loc_t w;
 					file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
-					file.read(reinterpret_cast<char*>(&w.chr), sizeof(uint16_t));
-					file.read(reinterpret_cast<char*>(&w.len), sizeof(uint16_t));
+					uint16_t rc, len;
+					file.read(reinterpret_cast<char*>(&rc), sizeof(uint16_t));
+					file.read(reinterpret_cast<char*>(&len), sizeof(uint16_t));
+					w.rc = rc;
+					w.len = len;
 					global_bucket.push_back(w);
 				}
 			}
