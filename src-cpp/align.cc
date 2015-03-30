@@ -752,7 +752,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int score = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		if(!reads.reads[i].best_n_hits <= 0) continue;
+		if(reads.reads[i].best_n_hits <= 0) continue;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
