@@ -547,10 +547,13 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-
+			std::string& seq = ref.seq;
+			if(ref_contig.rc) {
+				seq = ref.seq_RC;
+			}
 			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-				kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				kmers_ref[j] = std::make_pair(CityHash32(&seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -814,7 +817,11 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
    for(int i = r->best_n_bucket_hits; i >= 0; i--) {
 	   for(uint32 j = 0; j < r->ref_matches[i].size(); j++) {
 		   ref_match_t match = r->ref_matches[i][j];
-		   if(pos_l >= match.pos - match.len - 1300 && pos_l <= match.pos + 1300) {
+		   uint32_t match_pos = match.pos;
+		   if(match.rc) {
+			   match_pos = ref.len - match.pos;
+		   }
+		   if(pos_l >= match_pos - match.len - 1300 && pos_l <= match_pos + 1300) {
 			   r->acc = 1;
 			   break;
 		   }
