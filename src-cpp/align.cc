@@ -532,6 +532,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 	int n_proc_buckets = 0;
 	idx = 0;
+	int hit_idx = 0;
 	while(n_proc_buckets < n_collected_buckets) {
 		if(r->ref_matches[r->best_n_bucket_hits - idx].size() == 0) {
 			idx++;
@@ -561,10 +562,10 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
 				if(kmers[idx_q].first == kmers_ref[idx_r].first) {
 					if(first_match) {
-						first_kmer_match[i] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
+						first_kmer_match[hit_idx] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
 						first_match = false;
 					}
-					kmers_votes[i]++;
+					kmers_votes[hit_idx]++;
 					idx_q++;
 					idx_r++;
 				} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
@@ -573,8 +574,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					idx_r++;
 				}
 			}
-			hit_bucket_index[i] = r->best_n_bucket_hits - idx;
-			hit_bucket_pos[i] = i;
+			hit_bucket_index[hit_idx] = r->best_n_bucket_hits - idx;
+			hit_bucket_pos[hit_idx] = i;
+			hit_idx++;
 		}
 		n_proc_buckets++;
 	}
