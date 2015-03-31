@@ -39,12 +39,12 @@ bool filter_kmer(const std::string& seq, const seq_t i, const marisa::Trie& high
 // populates the forward and reverse complement filtered kmer bitmasks
 void mark_kmers_to_discard(ref_t& ref, const index_params_t* params) {
 	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
-	ref.ignore_kmer_bitmask_RC.resize(ref.len - params->k);
+	if(INDEX_READS_REF) ref.ignore_kmer_bitmask_RC.resize(ref.len - params->k);
 	#pragma omp parallel for
 	for(seq_t i = 0; i < ref.len - params->k + 1; i++) {
 		if(filter_kmer(ref.seq, i, ref.high_freq_kmer_trie, params)) {
 			ref.ignore_kmer_bitmask[i] = true;
-			ref.ignore_kmer_bitmask_RC[ref.len - i - params->k] = true;
+			if(INDEX_READS_REF) ref.ignore_kmer_bitmask_RC[ref.len - i - params->k] = true;
 		}
 	}
 }
@@ -74,12 +74,12 @@ bool filter_window(const char* seq, const uint32_t len) {
 
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
-	ref.ignore_window_bitmask_RC.resize(ref.len - params->ref_window_size + 1);
+	if(INDEX_READS_REF) ref.ignore_window_bitmask_RC.resize(ref.len - params->ref_window_size + 1);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
 		if(filter_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
 			ref.ignore_window_bitmask[pos] = true; // discard windows with low information content
-			ref.ignore_window_bitmask_RC[ref.len - pos - params->ref_window_size] = true;
+			if(INDEX_READS_REF) ref.ignore_window_bitmask_RC[ref.len - pos - params->ref_window_size] = true;
 		}
 	}
 }
