@@ -10,7 +10,8 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 #include "hash.h"
 #include <tbb/tbb.h>
 
-#define INDEX_READS_RC 0
+#define INDEX_READS_RC 1
+#define INDEX_READS_REF 0
 #define DISK_SYNC_PARTIAL_TABLES 0
 
 // program parameters

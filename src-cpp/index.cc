@@ -265,46 +265,47 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			}
 	    }
 	    // REVERSE COMPLEMENT
-	    std::fill(minhash_thread_vectors[tid].begin(), minhash_thread_vectors[tid].end(), UINT_MAX);
-	    init_minhash = true;
-	    for(seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's RC chunk
-			if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
-				printf("[PROGRESS] Thread %d processed %u valid RC windows \n", tid, pos - chunk_start);
-			}
+	    if(INDEX_READS_REF) {
+	    	std::fill(minhash_thread_vectors[tid].begin(), minhash_thread_vectors[tid].end(), UINT_MAX);
+	    	init_minhash = true;
+	    	for(seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's RC chunk
+	    		if((pos - chunk_start) % 2000000 == 0 && (pos - chunk_start) != 0) {
+	    			printf("[PROGRESS] Thread %d processed %u valid RC windows \n", tid, pos - chunk_start);
+	    		}
 
-			if(DISK_SYNC_PARTIAL_TABLES && file_nsync_points > 0) { // check if we should write partial results to disk
-				int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
-				if(n_valid_windows == sync_chunk_size*sync_point) {
-					printf("[DISK] Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
-					store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
-					sync_point++;
-					nsync_per_thread[tid]++;
-				}
-			}
-	    	if(ref.ignore_window_bitmask_RC[pos]) { // discard windows with low information content
-	    		init_minhash = true;
-	    	} else {
-	    		n_valid_windows++;
-				bool valid_hash;
-				if(init_minhash == true) {
-					valid_hash = minhash_rolling_init(ref.seq_RC.c_str(), pos, params->ref_window_size,
-								rolling_minhash_matrix,
-								ref.ignore_kmer_bitmask_RC, params,
-								hasher_thread_vectors[0],
-								minhashes);
-					init_minhash = false;
-				} else {
-					valid_hash = minhash_rolling(ref.seq_RC.c_str(), pos, params->ref_window_size,
-								rolling_minhash_matrix,
-								ref.ignore_kmer_bitmask_RC, params,
-								hasher_thread_vectors[0],
-								minhashes);
-				}
-				if(valid_hash) {
-					add_window_to_buckets(pos, tid, minhashes, params, ref, 1);
-				}
-			}
-
+	    		if(DISK_SYNC_PARTIAL_TABLES && file_nsync_points > 0) { // check if we should write partial results to disk
+	    			int sync_chunk_size = (chunk_end - chunk_start + 1)/(file_nsync_points + 1);
+	    			if(n_valid_windows == sync_chunk_size*sync_point) {
+	    				printf("[DISK] Thread %d sync point: %u, n_valid_windows: %u \n", tid, pos, n_valid_windows);
+	    				store_ref_idx_per_thread(tid, sync_point == 1, fastaFname, ref, params);
+	    				sync_point++;
+	    				nsync_per_thread[tid]++;
+	    			}
+	    		}
+	    		if(ref.ignore_window_bitmask_RC[pos]) { // discard windows with low information content
+	    			init_minhash = true;
+	    		} else {
+	    			n_valid_windows++;
+					bool valid_hash;
+					if(init_minhash == true) {
+						valid_hash = minhash_rolling_init(ref.seq_RC.c_str(), pos, params->ref_window_size,
+									rolling_minhash_matrix,
+									ref.ignore_kmer_bitmask_RC, params,
+									hasher_thread_vectors[0],
+									minhashes);
+						init_minhash = false;
+					} else {
+						valid_hash = minhash_rolling(ref.seq_RC.c_str(), pos, params->ref_window_size,
+									rolling_minhash_matrix,
+									ref.ignore_kmer_bitmask_RC, params,
+									hasher_thread_vectors[0],
+									minhashes);
+					}
+					if(valid_hash) {
+						add_window_to_buckets(pos, tid, minhashes, params, ref, 1);
+					}
+	    		}
+	    	}
 	    }
 	}
 	printf("Populated all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_time);
