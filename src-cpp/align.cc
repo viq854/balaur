@@ -589,6 +589,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
+	if(top_contig.rc) {
+		r->aln.ref_start = ref.len - r->aln.ref_start - (r->len - first_kmer_match[top_contig_idx].second);
+	}
 	r->aln.score = max_count;
 
 	//seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
