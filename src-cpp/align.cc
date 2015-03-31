@@ -144,7 +144,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	std::bitset<256> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
-		seq_t e_last_pos = e.pos + e.len - 1;
+		uint64_t e_last_pos = e.pos + e.len - 1;
 		if(last_pos == (uint64) -1 || (e.pos <= last_pos)) { // first contig or extending contig
 			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
@@ -556,9 +556,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 			// find how many kmers are in common
 			std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
-			if(ref_contig.rc) {
-				kmers = kmers_rc;
-			}
+			//if(ref_contig.rc) {
+				//kmers = kmers_rc;
+			//}
 			int idx_q = 0;
 			int idx_r = 0;
 			bool first_match = true;
