@@ -163,7 +163,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 					r->best_n_bucket_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, len, last_pos & RC_MASK);
+					ref_match_t rm(last_pos & ~RC_MASK, len, last_pos & RC_MASK);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			}
@@ -196,7 +196,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			ref_match_t rm(last_pos, len, last_pos & RC_MASK);
+			ref_match_t rm(last_pos & ~RC_MASK, len, last_pos & RC_MASK);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
 	}
