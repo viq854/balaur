@@ -686,10 +686,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->any_bucket_hits = false;
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
+			VectorU32 bucket_indices(params->n_tables);
 			if(r->valid_minhash) { // FORWARD
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
+					bucket_indices[t] = bucket_index;
 					if(bucket_index == ref.hash_tables[t].n_buckets) {
 						continue; // no reference window fell into this bucket
 					}
@@ -705,7 +707,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets) {
 						continue; // no reference window fell into this bucket
 					}
-					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
+					if(std::find(bucket_indices.begin(), bucket_indices.end(), bucket_index_rc) != bucket_indices.end()) {
+						r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
+					}
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
 			}
