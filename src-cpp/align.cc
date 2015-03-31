@@ -507,14 +507,11 @@ struct comp_shared_seeds
 
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
-	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
-	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
+	std::vector<std::pair<minhash_t, uint32>> kmers((r->len - params->k2 + 1));
 	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-		kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-		kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
+		kmers[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
 	}
-	std::sort(kmers_f.begin(), kmers_f.end());
-	std::sort(kmers_rc.begin(), kmers_rc.end());
+	std::sort(kmers.begin(), kmers.end());
 
 	int n_top_buckets = 2;
 	int n_collected_hits = 0;
@@ -558,10 +555,6 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
 			// find how many kmers are in common
-			std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
-			//if(ref_contig.rc) {
-				//kmers = kmers_rc;
-			//}
 			int idx_q = 0;
 			int idx_r = 0;
 			bool first_match = true;
