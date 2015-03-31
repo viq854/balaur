@@ -813,7 +813,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 		   uint32_t match_pos = match.pos;
 		   if(match.rc) {
 			   match_pos = ref.len - match.pos;
-			   if(pos_l >= match_pos - 1300 && pos_l <= match_pos + match.len + 1300) {
+			   if(pos_l >= match_pos - r->len - 1300 && pos_l <= match_pos + match.len + 1300) {
 				   r->acc = 1;
 				   break;
 			   }
