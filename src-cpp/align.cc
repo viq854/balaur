@@ -140,16 +140,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 
 	int n_diff_table_hits = 0;
 	uint32 len = 0;
-	uint32 last_pos = -1;
+	uint64 last_pos = -1;
 	std::bitset<256> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
 		seq_t e_last_pos = e.pos + e.len - 1;
-		if(last_pos == (uint32) -1 || (e.pos <= last_pos)) { // first contig or extending contig
+		if(last_pos == (uint64) -1 || (e.pos <= last_pos)) { // first contig or extending contig
 			if(!occ.test(e.tid)) {
 				n_diff_table_hits++;
 			}
-			if(last_pos == (uint32) -1) {
+			if(last_pos == (uint64) -1) {
 				len = e.len - 1;
 				last_pos = e_last_pos;
 			} else if(last_pos < e_last_pos) {
@@ -163,7 +163,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 					r->best_n_bucket_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm((last_pos & ~RC_MASK), len, last_pos & RC_MASK);
+					ref_match_t rm(last_pos, len, last_pos & RC_MASK);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			}
@@ -191,12 +191,12 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	}
 
 	// add the last position
-	if(last_pos != (uint32) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+	if(last_pos != (uint64) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			ref_match_t rm((last_pos & ~RC_MASK), len, last_pos & RC_MASK);
+			ref_match_t rm(last_pos, len, last_pos & RC_MASK);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
 	}
