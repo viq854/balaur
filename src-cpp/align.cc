@@ -547,13 +547,13 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-			std::string& seq = ref.seq;
-			if(ref_contig.rc) {
-				seq = ref.seq_RC;
-			}
 			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-				kmers_ref[j] = std::make_pair(CityHash32(&seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				if(!ref_contig.rc) {
+					kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				} else {
+					kmers_ref[j] = std::make_pair(CityHash32(&ref.seq_RC[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				}
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
