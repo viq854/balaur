@@ -24,9 +24,9 @@
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 
 struct heap_entry_t {
-	seq_t pos;
-	seq_t len;
-	uint32 tid;
+	uint64_t pos;
+	uint16_t len;
+	uint16_t tid;
 	uint32 next_idx;
 };
 
@@ -111,6 +111,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
+#define RC_MASK (1L << 32)
 // output matches (ordered by the number of projections matched)
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	r->ref_matches.resize(params->n_tables);
@@ -124,7 +125,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
 			continue;
 		} else {
-			heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0].pos;
+			uint64_t rc_bit = (*r->ref_bucket_matches_by_table[t])[0].rc;
+			heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0].pos | (rc_bit << 32);
 			heap[heap_size].len = (*r->ref_bucket_matches_by_table[t])[0].len;
 			heap[heap_size].tid = t;
 			heap[heap_size].next_idx = 1;
@@ -161,7 +163,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 					r->best_n_bucket_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, len, rc);
+					ref_match_t rm((last_pos & ~RC_MASK), len, last_pos & RC_MASK);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
 				}
 			}
@@ -174,7 +176,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		}
 		// push the next match from this bucket
 		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
+			uint64_t rc_bit = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].rc;
+			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos | (rc_bit << 32);
 			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
 			heap[0].next_idx = e.next_idx+1;
 			heap_update_memmove(heap, heap_size);
@@ -193,7 +196,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			ref_match_t rm(last_pos, len, rc);
+			ref_match_t rm((last_pos & ~RC_MASK), len, last_pos & RC_MASK);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
 	}
