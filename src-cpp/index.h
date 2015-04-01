@@ -8,7 +8,6 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 
 #include <omp.h>
 #include "hash.h"
-#include <tbb/tbb.h>
 
 #define INDEX_READS_RC 1
 #define INDEX_READS_REF 0
@@ -164,13 +163,10 @@ typedef struct {
 } index_params_t;
 
 // **** Reference Index ****
-typedef std::vector<omp_lock_t> VectorLocks;
-typedef std::vector<VectorU32> VectorBucketIndices;
 typedef std::vector<VectorSeqPos> VectorBuckets;
-
 typedef std::vector<std::vector<VectorSeqPos> > VectorPerThreadBuckets;
-typedef std::vector<VectorU32> VectorPerThreadSizes;
 typedef std::vector<VectorU32> VectorPerThreadIndices;
+typedef std::vector<VectorU32> VectorPerThreadSizes;
 
 // min-hash signature index
 struct buckets_t {
@@ -220,7 +216,7 @@ typedef std::vector<ref_match_t> VectorRefMatches;
 struct aln_t {
 	seq_t ref_start, ref_end; 	// [rb,re): reference sequence in the alignment
 	int read_start, read_end;   // [qb,qe): query sequence in the alignment
-	int score;      // best local SW score
+	int score;
 	int truesc;     // actual score corresponding to the aligned region; possibly smaller than $score
 	int sub;        // 2nd best SW score
 	int w;          // actual band width used in extension
@@ -233,19 +229,13 @@ struct read_t {
 	std::string rc;					// reverse complement sequence
 	std::string qual;				// quality scores
 
-	// LSH fingerprints
+	// LSH sketches
 	VectorMinHash minhashes;		// minhash vector
-	char valid_minhash;
-
 	VectorMinHash minhashes_rc;		// minhash vector for the reverse complement
+	char valid_minhash;
 	char valid_minhash_rc;
 
-	// original mapping information
-	int strand;
-	uint32_t ref_pos_l;
-	uint32_t ref_pos_r;
-
-	// found ref match positions
+	// Mappings
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
@@ -259,6 +249,10 @@ struct read_t {
 	char top_hit_acc;
 	char dp_hit_acc;
 
+	// original mapping information from simulations
+	int strand;
+	uint32_t ref_pos_l;
+	uint32_t ref_pos_r;
 };
 typedef std::vector<read_t> VectorReads;
 typedef std::vector<read_t*> VectorPReads;
