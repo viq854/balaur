@@ -705,6 +705,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets) {
 						continue; // no reference window fell into this bucket
 					}
+					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
