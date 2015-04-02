@@ -46,12 +46,6 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 		}
 	}
 	ref.len = ref.seq.size();
-	if(INDEX_READS_REF) {
-		// compute the reverse complement
-		for(int i = 0; i < ref.len; i++) {
-			ref.seq_RC.append(1, nt4_complement[(int)ref.seq.at(ref.len-i-1)]);
-		}
-	}
 	printf("Done reading FASTA file. Number of subsequences: %zu. Total sequence length read = %u\n", ref.subsequence_offsets.size(), ref.len);
 	fclose(fastaFile);
 }
@@ -110,7 +104,7 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
-void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, marisa::Trie& freq_trie_rc, const uint32 max_count_threshold) {
+void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 
@@ -123,7 +117,6 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, marisa::Trie
 	}
 
 	marisa::Keyset keys;
-	marisa::Keyset keys_rc;
 	uint32 kmer, count;
 	uint32 filtered = 0;
 	int map_size;
@@ -136,24 +129,11 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, marisa::Trie
 			unpack_32(kmer, seq, 16);
 			seq[16] = '\0';
 			keys.push_back((const char*) seq);
-
-			if(INDEX_READS_REF) {
-				// RC kmer
-				unsigned char* seq_rc = (unsigned char*) malloc(17*sizeof(char));
-				for(int i = 0; i < 16; i++) {
-					seq_rc[i] = nt4_complement[(int) seq[16-i-1]];
-				}
-				seq_rc[16] = '\0';
-				keys_rc.push_back((const char*) seq_rc);
-			}
 			filtered++;
 		}
 		map_size--;
 	}
 	freq_trie.build(keys, 0);
-	if(INDEX_READS_REF) {
-		freq_trie_rc.build(keys_rc, 0);
-	}
 	file.close();
 	printf("Filtered %u kmers \n", filtered);
 }
@@ -195,12 +175,10 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	}
 	char b;
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
-	if(INDEX_READS_REF) ref.ignore_window_bitmask_RC.resize(ref.len - params->ref_window_size + 1);
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&b), sizeof(char));
 		if(b == '1') {
-			ref.ignore_window_bitmask[pos] = true;
-			if(INDEX_READS_REF) ref.ignore_window_bitmask_RC[ref.len - pos - params->ref_window_size] = true;
+			ref.ignore_window_bitmask[pos] = 1;
 		}
 	}
 	file.close();
@@ -239,10 +217,8 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				uint16_t rc = bucket[k].rc;
-				uint16_t len = bucket[k].len;
-				file.write(reinterpret_cast<const char*>(&rc), sizeof(uint16_t));
-				file.write(reinterpret_cast<const char*>(&len), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
 				//file.write(reinterpret_cast<const char*>(&bucket[k]), sizeof(seq_t));
 			}
 		}
@@ -287,11 +263,8 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 			// note: bucket size can now be the length of the vector
 			for(uint32 k = 0; k < size; k++) {
 				file.read(reinterpret_cast<char*>(&bucket[k].pos), sizeof(seq_t));
-				uint16_t rc, len;
-				file.read(reinterpret_cast<char*>(&rc), sizeof(uint16_t));
-				file.read(reinterpret_cast<char*>(&len), sizeof(uint16_t));
-				bucket[k].rc = rc;
-				bucket[k].len = len;
+				file.read(reinterpret_cast<char*>(&bucket[k].chr), sizeof(uint16_t));
+				file.read(reinterpret_cast<char*>(&bucket[k].len), sizeof(uint16_t));
 				//file.read(reinterpret_cast<char*>(&bucket[k]), sizeof(bucket[k]));
 			}
 		}
@@ -329,10 +302,8 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				uint16_t rc = bucket[k].rc;
-				uint16_t len = bucket[k].len;
-				file.write(reinterpret_cast<const char*>(&rc), sizeof(uint16_t));
-				file.write(reinterpret_cast<const char*>(&len), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].chr), sizeof(uint16_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(uint16_t));
 			}
 			bucket.resize(0);
 			bucket.shrink_to_fit();
@@ -379,11 +350,8 @@ void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFna
 				for(uint32 k = 0; k < size; k++) {
 					loc_t w;
 					file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
-					uint16_t rc, len;
-					file.read(reinterpret_cast<char*>(&rc), sizeof(uint16_t));
-					file.read(reinterpret_cast<char*>(&len), sizeof(uint16_t));
-					w.rc = rc;
-					w.len = len;
+					file.read(reinterpret_cast<char*>(&w.chr), sizeof(uint16_t));
+					file.read(reinterpret_cast<char*>(&w.len), sizeof(uint16_t));
 					global_bucket.push_back(w);
 				}
 			}
