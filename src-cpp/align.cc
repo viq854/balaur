@@ -162,7 +162,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 					ref_match_t rm(last_pos, len, rc);
 					int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
-					if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1]) {
+					if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
 						r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 					}
 					r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
@@ -198,7 +198,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
 			int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
-			if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1]) {
+			if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
 				r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 			}
 			r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
