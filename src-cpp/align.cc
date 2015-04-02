@@ -166,6 +166,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 						r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 					}
 					r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
+					r->ref_match_sizes[n_diff_table_hits-1]++;
 				}
 			}
 			// start a new contig
@@ -202,6 +203,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 			}
 			r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
+			r->ref_match_sizes[n_diff_table_hits-1]++;
 		}
 	}
 }
