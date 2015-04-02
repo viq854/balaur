@@ -604,12 +604,13 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 
 	int n_second_best = 0;
-	if(r->n_max_votes == 1) {
+	if(r->n_max_votes == 1 && max_count != 0) {
 		kmers_votes[top_contig_idx] = 0;
 		n_second_best = *std::max_element(kmers_votes.begin(), kmers_votes.end());
+		r->aln.score = 255*(max_count - n_second_best)/max_count;
+	} else {
+		r->aln.score = 0;
 	}
-	r->aln.score = 255*(max_count - n_second_best)/max_count;
-
 
 	//seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
 	//seed2alignment(s, ref, r, params);
