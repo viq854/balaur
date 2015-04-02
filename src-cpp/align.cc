@@ -176,9 +176,15 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		}
 		if(heap_size > 1) {
 			seq_t next_min_pos_diff_bucket = heap[1].pos;
-			while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size() && e_last_pos  < next_min_pos_diff_bucket) {
-				e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
-				e.next_idx++;
+			if(e_last_pos < next_min_pos_diff_bucket) {
+				while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
+					e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
+					if(e_last_pos < next_min_pos_diff_bucket) {
+						e.next_idx++;
+					} else {
+						break;
+					}
+				}
 			}
 		} else {
 			break; // only this bucket is left => remaining entries cannot have more than 1 hit
