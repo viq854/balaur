@@ -241,6 +241,7 @@ struct read_t {
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
+	std::vector<int> ref_match_sizes;
 
 	int best_n_bucket_hits;
 	bool any_bucket_hits;
