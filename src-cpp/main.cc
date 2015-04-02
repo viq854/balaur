@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
 	params.set_default_index_params();
 
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:s:d:v:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:s:d:v:N:")) >= 0) {
 		switch (c) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
@@ -121,6 +121,7 @@ int main(int argc, char *argv[]) {
 			case 'm': params.min_n_hits = atoi(optarg); break;
 			case 's': params.bucket_size = atoi(optarg); break;
 			case 'd': params.dist_best_hit = atoi(optarg); break;
+			case 'N': params.n_top_buckets_search = atoi(optarg); break;
 			default: return 0;
 		}
 	}
