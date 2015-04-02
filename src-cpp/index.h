@@ -54,6 +54,7 @@ typedef struct {
 	// alignment evaluation
 	uint32 min_n_hits;
 	uint32 dist_best_hit; // how many fewer than best table hits to still keep
+	uint32 n_top_buckets_search;
 	uint32 max_best_hits;
 	uint32 max_suboptimal_hits;
 	uint32 hit_collection_interval;
@@ -95,6 +96,7 @@ typedef struct {
 
 		min_n_hits = 2;
 		dist_best_hit = 2;
+		n_top_buckets_search = 1;
 		max_best_hits = 1000;
 		max_suboptimal_hits = 500;
 
