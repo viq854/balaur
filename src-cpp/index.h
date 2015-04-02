@@ -211,6 +211,7 @@ struct ref_match_t {
 	uint32_t pos;
 	uint32 len;
 	bool rc;
+	ref_match_t() : pos(0), len(0), rc(0) {};
 	ref_match_t(seq_t _pos, uint32 _len, bool _rc) : pos(_pos), len(_len), rc(_rc) {}
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
