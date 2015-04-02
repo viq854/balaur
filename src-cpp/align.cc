@@ -689,8 +689,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 total_contigs_length = 0;
 	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
+	double votes_time = 0;
 	omp_set_num_threads(params->n_threads); // split the reads across the threads
-	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) //reduction(max:max_windows_matched)
+	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length, votes_time) //reduction(max:max_windows_matched)
 	{
 		int tid = omp_get_thread_num();
 		int n_threads = omp_get_num_threads();
@@ -736,13 +737,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
+			double votes_time_s = omp_get_wtime();
 			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
-				assert(r->best_n_bucket_hits < params->n_tables);
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
 				process_read_hits_se_votes_opt(ref, r, params);
 			}
+			votes_time += omp_get_wtime() - votes_time_s;
 
 			// stats
 			uint32 n_contigs = 0;
@@ -820,6 +822,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Total number of accurate hits matching top = %d \n", acc_top);
 	printf("Total number of accurate hits found = %d \n", acc_hits);
 	printf("Total DP number of accurate hits found = %d \n", acc_dp);
+	printf("Total kmer count time: %f sec\n", votes_time);
 	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
