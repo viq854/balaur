@@ -597,7 +597,14 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
-	r->aln.score = max_count;
+
+	int n_second_best = 0;
+	if(r->n_max_votes == 1) {
+		kmers_votes[top_contig_idx] = 0;
+		n_second_best = *std::max_element(kmers_votes.begin(), kmers_votes.end());
+	}
+	r->aln.score = 255*(max_count - n_second_best)/max_count;
+
 
 	//seed_t s(first_kmer_match[top_contig_idx].first, first_kmer_match[top_contig_idx].second, params->k, top_contig_idx);
 	//seed2alignment(s, ref, r, params);
@@ -766,6 +773,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int n_max_votes = 0;
 	int best_hits = 0;
 	int score = 0;
+	int q10 = 0;
+	int q30 = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
@@ -783,11 +792,19 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(reads.reads[i].n_max_votes == 1) {
 			confident++;
 		}
+		if(reads.reads[i].aln.score >= 30) {
+			q30++;
+		}
+		if(reads.reads[i].aln.score >= 10) {
+			q10++;
+		}
 	}
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads %u \n", mapped);
-	printf("Number of confidently mapped reads %u \n", confident);
+	printf("Number of confidently mapped reads > 0 %u \n", confident);
+	printf("Number of confidently mapped reads Q10 %u \n", q10);
+	printf("Number of confidently mapped reads Q30 %u \n", q30);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
 	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
