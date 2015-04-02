@@ -114,7 +114,10 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 // output matches (ordered by the number of projections matched)
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	r->ref_matches.resize(params->n_tables);
-	r->ref_match_sizes.resize(params->n_tables);
+	for(int t = 0; t < params->n_tables; t++) {
+		r->ref_matches[t].reserve(20);
+	}
+	//r->ref_match_sizes.resize(params->n_tables);
 	// priority heap of matched positions
 	heap_entry_t heap[params->n_tables];
 	int heap_size = 0;
@@ -161,12 +164,13 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 					ref_match_t rm(last_pos, len, rc);
-					int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
+					r->ref_matches[n_diff_table_hits-1].push_back(rm);
+					/*int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
 					if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
 						r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 					}
 					r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
-					r->ref_match_sizes[n_diff_table_hits-1]++;
+					r->ref_match_sizes[n_diff_table_hits-1]++;*/
 				}
 			}
 			// start a new contig
@@ -198,12 +202,13 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
-			int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
+			r->ref_matches[n_diff_table_hits-1].push_back(rm);
+			/*int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
 			if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
 				r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
 			}
 			r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
-			r->ref_match_sizes[n_diff_table_hits-1]++;
+			r->ref_match_sizes[n_diff_table_hits-1]++;*/
 		}
 	}
 }
