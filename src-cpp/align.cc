@@ -26,8 +26,8 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 struct heap_entry_t {
 	seq_t pos;
 	uint16_t len;
-	uint16_t tid;
-	uint32 next_idx;
+	uint8_t tid;
+	uint16_t next_idx;
 };
 
 void heap_sort(heap_entry_t* heap, int n) {
@@ -165,12 +165,6 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 					ref_match_t rm(last_pos, len, rc);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
-					/*int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
-					if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
-						r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
-					}
-					r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
-					r->ref_match_sizes[n_diff_table_hits-1]++;*/
 				}
 			}
 			// start a new contig
@@ -179,6 +173,15 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			last_pos = e_last_pos;
 			occ.reset();
 			occ.set(e.tid);
+		}
+		if(heap_size > 1) {
+			seq_t next_min_pos_diff_bucket = heap[1].pos;
+			while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size() && e_last_pos  < next_min_pos_diff_bucket) {
+				e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
+				e.next_idx++;
+			}
+		} else {
+			break; // only this bucket is left => remaining entries cannot have more than 1 hit
 		}
 		// push the next match from this bucket
 		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
@@ -203,12 +206,6 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
-			/*int curr_size = r->ref_match_sizes[n_diff_table_hits-1];
-			if(curr_size + 1 >= r->ref_matches[n_diff_table_hits-1].size()) {
-				r->ref_matches[n_diff_table_hits-1].resize(curr_size + 10);
-			}
-			r->ref_matches[n_diff_table_hits-1][curr_size] = rm;
-			r->ref_match_sizes[n_diff_table_hits-1]++;*/
 		}
 	}
 }
@@ -708,6 +705,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			read_t* r = &reads.reads[i];
 			r->best_n_bucket_hits = 0;
+			r->aln.score = 0;
 			r->any_bucket_hits = false;
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
@@ -715,7 +713,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-					if(bucket_index == ref.hash_tables[t].n_buckets) {
+					if(bucket_index == ref.hash_tables[t].n_buckets) {// || ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 						continue; // no reference window fell into this bucket
 					}
 					r->any_bucket_hits = true;
@@ -727,7 +725,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
-					if(bucket_index_rc == ref.hash_tables[t].n_buckets) {
+					if(bucket_index_rc == ref.hash_tables[t].n_buckets) {// || ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 						continue; // no reference window fell into this bucket
 					}
 					r->any_bucket_hits = true;
