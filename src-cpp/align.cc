@@ -760,13 +760,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
 		valid_hash++;
 		if(!reads.reads[i].any_bucket_hits) continue;
+		if(reads.reads[i].aln.score <= 0) continue;
 		mapped++;
 		eval_read_hit(ref, &reads.reads[i], params);
 		acc_hits += reads.reads[i].acc;
 		acc_top += reads.reads[i].top_hit_acc;
 		acc_dp += reads.reads[i].dp_hit_acc;
 		n_max_votes += reads.reads[i].n_max_votes;
-		best_hits += reads.reads[i].best_n_bucket_hits;
+		best_hits += reads.reads[i].best_n_bucket_hits + 1;
 		score += reads.reads[i].aln.score;
 		if(reads.reads[i].n_max_votes == 1) {
 			confident++;
