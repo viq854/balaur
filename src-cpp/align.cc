@@ -511,7 +511,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
 
-	int n_top_buckets = 2;
+	int n_top_buckets = params->n_top_buckets_search;
 	int n_collected_hits = 0;
 	int n_collected_buckets = 0;
 	int idx = 0;
