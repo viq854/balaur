@@ -566,6 +566,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<uint32> hit_bucket_pos(n_collected_hits);
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
 
+	int max_votes = 0;
+	int max_idx = 0;
+
 	int n_proc_buckets = 0;
 	idx = 0;
 	int hit_idx = 0;
@@ -601,6 +604,16 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 						first_match = false;
 					}
 					kmers_votes[hit_idx]++;
+
+					// keep track of max
+					if(kmers_votes[hit_idx] > max_votes) {
+						max_votes = kmers_votes[hit_idx];
+						max_idx = hit_idx;
+					}
+					// if all the remaining votes cannot exceed max
+					if(kmers.size() - idx_q + kmers_votes[hit_idx] <= max_votes) {
+						break;
+					}
 					idx_q++;
 					idx_r++;
 				} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
