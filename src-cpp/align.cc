@@ -54,7 +54,7 @@ inline void heap_set_min(heap_entry_t* heap, int n) {
 	heap[min_idx] = tmp;
 }
 
-void heap_update(heap_entry_t* heap, uint32 n) {
+inline void heap_update(heap_entry_t* heap, uint32 n) {
 	uint32 i = 0;
 	uint32 k = i;
 	heap_entry_t tmp = heap[i];
@@ -146,8 +146,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
-	heap_set_min(heap, heap_size);
-	//heap_sort(heap, heap_size); // build heap
+	heap_sort(heap, heap_size); // build heap
+	//heap_set_min(heap, heap_size);
 	//heap_create(heap, heap_size);
 
 	uint32 init_heap_size = heap_size;
@@ -208,8 +208,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
 			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
 			heap[0].next_idx = e.next_idx+1;
-			heap_set_min(heap, heap_size);
+			heap_update(heap, heap_size);
 			//heap_update_memmove(heap, heap_size);
+			//heap_set_min(heap, heap_size);
 			//sift_down(heap, init_heap_size, 0);
 		} else { // no more entries in this bucket
 			heap[0] = heap[heap_size - 1];
@@ -217,7 +218,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			//heap_update_memmove(heap, heap_size);
 			//sift_down(heap, init_heap_size, 0);
 			heap_size--;
-			heap_set_min(heap, heap_size);
+			//heap_set_min(heap, heap_size);
+			heap_update(heap, heap_size);
 		}
 	}
 
