@@ -629,10 +629,10 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		idx++;
 		n_proc_buckets++;
 	}
-	VectorU32::iterator max_iter = std::max_element(kmers_votes.begin(), kmers_votes.end());
-	int max_count = *max_iter;
-	r->n_max_votes = std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
-	uint32 top_contig_idx = std::distance(kmers_votes.begin(), max_iter);
+	//VectorU32::iterator max_iter = std::max_element(kmers_votes.begin(), kmers_votes.end());
+	//int max_count = *max_iter;
+	r->n_max_votes = max_votes; //std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
+	uint32 top_contig_idx = max_idx;//std::distance(kmers_votes.begin(), max_iter);
 	int bucket_index = hit_bucket_index[top_contig_idx];
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
