@@ -42,7 +42,7 @@ void heap_sort(heap_entry_t* heap, int n) {
 	}
 }
 
-inline void heap_set_min(heap_entry_t* heap, int n) {
+inline void heap_set_min(heap_entry_t* heap, int n, ) {
 	int min_idx = 0;
 	for(int i = 1; i < n; i++) {
 		if(heap[i].pos < heap[min_idx].pos) {
@@ -217,7 +217,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			//heap_update_memmove(heap, heap_size);
 			//sift_down(heap, init_heap_size, 0);
 			heap_size--;
-			heap_set_min(heap, heap_size);x
+			heap_set_min(heap, heap_size);
 		}
 	}
 
