@@ -165,7 +165,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 
 void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".window_mask");
+	fname += std::string(".window_mask.");
 	fname += std::to_string(params->ref_window_size);
 
 	std::ifstream file;
