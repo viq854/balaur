@@ -15,12 +15,12 @@
 
 // checks if the given sequence is informative or not
 // e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
-int is_inform_ref_window(const char* seq, const uint32_t len) {
+int is_inform_ref_window(const char* seq, const uint32_t len, const index_params_t* params) {
 	uint32 base_counts[5] = { 0 };
 	for(uint32 i = 0; i < len; i++) {
 		base_counts[(int) seq[i]]++;
 	}
-	if(base_counts[4] > 10) { // N ambiguous bases
+	if(base_counts[4] > params->ref_window_size/50) { // N ambiguous bases
 		return 0;
 	}
 	uint32 n_empty = 0;
@@ -30,6 +30,17 @@ int is_inform_ref_window(const char* seq, const uint32_t len) {
 		}
 	}
 	if(n_empty > 1) { // repetitions of 2 or 1 base
+		return 0;
+	}
+
+	uint32 n_low = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] < params->ref_window_size/50) {
+			n_low++;
+		}
+	}
+
+	if(n_low > 1) { // almost repetitions of 2 or 1 base
 		return 0;
 	}
 

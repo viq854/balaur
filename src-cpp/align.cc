@@ -787,6 +787,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int score = 0;
 	int q10 = 0;
 	int q30 = 0;
+	int q30acc = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
@@ -806,6 +807,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		if(reads.reads[i].aln.score >= 30) {
 			q30++;
+			if(reads.reads[i].acc) {
+				q30acc++;
+			}
 		}
 		if(reads.reads[i].aln.score >= 10) {
 			q10++;
@@ -817,6 +821,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of confidently mapped reads > 0 %u \n", confident);
 	printf("Number of confidently mapped reads Q10 %u \n", q10);
 	printf("Number of confidently mapped reads Q30 %u \n", q30);
+	printf("Number of confidently mapped ACCURATE reads Q30 %u \n", q30acc);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
 	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
