@@ -42,7 +42,7 @@ void heap_sort(heap_entry_t* heap, int n) {
 	}
 }
 
-inline void heap_set_min(heap_entry_t* heap, int n, ) {
+inline void heap_set_min(heap_entry_t* heap, int n) {
 	int min_idx = 0;
 	for(int i = 1; i < n; i++) {
 		if(heap[i].pos < heap[min_idx].pos) {
