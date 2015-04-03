@@ -138,9 +138,10 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 	printf("Filtered %u kmers \n", filtered);
 }
 
-void store_valid_window_mask(const char* refFname, const ref_t& ref) {
+void store_valid_window_mask(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".window_mask");
+	fname += std::string(".window_mask.");
+	fname += std::to_string(params->ref_window_size);
 
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
@@ -165,6 +166,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref) {
 void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".window_mask");
+	fname += std::to_string(params->ref_window_size);
 
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
