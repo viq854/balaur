@@ -91,7 +91,7 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
 	#pragma omp parallel for
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
-		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size)) {
+		if(!is_inform_ref_window(&ref.seq.c_str()[pos], params->ref_window_size, params)) {
 			ref.ignore_window_bitmask[pos] = 1; // discard windows with low information content
 		}
 	}
