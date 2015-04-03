@@ -26,7 +26,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 struct heap_entry_t {
 	seq_t pos;
 	uint16_t len;
-	uint8_t tid;
+	uint16_t tid;
 	uint16_t next_idx;
 };
 
@@ -40,6 +40,18 @@ void heap_sort(heap_entry_t* heap, int n) {
 		}
 		heap[i+1] = tmp;
 	}
+}
+
+inline void heap_set_min(heap_entry_t* heap, int n) {
+	int min_idx = 0;
+	for(int i = 1; i < n; i++) {
+		if(heap[i].pos < heap[min_idx].pos) {
+			min_idx = i;
+		}
+	}
+	heap_entry_t tmp = heap[0];
+	heap[0] = heap[min_idx];
+	heap[min_idx] = tmp;
 }
 
 void heap_update(heap_entry_t* heap, uint32 n) {
@@ -134,8 +146,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
-	heap_sort(heap, heap_size); // build heap
+	heap_set_min(heap, heap_size);
+	//heap_sort(heap, heap_size); // build heap
 	//heap_create(heap, heap_size);
+
 	uint32 init_heap_size = heap_size;
 
 	int n_diff_table_hits = 0;
@@ -175,7 +189,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			occ.set(e.tid);
 		}
 		if(heap_size > 1) {
-			seq_t next_min_pos_diff_bucket = heap[1].pos;
+			/*seq_t next_min_pos_diff_bucket = heap[1].pos;
 			if(e_last_pos < next_min_pos_diff_bucket) {
 				while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
 					e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
@@ -185,7 +199,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 						break;
 					}
 				}
-			}
+			}*/
 		} else {
 			break; // only this bucket is left => remaining entries cannot have more than 1 hit
 		}
@@ -194,13 +208,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
 			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
 			heap[0].next_idx = e.next_idx+1;
-			heap_update_memmove(heap, heap_size);
+			heap_set_min(heap, heap_size);
+			//heap_update_memmove(heap, heap_size);
 			//sift_down(heap, init_heap_size, 0);
 		} else { // no more entries in this bucket
-			heap[0].pos = UINT_MAX;
-			heap_update_memmove(heap, heap_size);
+			heap[0] = heap[heap_size - 1];
+			//heap[0].pos = UINT_MAX;
+			//heap_update_memmove(heap, heap_size);
 			//sift_down(heap, init_heap_size, 0);
 			heap_size--;
+			heap_set_min(heap, heap_size);x
 		}
 	}
 
@@ -807,7 +824,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		if(reads.reads[i].aln.score >= 30) {
 			q30++;
-			if(reads.reads[i].acc) {
+			if(reads.reads[i].dp_hit_acc) {
 				q30acc++;
 			}
 		}
@@ -862,7 +879,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 //			   }
 //		   } else {
 			   match_pos = match.pos;
-			   if(pos_l >= match_pos - match.len - 1300 && pos_l <= match_pos + 1300) {
+			   if(pos_l >= match_pos - match.len - params->ref_window_size && pos_l <= match_pos + params->ref_window_size) {
 				   r->acc = 1;
 				   break;
 			   }
