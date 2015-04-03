@@ -127,7 +127,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
 	//mark_windows_to_discard(ref, params);
-	//store_valid_window_mask(fastaFname, ref);
+	//store_valid_window_mask(fastaFname, ref, params);
 	load_valid_window_mask(fastaFname, ref, params);
 
 	// initialize the hash tables
