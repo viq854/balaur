@@ -586,16 +586,8 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
 	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
 	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-		///if(is_inform_kmer(&r->seq[i], params->k2, params)) {
 			kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-		//} else {
-		//	kmers_f[i] = std::make_pair(0, i);
-		//}
-		//if(is_inform_kmer(&r->rc[i], params->k2, params)) {
 			kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
-		//} else {
-			//kmers_rc[i] = std::make_pair(0, i);
-		//}
 	}
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
@@ -615,7 +607,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<uint32> kmers_votes(n_collected_hits);
 	std::vector<uint32> hit_bucket_index(n_collected_hits);
 	std::vector<uint32> hit_bucket_pos(n_collected_hits);
-	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
+	std::vector<uint32> aln_ref_pos(n_collected_hits);
 
 	int max_votes = 0;
 	int max_votes_second_best = 0;
@@ -637,11 +629,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-				//if(is_inform_kmer(&r->rc[i], params->k2, params)) {
 					kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
-				//} else {
-				//	kmers_ref[j] = std::make_pair(0, padded_hit_offset+j);
-				//}
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -652,28 +640,52 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			// find how many kmers are in common
 			int idx_q = 0;
 			int idx_r = 0;
-			bool first_match = true;
+			int n_rand_inliers = 10;
+			int rand_inliers_idx = 0;
+			uint32 maybe_inliers[10];
+			uint32 avg_aln_pos = 0;
+			uint32 delta_pos = 30;
+			bool init_pass = true;
 			while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-				if(kmers[idx_q].first == kmers_ref[idx_r].first) {
-					if(idx_r < (kmers_ref.size()-1) && idx_r > 0 && idx_q > 0 && idx_q < (kmers.size()-1) && kmers[idx_q + 1] != kmers[idx_q] && kmers[idx_q-1] != kmers[idx_q] && 
-							 kmers_ref[idx_r + 1].first != kmers_ref[idx_r].first && kmers_ref[idx_r -1].first != kmers_ref[idx_r].first) {
-						if(first_match) {
-							first_kmer_match[hit_idx] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
-							first_match = false;
+				uint32 kmer_hash_ref = kmers_ref[idx_r].first;
+				uint32 kmer_hash_q = kmers[idx_q].first;
+				if(kmer_hash_ref == kmer_hash_q) {
+					// match
+					uint32 match_aln_pos = kmers_ref[idx_r].second - kmers[idx_q].second;
+					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
+					   ((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
+					   ((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
+					   ((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
+						if(init_pass) {
+							if(rand_inliers_idx < n_rand_inliers) {
+								maybe_inliers[rand_inliers_idx] = match_aln_pos;
+								rand_inliers_idx++;
+							} else {
+								// find the average
+								for(int z = 0; z < n_rand_inliers; z++) {
+									avg_aln_pos += maybe_inliers[z];
+								}
+								avg_aln_pos = avg_aln_pos/n_rand_inliers;
+								init_pass = false;
+							}
+						} else {
+							if(match_aln_pos > (avg_aln_pos - delta_pos) && match_aln_pos < (avg_aln_pos + delta_pos)) {
+								// within delta
+								kmers_votes[hit_idx]++;
+								aln_ref_pos[hit_idx] += match_aln_pos;
+							}
 						}
-					
-						kmers_votes[hit_idx]++;
 					}
-					int max_possible_votes = kmers.size() - idx_q + kmers_votes[hit_idx];
-                                        if(max_possible_votes <= max_votes || max_possible_votes < 100) {
-                                        	break;  // if all the remaining votes cannot exceed max
-                                        }
 					idx_q++;
 					idx_r++;
 				} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
 					idx_q++;
 				} else {
 					idx_r++;
+				}
+				int max_possible_votes = kmers.size() - idx_q + kmers_votes[hit_idx];
+				if(max_possible_votes <= max_votes || max_possible_votes < 100) {
+					break;  // if all the remaining votes cannot exceed max
 				}
 			}
 			// keep track of max
@@ -696,7 +708,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int bucket_index = hit_bucket_index[top_contig_idx];
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
-	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
+	r->aln.ref_start = aln_ref_pos[top_contig_idx]/max_votes;
 
 	if((max_votes > max_votes_second_best) && max_votes != 0 && max_votes > 200) {
 		r->aln.score = 255*(max_votes - max_votes_second_best)/max_votes;
