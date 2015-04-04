@@ -568,7 +568,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 	int max_votes = 0;
 	int max_votes_second_best = 0;
-	int max_idx = 0;
+	int top_contig_idx = 0;
 
 	int n_proc_buckets = 0;
 	idx = 0;
@@ -606,17 +606,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					}
 					kmers_votes[hit_idx]++;
 
-					// keep track of max
-					if(kmers_votes[hit_idx] > max_votes) {
-						max_votes_second_best = max_votes;
-						max_votes = kmers_votes[hit_idx];
-						max_idx = hit_idx;
-					} else if(kmers_votes[hit_idx] > max_votes_second_best) {
-						max_votes_second_best = kmers_votes[hit_idx];
-					}
-					// if all the remaining votes cannot exceed max
-					if(kmers.size() - idx_q + kmers_votes[hit_idx] <= max_votes) {
-						break;
+					int max_possible_votes = kmers.size() - idx_q + kmers_votes[hit_idx];
+					if(max_possible_votes <= max_votes || max_possible_votes < 100) {
+						break;  // if all the remaining votes cannot exceed max
 					}
 					idx_q++;
 					idx_r++;
@@ -626,6 +618,14 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					idx_r++;
 				}
 			}
+			// keep track of max
+			if(kmers_votes[hit_idx] > max_votes) {
+				max_votes_second_best = max_votes;
+				max_votes = kmers_votes[hit_idx];
+				top_contig_idx = hit_idx;
+			} else if(kmers_votes[hit_idx] > max_votes_second_best) {
+				max_votes_second_best = kmers_votes[hit_idx];
+			}
 			hit_bucket_index[hit_idx] = r->best_n_bucket_hits - idx;
 			hit_bucket_pos[hit_idx] = i;
 			hit_idx++;
@@ -633,20 +633,15 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		idx++;
 		n_proc_buckets++;
 	}
-	//VectorU32::iterator max_iter = std::max_element(kmers_votes.begin(), kmers_votes.end());
-	int max_count = max_votes; //*max_iter;
-	r->n_max_votes = 1 + (max_votes == max_votes_second_best ? 1 : 0);//std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
-	uint32 top_contig_idx = max_idx;//std::distance(kmers_votes.begin(), max_iter);
+
+	r->n_max_votes = 1 + (max_votes == max_votes_second_best ? 1 : 0);
 	int bucket_index = hit_bucket_index[top_contig_idx];
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 
-	int n_second_best = 0;
-	if(r->n_max_votes == 1 && max_count != 0) {
-		kmers_votes[top_contig_idx] = 0;
-		n_second_best = max_votes_second_best;//*std::max_element(kmers_votes.begin(), kmers_votes.end());
-		r->aln.score = 255*(max_count - n_second_best)/max_count;
+	if(r->n_max_votes == 1 && max_votes != 0) {
+		r->aln.score = 255*(max_votes - max_votes_second_best)/max_votes;
 	} else {
 		r->aln.score = 0;
 	}
