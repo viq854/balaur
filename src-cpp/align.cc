@@ -567,6 +567,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<std::pair<uint32, uint32>> first_kmer_match(n_collected_hits);
 
 	int max_votes = 0;
+	int max_votes_second_best = 0;
 	int max_idx = 0;
 
 	int n_proc_buckets = 0;
@@ -607,8 +608,11 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 					// keep track of max
 					if(kmers_votes[hit_idx] > max_votes) {
+						max_votes_second_best = max_votes;
 						max_votes = kmers_votes[hit_idx];
 						max_idx = hit_idx;
+					} else if(kmers_votes[hit_idx] > max_votes_second_best) {
+						max_votes_second_best = kmers_votes[hit_idx];
 					}
 					// if all the remaining votes cannot exceed max
 					if(kmers.size() - idx_q + kmers_votes[hit_idx] <= max_votes) {
@@ -631,7 +635,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	}
 	//VectorU32::iterator max_iter = std::max_element(kmers_votes.begin(), kmers_votes.end());
 	int max_count = max_votes; //*max_iter;
-	r->n_max_votes = std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
+	r->n_max_votes = 1 + (max_votes == max_votes_second_best ? 1 : 0);//std::count(kmers_votes.begin(), kmers_votes.end(), max_count);
 	uint32 top_contig_idx = max_idx;//std::distance(kmers_votes.begin(), max_iter);
 	int bucket_index = hit_bucket_index[top_contig_idx];
 	int bucket_pos = hit_bucket_pos[top_contig_idx];
@@ -641,7 +645,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	int n_second_best = 0;
 	if(r->n_max_votes == 1 && max_count != 0) {
 		kmers_votes[top_contig_idx] = 0;
-		n_second_best = *std::max_element(kmers_votes.begin(), kmers_votes.end());
+		n_second_best = max_votes_second_best;//*std::max_element(kmers_votes.begin(), kmers_votes.end());
 		r->aln.score = 255*(max_count - n_second_best)/max_count;
 	} else {
 		r->aln.score = 0;
