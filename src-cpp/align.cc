@@ -249,6 +249,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
+
 			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
 				r->bucketed_true_hit = true;
 			}
@@ -762,7 +763,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
+
 			read_t* r = &reads.reads[i];
+
+			r->processed_true_hit = false;
+			r->bucketed_true_hit = false;
+
 			r->best_n_bucket_hits = 0;
 			r->aln.score = 0;
 			r->any_bucket_hits = false;
@@ -887,8 +893,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads %u \n", mapped);
-	printf("Number of mapped reads processed true hit %u \n", processed_true);
-	printf("Number of mapped reads bucketed true hit %u \n", bucketed_true);
+	printf("Number of mapped reads PROC true hit %u \n", processed_true);
+	printf("Number of mapped reads BUCK true hit %u \n", bucketed_true);
 	printf("Number of confidently mapped reads > 0 %u \n", confident);
 	printf("Number of confidently mapped reads Q10 %u \n", q10);
 	printf("Number of confidently mapped reads Q30 %u \n", q30);
