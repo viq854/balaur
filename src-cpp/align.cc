@@ -586,16 +586,16 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
 	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
 	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-		if(is_inform_kmer(&r->seq[i], params->k2, params)) {
+		///if(is_inform_kmer(&r->seq[i], params->k2, params)) {
 			kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-		} else {
-			kmers_f[i] = std::make_pair(0, i);
-		}
-		if(is_inform_kmer(&r->rc[i], params->k2, params)) {
+		//} else {
+		//	kmers_f[i] = std::make_pair(0, i);
+		//}
+		//if(is_inform_kmer(&r->rc[i], params->k2, params)) {
 			kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
-		} else {
-			kmers_rc[i] = std::make_pair(0, i);
-		}
+		//} else {
+			//kmers_rc[i] = std::make_pair(0, i);
+		//}
 	}
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
@@ -637,11 +637,11 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-				if(is_inform_kmer(&r->rc[i], params->k2, params)) {
+				//if(is_inform_kmer(&r->rc[i], params->k2, params)) {
 					kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
-				} else {
-					kmers_ref[j] = std::make_pair(0, padded_hit_offset+j);
-				}
+				//} else {
+				//	kmers_ref[j] = std::make_pair(0, padded_hit_offset+j);
+				//}
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -654,17 +654,20 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			int idx_r = 0;
 			bool first_match = true;
 			while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-				if(kmers[idx_q].first == kmers_ref[idx_r].first && kmers[idx_q].first != 0) {
-					if(first_match) {
-						first_kmer_match[hit_idx] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
-						first_match = false;
+				if(kmers[idx_q].first == kmers_ref[idx_r].first) {
+					if(idx_r < (kmers_ref.size()-1) && idx_r > 0 && idx_q > 0 && idx_q < (kmers.size()-1) && kmers[idx_q + 1] != kmers[idx_q] && kmers[idx_q-1] != kmers[idx_q] && 
+							 kmers_ref[idx_r + 1].first != kmers_ref[idx_r].first && kmers_ref[idx_r -1].first != kmers_ref[idx_r].first) {
+						if(first_match) {
+							first_kmer_match[hit_idx] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
+							first_match = false;
+						}
+					
+						kmers_votes[hit_idx]++;
 					}
-					kmers_votes[hit_idx]++;
-
 					int max_possible_votes = kmers.size() - idx_q + kmers_votes[hit_idx];
-					if(max_possible_votes <= max_votes || max_possible_votes < 100) {
-						break;  // if all the remaining votes cannot exceed max
-					}
+                                        if(max_possible_votes <= max_votes || max_possible_votes < 100) {
+                                        	break;  // if all the remaining votes cannot exceed max
+                                        }
 					idx_q++;
 					idx_r++;
 				} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
@@ -697,6 +700,20 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 	if((max_votes > max_votes_second_best) && max_votes != 0 && max_votes > 200) {
 		r->aln.score = 255*(max_votes - max_votes_second_best)/max_votes;
+
+		if(r->aln.score >= 30) {
+			unsigned int seq_id, pos_l, pos_r;
+                	int strand; 
+                	parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
+                	seq_id = seq_id - 1;
+
+                	if(ref.subsequence_offsets.size() > 1) {
+                                pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+                        }
+			if(r->aln.score >= 30 && !(pos_l >= r->aln.ref_start - 30 && pos_l <= r->aln.ref_start + 30)) {
+				printf("score %u true  %u found %u contig pos %u len %u \n", r->aln.score, pos_l, r->aln.ref_start, top_contig.pos, top_contig.len);	
+			}
+		}
 	} else {
 		r->aln.score = 0;
 	}
@@ -910,6 +927,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			q30++;
 			if(reads.reads[i].dp_hit_acc) {
 				q30acc++;
+			} else {
+
+				//printf("score %u true  %u found %u \n", reads.reads[i].aln.score, reads.reads[i].ref_pos_l, reads.reads[i].aln.ref_start);
 			}
 			if(reads.reads[i].processed_true_hit) {
 				q30processed_true++;
@@ -959,6 +979,7 @@ int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params) {
 	   assert(seq_id < ref.subsequence_offsets.size());
 	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
    }
+   r->ref_pos_l = pos_l;
 
    assert(r->best_n_bucket_hits < params->n_tables);
    for(int i = r->best_n_bucket_hits; i >= 0; i--) {
