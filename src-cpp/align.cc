@@ -560,14 +560,42 @@ struct comp_shared_seeds
     }
 };
 
+int is_inform_kmer(const char* seq, const uint32_t len, const index_params_t* params) {
+	uint32 base_counts[5] = { 0 };
+	for(uint32 i = 0; i < len; i++) {
+		base_counts[(int) seq[i]]++;
+	}
+	if(base_counts[4] > 0) { // N ambiguous bases
+		return 0;
+	}
+	uint32 n_empty = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] == 0) {
+			n_empty++;
+		}
+	}
+	if(n_empty > 1) { // repetitions of 2 or 1 base
+		return 0;
+	}
+
+	return 1;
+}
 
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
 	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
 	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
 	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-		kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-		kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
+		if(is_inform_kmer(&r->seq[i], params->k2, params)) {
+			kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
+		} else {
+			kmers_f[i] = std::make_pair(0, i);
+		}
+		if(is_inform_kmer(&r->rc[i], params->k2, params)) {
+			kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
+		} else {
+			kmers_rc[i] = std::make_pair(0, i);
+		}
 	}
 	std::sort(kmers_f.begin(), kmers_f.end());
 	std::sort(kmers_rc.begin(), kmers_rc.end());
@@ -609,7 +637,11 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 			std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 			for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-				kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				if(is_inform_kmer(&r->rc[i], params->k2, params)) {
+					kmers_ref[j] = std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+				} else {
+					kmers_ref[j] = std::make_pair(0, padded_hit_offset+j);
+				}
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
@@ -622,7 +654,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			int idx_r = 0;
 			bool first_match = true;
 			while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-				if(kmers[idx_q].first == kmers_ref[idx_r].first) {
+				if(kmers[idx_q].first == kmers_ref[idx_r].first && kmers[idx_q].first != 0) {
 					if(first_match) {
 						first_kmer_match[hit_idx] = std::make_pair(kmers_ref[idx_r].second, kmers[idx_q].second);
 						first_match = false;
