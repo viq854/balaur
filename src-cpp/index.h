@@ -252,6 +252,8 @@ struct read_t {
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
 	char dp_hit_acc;
+	bool processed_true_hit;
+	bool bucketed_true_hit;
 
 	// original mapping information from simulations
 	int strand;
