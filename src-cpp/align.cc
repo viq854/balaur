@@ -125,6 +125,14 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 
 // output matches (ordered by the number of projections matched)
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
+	unsigned int seq_id, pos_l, pos_r;
+	int strand;
+	parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
+	seq_id = seq_id - 1;
+	if(ref.subsequence_offsets.size() > 1) {
+	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+	}
+
 	r->ref_matches.resize(params->n_tables);
 	for(int t = 0; t < params->n_tables; t++) {
 		r->ref_matches[t].reserve(20);
@@ -172,6 +180,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			}
 			occ.set(e.tid);
 		} else { // found a boundary, store last contig
+			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
+				r->processed_true_hit = true;
+			}
 			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 				if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 					r->best_n_bucket_hits = n_diff_table_hits;
@@ -179,6 +190,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 					ref_match_t rm(last_pos, len, rc);
 					r->ref_matches[n_diff_table_hits-1].push_back(rm);
+
+					if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
+						r->bucketed_true_hit = true;
+					}
 				}
 			}
 			// start a new contig
@@ -225,12 +240,18 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 
 	// add the last position
 	if(last_pos != (seq_t) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+		if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
+			r->processed_true_hit = true;
+		}
 		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
 			ref_match_t rm(last_pos, len, rc);
 			r->ref_matches[n_diff_table_hits-1].push_back(rm);
+			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
+				r->bucketed_true_hit = true;
+			}
 		}
 	}
 }
@@ -538,6 +559,7 @@ struct comp_shared_seeds
     }
 };
 
+
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
 	// index the read sequence: generate and store all kmers
 	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
@@ -640,7 +662,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	ref_match_t top_contig = r->ref_matches[bucket_index][bucket_pos];
 	r->aln.ref_start = first_kmer_match[top_contig_idx].first - first_kmer_match[top_contig_idx].second;
 
-	if(r->n_max_votes == 1 && max_votes != 0) {
+	if((max_votes > max_votes_second_best) && max_votes != 0 && max_votes > 200) {
 		r->aln.score = 255*(max_votes - max_votes_second_best)/max_votes;
 	} else {
 		r->aln.score = 0;
@@ -819,11 +841,21 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int q10 = 0;
 	int q30 = 0;
 	int q30acc = 0;
+	int processed_true = 0;
+	int bucketed_true = 0;
+	int q30processed_true = 0;
+	int q30bucketed_true = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
 		valid_hash++;
 		if(!reads.reads[i].any_bucket_hits) continue;
+		if(reads.reads[i].processed_true_hit) {
+			processed_true++;
+		}
+		if(reads.reads[i].bucketed_true_hit) {
+			bucketed_true++;
+		}
 		if(reads.reads[i].aln.score <= 0) continue;
 		mapped++;
 		eval_read_hit(ref, &reads.reads[i], params);
@@ -841,6 +873,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(reads.reads[i].dp_hit_acc) {
 				q30acc++;
 			}
+			if(reads.reads[i].processed_true_hit) {
+				q30processed_true++;
+			}
+			if(reads.reads[i].bucketed_true_hit) {
+				q30bucketed_true++;
+			}
 		}
 		if(reads.reads[i].aln.score >= 10) {
 			q10++;
@@ -849,9 +887,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads %u \n", mapped);
+	printf("Number of mapped reads processed true hit %u \n", processed_true);
+	printf("Number of mapped reads bucketed true hit %u \n", bucketed_true);
 	printf("Number of confidently mapped reads > 0 %u \n", confident);
 	printf("Number of confidently mapped reads Q10 %u \n", q10);
 	printf("Number of confidently mapped reads Q30 %u \n", q30);
+	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
+	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
 	printf("Number of confidently mapped ACCURATE reads Q30 %u \n", q30acc);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
 	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
