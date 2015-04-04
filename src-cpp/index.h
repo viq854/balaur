@@ -253,7 +253,8 @@ struct read_t {
 	char top_hit_acc;
 	char dp_hit_acc;
 	bool processed_true_hit;
-	bool bucketed_true_hit;
+	int bucketed_true_hit;
+	int comp_votes_hit;
 
 	// original mapping information from simulations
 	int strand;
