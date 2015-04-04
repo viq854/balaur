@@ -525,6 +525,10 @@ void print_read(read_t* read) {
 		printf("%c", iupacChar[(int) read->seq[i]]);
 	}
 	printf("\n");
+	for(uint32 i = 0; i < read->len; i++) {
+		printf("%c", iupacChar[(int) read->rc[i]]);
+	}
+	printf("\n");
 }
 
 // --- Compression ---
