@@ -22,6 +22,7 @@
 #include "ksw.h"
 
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
+int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params);
 
 struct heap_entry_t {
 	seq_t pos;
@@ -123,22 +124,40 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
+void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
+	// DEBUG
+	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+		r->processed_true_hit = true;
+	}
+
+	if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
+			r->best_n_bucket_hits = n_diff_table_hits;
+		}
+		int contig_chunk_size = (r->len + 1000);
+		int n_contigs = ceil(((double)contig_len/contig_chunk_size));
+		for(int x = 0; x < n_contigs; x++) {
+			seq_t p = contig_pos - (n_contigs-1-x)*contig_chunk_size;
+			int l = contig_chunk_size;
+			if(x == 0) {
+				l = contig_len - (n_contigs-1)*contig_chunk_size;
+			}
+			ref_match_t rm(p, l, rc);
+			compute_ref_contig_votes(rm, ref, r, params);
+			//r->ref_matches[n_diff_table_hits-1].push_back(rm);
+		}
+
+		// DEBUG
+		if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+			r->bucketed_true_hit = n_diff_table_hits;
+		}
+	}
+}
+
 // output matches (ordered by the number of projections matched)
 void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
-	unsigned int seq_id, pos_l, pos_r;
-	int strand;
-	parse_read_mapping(r->name.c_str(), &seq_id, &pos_l, &pos_r, &strand);
-	seq_id = seq_id - 1;
-	if(ref.subsequence_offsets.size() > 1) {
-	   pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
-	}
-	 r->ref_pos_l = pos_l;
-
 	r->ref_matches.resize(params->n_tables);
-	for(int t = 0; t < params->n_tables; t++) {
-		r->ref_matches[t].reserve(20);
-	}
-	//r->ref_match_sizes.resize(params->n_tables);
+
 	// priority heap of matched positions
 	heap_entry_t heap[params->n_tables];
 	int heap_size = 0;
@@ -156,10 +175,6 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
 	heap_sort(heap, heap_size); // build heap
-	//heap_set_min(heap, heap_size);
-	//heap_create(heap, heap_size);
-
-	uint32 init_heap_size = heap_size;
 
 	int n_diff_table_hits = 0;
 	int len = 0;
@@ -180,32 +195,9 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 				last_pos = e_last_pos;
 			}
 			occ.set(e.tid);
-		} else { // found a boundary, store last contig
-			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
-				r->processed_true_hit = true;
-			}
-			if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
-				if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
-					r->best_n_bucket_hits = n_diff_table_hits;
-				}
-				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					int contig_chunk_size = (r->len + 1000);
-					int n_contigs = ceil(((double)len/contig_chunk_size));
-					for(int x = 0; x < n_contigs; x++) {
-						seq_t p = last_pos - (n_contigs-1-x)*contig_chunk_size;
-						int l = contig_chunk_size;
-						if(x == 0) {
-							l = len - (n_contigs-1)*contig_chunk_size;
-						}
-						ref_match_t rm(p, l, rc);
-						r->ref_matches[n_diff_table_hits-1].push_back(rm);
-					}
-
-					if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
-						r->bucketed_true_hit = n_diff_table_hits;
-					}
-				}
-			}
+		} else {
+			// found a boundary, store/handle last contig
+			process_merged_contig(last_pos, len, n_diff_table_hits, ref, r, rc, params);
 			// start a new contig
 			n_diff_table_hits = 1;
 			len = e.len - 1;
@@ -234,44 +226,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
 			heap[0].next_idx = e.next_idx+1;
 			heap_update(heap, heap_size);
-			//heap_update_memmove(heap, heap_size);
-			//heap_set_min(heap, heap_size);
-			//sift_down(heap, init_heap_size, 0);
 		} else { // no more entries in this bucket
 			heap[0] = heap[heap_size - 1];
-			//heap[0].pos = UINT_MAX;
-			//heap_update_memmove(heap, heap_size);
-			//sift_down(heap, init_heap_size, 0);
 			heap_size--;
-			//heap_set_min(heap, heap_size);
 			heap_update(heap, heap_size);
 		}
 	}
 
 	// add the last position
-	if(last_pos != (seq_t) -1 && n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
-		if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
-			r->processed_true_hit = true;
-		}
-		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
-			r->best_n_bucket_hits = n_diff_table_hits;
-		}
-		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			int contig_chunk_size = (r->len + 1000);
-			int n_contigs = ceil(((double)len/contig_chunk_size));
-			for(int x = 0; x < n_contigs; x++) {
-				seq_t p = last_pos - (n_contigs-1-x)*contig_chunk_size;
-				int l = contig_chunk_size;
-				if(x == 0) {
-					l = len - (n_contigs-1)*contig_chunk_size;
-				}
-				ref_match_t rm(p, l, rc);
-				r->ref_matches[n_diff_table_hits-1].push_back(rm);
-			}
-			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
-				r->bucketed_true_hit = n_diff_table_hits;
-			}
-		}
+	if(last_pos != (seq_t) -1) {
+		process_merged_contig(last_pos, len, n_diff_table_hits, ref, r, rc, params);
 	}
 }
 
@@ -626,7 +590,7 @@ int is_inform_kmer(const char* seq, const uint32_t len, const index_params_t* pa
 }
 
 // compute number of votes for this contig and its interior alignment
-int process_ref_contig(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params, uint64* aln_ref_pos) {
+int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
 	const std::vector<std::pair<minhash_t, uint32>>& kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
 
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
@@ -643,6 +607,7 @@ int process_ref_contig(ref_match_t ref_contig, ref_t& ref, read_t* r, const inde
 	}
 	// find how many kmers are in common
 	int kmer_votes = 0;
+	uint64 aln_ref_pos = 0;
 	int n_rand_inliers = 10;
 	int rand_inliers_idx = 0;
 	uint32 maybe_inliers[10];
@@ -681,7 +646,7 @@ int process_ref_contig(ref_match_t ref_contig, ref_t& ref, read_t* r, const inde
 					if(match_aln_pos > (avg_aln_pos - delta_pos) && match_aln_pos < (avg_aln_pos + delta_pos)) {
 						// within delta
 						kmer_votes++;
-						*aln_ref_pos += match_aln_pos;
+						aln_ref_pos += match_aln_pos;
 					}
 				}
 				idx_q++;
@@ -697,6 +662,16 @@ int process_ref_contig(ref_match_t ref_contig, ref_t& ref, read_t* r, const inde
 			}
 		}
 	}
+
+	// keep track of max and its alignment position
+	if(kmer_votes > r->max_votes) {
+		r->max_votes_second_best = r->max_votes;
+		r->max_votes = kmer_votes;
+		r->aln.ref_start = aln_ref_pos;
+	} else if(kmer_votes > r->max_votes_second_best) {
+		r->max_votes_second_best = kmer_votes;
+	}
+
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
 		r->comp_votes_hit = kmer_votes;
 	}
@@ -746,7 +721,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		}
 		for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits - idx].size(); i++) { // REF CANDIDATE CONTIG
 			ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits - idx][i];
-			kmers_votes[hit_idx] = process_ref_contig(ref_contig, ref, r, params, &aln_ref_pos[hit_idx]);
+			kmers_votes[hit_idx] = compute_ref_contig_votes(ref_contig, ref, r, params);
 
 			// keep track of max
 			if(kmers_votes[hit_idx] > r->max_votes) {
@@ -765,9 +740,9 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	}
 
 	r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
-	if(r->max_votes != 0) {
-		r->aln.ref_start = aln_ref_pos[top_contig_idx]/r->max_votes;
-	}
+	//if(r->max_votes != 0) {
+	//	r->aln.ref_start = aln_ref_pos[top_contig_idx]/r->max_votes;
+	//}
 
 	if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
 		r->aln.score = 255*(r->max_votes - r->max_votes_second_best)/r->max_votes;
@@ -898,18 +873,29 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 			read_t* r = &reads.reads[i];
+			unsigned int seq_id, pos_r;
+			int strand;
+			parse_read_mapping(r->name.c_str(), &seq_id, &r->ref_pos_l, &pos_r, &strand);
+			seq_id = seq_id - 1;
+			if(ref.subsequence_offsets.size() > 1) {
+				r->ref_pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+			}
+
+			// index the read sequence: generate and store all kmers
+			r->kmers_f.resize((r->len - params->k2 + 1));
+			r->kmers_rc.resize((r->len - params->k2 + 1));
+			for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
+				r->kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
+				r->kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
+			}
+			std::sort(r->kmers_f.begin(), r->kmers_f.end());
+			std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
+
 			/*r->ref_brackets_f = &ref_brackets_f;
 			r->ref_brackets_rc = &ref_brackets_rc;
 			std::fill(r->ref_brackets_f->begin(), r->ref_brackets_f->end(), 0);
 			std::fill(r->ref_brackets_rc->begin(), r->ref_brackets_rc->end(), 0);*/
 
-			r->processed_true_hit = false;
-			r->bucketed_true_hit = 0;
-			r->comp_votes_hit = 0;
-
-			r->best_n_bucket_hits = 0;
-			r->aln.score = 0;
-			r->any_bucket_hits = false;
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
 			if(r->valid_minhash) { // FORWARD
@@ -945,9 +931,36 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
-				process_read_hits_se_votes_opt(ref, r, params);
+				//process_read_hits_se_votes_opt(ref, r, params);
 			}
 			votes_time += omp_get_wtime() - votes_time_s;
+
+			if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
+				r->aln.score = 255*(r->max_votes - r->max_votes_second_best)/r->max_votes;
+
+				if(r->aln.score >= 30) {
+					if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
+						//printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score,
+						//		max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start,
+						//		top_contig.pos, top_contig.len);
+						//if(r->bucketed_true_hit) {
+						//		print_read(r);
+						//		printf("TRUE \n");
+						//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
+						//			printf("%c", iupacChar[(int)ref.seq[x]]);
+						//		}
+						//		printf("\n");
+						//		printf("FALSE \n");
+						//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
+						//			printf("%c", iupacChar[(int)ref.seq[x]]);
+						//		}
+						//		printf("\n");
+						//}
+					}
+				}
+			} else {
+				r->aln.score = 0;
+			}
 
 			// stats
 			uint32 n_contigs = 0;
