@@ -664,7 +664,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			int rand_inliers_idx = 0;
 			uint32 maybe_inliers[10];
 			uint64 avg_aln_pos = 0;
-			uint32 delta_pos = 30;
+			uint32 delta_pos = 20;
 			bool init_pass = true;
 			for(int p = 0; p < 2; p++) {
 				int idx_q = 0;
@@ -743,27 +743,27 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		r->aln.ref_start = aln_ref_pos[top_contig_idx]/max_votes;
 	}
 
-	if((max_votes > max_votes_second_best) && max_votes != 0 && max_votes > 200) {
+	if((max_votes > max_votes_second_best) && max_votes != 0) {// && max_votes > 50) {
 		r->aln.score = 255*(max_votes - max_votes_second_best)/max_votes;
 
 		if(r->aln.score >= 30) {
 			if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
-				printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score,
-						max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start,
-						top_contig.pos, top_contig.len);
-				if(r->bucketed_true_hit) {
-						print_read(r);
-						printf("TRUE \n");
-						for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
-							printf("%c", iupacChar[(int)ref.seq[x]]);
-						}
-						printf("\n");
-						printf("FALSE \n");
-						for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
-							printf("%c", iupacChar[(int)ref.seq[x]]);
-						}
-						printf("\n");
-				}
+				//printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score,
+				//		max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start,
+				//		top_contig.pos, top_contig.len);
+				//if(r->bucketed_true_hit) {
+				//		print_read(r);
+				//		printf("TRUE \n");
+				//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
+				//			printf("%c", iupacChar[(int)ref.seq[x]]);
+				//		}
+				//		printf("\n");
+				//		printf("FALSE \n");
+				//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
+				//			printf("%c", iupacChar[(int)ref.seq[x]]);
+				//		}
+				//		printf("\n");
+				//}
 			}
 		}
 	} else {
