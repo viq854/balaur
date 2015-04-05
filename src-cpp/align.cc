@@ -275,6 +275,32 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	}
 }
 
+// output matches (ordered by the number of projections matched)
+void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
+	for(int t = 0; t < params->n_tables; t++) { // for each table
+		if(r->ref_bucket_matches_by_table[t] == NULL) {
+			continue;
+		} else {
+			// for each window in the bucket
+			for(int i = 0; i < (*r->ref_bucket_matches_by_table[t]).size(); i++) {
+				seq_t p = (*r->ref_bucket_matches_by_table[t])[i].pos;
+				int len = (*r->ref_bucket_matches_by_table[t])[i].len;
+
+				seq_t start_bracket = p/(params->ref_window_size/2);
+				seq_t end_bracket = (p + len - 1)/(params->ref_window_size/2);
+
+				for(int j = start_bracket; j < end_bracket; j++) {
+					if(rc) {
+						r->ref_brackets_rc[j]++;
+					} else {
+						r->ref_brackets_f[j]++;
+					}
+				}
+			}
+		}
+	}
+}
+
 struct seed_t {
 	seq_t ref_pos;
 	seq_t read_pos;
@@ -600,15 +626,16 @@ int is_inform_kmer(const char* seq, const uint32_t len, const index_params_t* pa
 }
 
 void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t* params) {
+
 	// index the read sequence: generate and store all kmers
-	std::vector<std::pair<minhash_t, uint32>> kmers_f((r->len - params->k2 + 1));
-	std::vector<std::pair<minhash_t, uint32>> kmers_rc((r->len - params->k2 + 1));
+	r->kmers_f.resize((r->len - params->k2 + 1));
+	r->kmers_rc.resize((r->len - params->k2 + 1));
 	for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-			kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-			kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
+		r->kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
+		r->kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
 	}
-	std::sort(kmers_f.begin(), kmers_f.end());
-	std::sort(kmers_rc.begin(), kmers_rc.end());
+	std::sort(r->kmers_f.begin(), r->kmers_f.end());
+	std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
 
 	int n_top_buckets = params->n_top_buckets_search;
 	int n_collected_hits = 0;
@@ -651,10 +678,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
-			std::vector<std::pair<minhash_t, uint32>> kmers = kmers_f;
-			if(ref_contig.rc) {
-				kmers = kmers_rc;
-			}
+			const std::vector<std::pair<minhash_t, uint32>>& kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
 
 			if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
 				//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
@@ -860,12 +884,23 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
+
+		int ref_pos_bracket = params->ref_window_size/2;
+		int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
+
+		std::vector<uint16_t> ref_brackets_f(n_ref_brackets);
+		std::vector<uint16_t> ref_brackets_rc(n_ref_brackets);
+
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
 
 			read_t* r = &reads.reads[i];
+			r->ref_brackets_f = &ref_brackets_f;
+			r->ref_brackets_rc = &ref_brackets_rc;
+			std::fill(r->ref_brackets_f->begin(), r->ref_brackets_f->end(), 0);
+			std::fill(r->ref_brackets_rc->begin(), r->ref_brackets_rc->end(), 0);
 
 			r->processed_true_hit = false;
 			r->bucketed_true_hit = 0;
@@ -886,7 +921,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
-				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
+				//collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
+				mark_contig_brackets(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
@@ -898,7 +934,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
-				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+				//collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+				mark_contig_brackets(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
@@ -907,7 +944,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
 				//process_read_hits_se_opt(ref, r, params);
 				//process_read_hits_global(ref, r, params);
-				process_read_hits_se_votes_opt(ref, r, params);
+				//process_read_hits_se_votes_opt(ref, r, params);
 			}
 			votes_time += omp_get_wtime() - votes_time_s;
 
