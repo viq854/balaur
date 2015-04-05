@@ -287,7 +287,7 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 				int len = (*r->ref_bucket_matches_by_table[t])[i].len;
 
 				seq_t start_bracket = p/(params->ref_window_size/2);
-				seq_t end_bracket = (p + len - 1)/(params->ref_window_size/2);
+				seq_t end_bracket = (p + params->ref_window_size + len - 1)/(params->ref_window_size/2);
 
 				for(int j = start_bracket; j < end_bracket; j++) {
 					if(rc) {
@@ -885,11 +885,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
 
-		int ref_pos_bracket = params->ref_window_size/2;
-		int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
-
-		std::vector<uint16_t> ref_brackets_f(n_ref_brackets);
-		std::vector<uint16_t> ref_brackets_rc(n_ref_brackets);
+		//int ref_pos_bracket = params->ref_window_size/2;
+		//int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
+		//std::vector<uint16_t> ref_brackets_f(n_ref_brackets);
+		//std::vector<uint16_t> ref_brackets_rc(n_ref_brackets);
 
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
@@ -897,10 +896,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 			read_t* r = &reads.reads[i];
-			r->ref_brackets_f = &ref_brackets_f;
+			/*r->ref_brackets_f = &ref_brackets_f;
 			r->ref_brackets_rc = &ref_brackets_rc;
 			std::fill(r->ref_brackets_f->begin(), r->ref_brackets_f->end(), 0);
-			std::fill(r->ref_brackets_rc->begin(), r->ref_brackets_rc->end(), 0);
+			std::fill(r->ref_brackets_rc->begin(), r->ref_brackets_rc->end(), 0);*/
 
 			r->processed_true_hit = false;
 			r->bucketed_true_hit = 0;
@@ -921,8 +920,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
-				//collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
-				mark_contig_brackets(ref, r, false, params);
+				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
+				//mark_contig_brackets(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
@@ -934,8 +933,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
-				//collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
-				mark_contig_brackets(ref, r, true, params);
+				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+				//mark_contig_brackets(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
