@@ -183,21 +183,22 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
 		seq_t e_last_pos = e.pos + e.len - 1;
-		if(last_pos == (seq_t) -1 || (e.pos <= last_pos)) { // first contig or extending contig
-			if(!occ.test(e.tid)) {
-				n_diff_table_hits++;
-			}
-			if(last_pos == (seq_t) -1) {
+		if(last_pos == (seq_t) -1 || (e.pos <= last_pos)) {
+			if(last_pos == (seq_t) -1) { // first contig
 				len = e.len - 1;
 				last_pos = e_last_pos;
-			} else if(last_pos < e_last_pos) {
+			} else if(last_pos < e_last_pos) { // extending contig
 				len += e_last_pos - last_pos;
 				last_pos = e_last_pos;
+			}
+			if(!occ.test(e.tid)) {
+				n_diff_table_hits++;
 			}
 			occ.set(e.tid);
 		} else {
 			// found a boundary, store/handle last contig
 			process_merged_contig(last_pos, len, n_diff_table_hits, ref, r, rc, params);
+
 			// start a new contig
 			n_diff_table_hits = 1;
 			len = e.len - 1;
@@ -963,7 +964,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 			// stats
-			uint32 n_contigs = 0;
+			/*uint32 n_contigs = 0;
 			uint32 top_contigs = 0;
 			uint32 contig_length = 0;
 			for(uint32 t = 0; t < params->n_tables; t++) {
@@ -981,7 +982,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			total_windows_matched += n_contigs;
 			total_top_contigs += top_contigs;
-			total_contigs_length += contig_length;
+			total_contigs_length += contig_length;*/
 		}
 	}
 	double end_time = omp_get_wtime();
@@ -1006,43 +1007,47 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int q30bucketed_true = 0;
 	//#pragma omp parallel for reduction(+:valid_hash, acc_hits, acc_top)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		if(!reads.reads[i].valid_minhash && !reads.reads[i].valid_minhash_rc) continue;
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 		valid_hash++;
-		if(!reads.reads[i].any_bucket_hits) continue;
-		if(reads.reads[i].processed_true_hit) {
+		if(!r->any_bucket_hits) continue;
+		if(r->processed_true_hit) {
 			processed_true++;
 		}
-		if(reads.reads[i].bucketed_true_hit) {
+		if(r->bucketed_true_hit) {
 			bucketed_true++;
 		}
-		if(reads.reads[i].aln.score <= 0) continue;
+		if(r->aln.score <= 0) continue;
 		mapped++;
-		eval_read_hit(ref, &reads.reads[i], params);
-		acc_hits += reads.reads[i].acc;
-		acc_top += reads.reads[i].top_hit_acc;
-		acc_dp += reads.reads[i].dp_hit_acc;
-		n_max_votes += reads.reads[i].n_max_votes;
-		best_hits += reads.reads[i].best_n_bucket_hits + 1;
-		score += reads.reads[i].aln.score;
-		if(reads.reads[i].n_max_votes == 1) {
+		eval_read_hit(ref, r, params);
+		acc_hits += r->acc;
+		acc_top += r->top_hit_acc;
+
+		if(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30) {
+			r->dp_hit_acc = 1;
+		}
+		acc_dp += r->dp_hit_acc;
+		n_max_votes += r->n_max_votes;
+		best_hits += r->best_n_bucket_hits + 1;
+		score += r->aln.score;
+		if(r->n_max_votes == 1) {
 			confident++;
 		}
-		if(reads.reads[i].aln.score >= 30) {
+		if(r->aln.score >= 30) {
 			q30++;
-			if(reads.reads[i].dp_hit_acc) {
+			if(r->dp_hit_acc) {
 				q30acc++;
 			} else {
-
 				//printf("score %u true  %u found %u \n", reads.reads[i].aln.score, reads.reads[i].ref_pos_l, reads.reads[i].aln.ref_start);
 			}
-			if(reads.reads[i].processed_true_hit) {
+			if(r->processed_true_hit) {
 				q30processed_true++;
 			}
-			if(reads.reads[i].bucketed_true_hit) {
+			if(r->bucketed_true_hit) {
 				q30bucketed_true++;
 			}
 		}
-		if(reads.reads[i].aln.score >= 10) {
+		if(r->aln.score >= 10) {
 			q10++;
 		}
 	}
