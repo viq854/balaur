@@ -204,7 +204,7 @@ typedef struct {
 
 	VectorBucketTables hash_tables;		// LSH min-hash index, T
 
-	std::vector<std::pair<minhash_t, uint32>> precomputed_kmer2_hashes;
+	std::vector<minhash_t> precomputed_kmer2_hashes;
 } ref_t;
 
 // **** Read Set Index ****

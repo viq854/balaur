@@ -599,7 +599,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 	std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 	for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-			kmers_ref[j] = ref.precomputed_kmer2_hashes[padded_hit_offset + j];//std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
+			kmers_ref[j] = std::make_pair(ref.precomputed_kmer2_hashes[padded_hit_offset + j], padded_hit_offset+j);//std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
 	}
 	std::sort(kmers_ref.begin(), kmers_ref.end());
 

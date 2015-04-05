@@ -198,7 +198,7 @@ void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* 
 		seq_t chunk_start = ((ref.len - params->k2 + 1) / n_threads)*tid;
 		seq_t chunk_end = ((ref.len - params->k2 + 1) / n_threads)*(tid + 1);
 		for (seq_t pos = chunk_start; pos != chunk_end; pos++) {
-			ref.precomputed_kmer2_hashes[pos] = std::make_pair(CityHash32(&ref.seq[pos], params->k2), pos);
+			ref.precomputed_kmer2_hashes[pos] = CityHash32(&ref.seq[pos], params->k2);
 		}
 	}
 	printf("Total precomputation time : %.2f sec\n", omp_get_wtime() - start_time_k2);
@@ -215,8 +215,7 @@ void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* 
 		exit(1);
 	}
 	for (int i = 0; i < ref.len - params->k2 + 1; i++) {
-		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i].first), sizeof(ref.precomputed_kmer2_hashes[i].first));
-		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i].second), sizeof(ref.precomputed_kmer2_hashes[i].second));
+		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i]), sizeof(ref.precomputed_kmer2_hashes[i]));
 	}
 	file.close();
 }
@@ -235,8 +234,7 @@ void load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	}
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos].first), sizeof(ref.precomputed_kmer2_hashes[pos].first));
-		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos].second), sizeof(ref.precomputed_kmer2_hashes[pos].second));
+		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos]), sizeof(ref.precomputed_kmer2_hashes[pos]));
 	}
 	file.close();
 }
