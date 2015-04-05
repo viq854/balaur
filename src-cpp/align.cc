@@ -634,10 +634,14 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 			}
 			std::sort(kmers_ref.begin(), kmers_ref.end());
 
-			std::vector<std::pair<minhash_t, uint32>>& kmers = kmers_f;
+			std::vector<std::pair<minhash_t, uint32>> kmers = kmers_f;
 			if(ref_contig.rc) {
 				kmers = kmers_rc;
 			}
+
+			 if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
+                               printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
+                         }
 			// find how many kmers are in common
 			int idx_q = 0;
 			int idx_r = 0;
@@ -653,15 +657,16 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 				if(kmer_hash_ref == kmer_hash_q) {
 					// match
 					uint32 match_aln_pos = kmers_ref[idx_r].second - kmers[idx_q].second;
-					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
-					   ((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
-					   ((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
-					   ((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
-						if(init_pass) {
-							if(rand_inliers_idx < n_rand_inliers) {
+					if(init_pass) {
+						if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
+					   	((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
+					   	((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
+					   	((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
+							if(rand_inliers_idx < n_rand_inliers-1) {
 								maybe_inliers[rand_inliers_idx] = match_aln_pos;
 								rand_inliers_idx++;
 							} else {
+								maybe_inliers[rand_inliers_idx] = match_aln_pos;
 								// find the average
 								for(int z = 0; z < n_rand_inliers; z++) {
 									avg_aln_pos += maybe_inliers[z];
@@ -669,12 +674,12 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 								avg_aln_pos = avg_aln_pos/n_rand_inliers;
 								init_pass = false;
 							}
-						} else {
-							if(match_aln_pos > (avg_aln_pos - delta_pos) && match_aln_pos < (avg_aln_pos + delta_pos)) {
-								// within delta
-								kmers_votes[hit_idx]++;
-								aln_ref_pos[hit_idx] += match_aln_pos;
-							}
+						}
+					} else {
+						if(match_aln_pos > (avg_aln_pos - delta_pos) && match_aln_pos < (avg_aln_pos + delta_pos)) {
+							// within delta
+							kmers_votes[hit_idx]++;
+							aln_ref_pos[hit_idx] += match_aln_pos;
 						}
 					}
 					idx_q++;
@@ -685,7 +690,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 					idx_r++;
 				}
 				int max_possible_votes = kmers.size() - idx_q + kmers_votes[hit_idx];
-				if(max_possible_votes <= max_votes || max_possible_votes < 100) {
+				if(max_possible_votes < max_votes_second_best) {// || max_possible_votes < 50) {
 					break;  // if all the remaining votes cannot exceed max
 				}
 			}
@@ -723,7 +728,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 
 		if(r->aln.score >= 30) {
 			if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
-				printf("score %u max %u second %u true votes %u true  %u found %u contig pos %u len %u \n", r->aln.score, max_votes, max_votes_second_best, r->comp_votes_hit, r->ref_pos_l, r->aln.ref_start, top_contig.pos, top_contig.len);
+				printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score, max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start, top_contig.pos, top_contig.len);
 				if(r->bucketed_true_hit) {
 						print_read(r);
 						printf("TRUE \n");
