@@ -189,7 +189,7 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	printf("Pre-computing k2 kmer hashes... \n");
 	double start_time_k2 = omp_get_wtime();
-	ref.precomputed_kmer2_hashes(ref.len - params->k2 + 1);
+	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel for
 	{
