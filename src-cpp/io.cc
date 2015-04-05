@@ -86,7 +86,7 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	fname += std::string(".kmer_hist");
 
 	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 
 	if (!file.is_open()) {
 		printf("store_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
@@ -144,7 +144,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 	fname += std::to_string(params->ref_window_size);
 
 	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 
 	if (!file.is_open()) {
 		printf("store_valid_window_mask: Cannot open the mask file %s!\n", fname.c_str());
@@ -208,7 +208,7 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 	fname += std::to_string(params->k2);
 
 	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 
 	if (!file.is_open()) {
 		printf("store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
