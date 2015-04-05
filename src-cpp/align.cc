@@ -189,8 +189,17 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 					r->best_n_bucket_hits = n_diff_table_hits;
 				}
 				if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-					ref_match_t rm(last_pos, len, rc);
-					r->ref_matches[n_diff_table_hits-1].push_back(rm);
+					int contig_chunk_size = (r->len + 1000);
+					int n_contigs = ceil(((double)len/contig_chunk_size));
+					for(int x = 0; x < n_contigs; x++) {
+						seq_t p = last_pos - (n_contigs-1-x)*contig_chunk_size;
+						int l = contig_chunk_size;
+						if(x == 0) {
+							l = len - (n_contigs-1)*contig_chunk_size;
+						}
+						ref_match_t rm(p, l, rc);
+						r->ref_matches[n_diff_table_hits-1].push_back(rm);
+					}
 
 					if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
 						r->bucketed_true_hit = n_diff_table_hits;
@@ -248,9 +257,17 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			r->best_n_bucket_hits = n_diff_table_hits;
 		}
 		if(r->ref_matches[n_diff_table_hits-1].size() < params->max_best_hits) {
-			ref_match_t rm(last_pos, len, rc);
-			r->ref_matches[n_diff_table_hits-1].push_back(rm);
-
+			int contig_chunk_size = (r->len + 1000);
+			int n_contigs = ceil(((double)len/contig_chunk_size));
+			for(int x = 0; x < n_contigs; x++) {
+				seq_t p = last_pos - (n_contigs-1-x)*contig_chunk_size;
+				int l = contig_chunk_size;
+				if(x == 0) {
+					l = len - (n_contigs-1)*contig_chunk_size;
+				}
+				ref_match_t rm(p, l, rc);
+				r->ref_matches[n_diff_table_hits-1].push_back(rm);
+			}
 			if(pos_l >= last_pos - len - params->ref_window_size && pos_l <= last_pos + params->ref_window_size) {
 				r->bucketed_true_hit = n_diff_table_hits;
 			}
