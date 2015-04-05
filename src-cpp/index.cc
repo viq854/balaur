@@ -124,11 +124,13 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
 	mark_freq_kmers(ref, params);
-	printf("Total kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
-	//mark_windows_to_discard(ref, params);
-	//store_valid_window_mask(fastaFname, ref, params);
-	load_valid_window_mask(fastaFname, ref, params);
+	printf("Loading valid windows mask... \n");
+	if(!load_valid_window_mask(fastaFname, ref, params)) {
+		mark_windows_to_discard(ref, params);
+		store_valid_window_mask(fastaFname, ref, params);
+	}
+	printf("Total window/kmer pre-processing time: %.2f sec\n", omp_get_wtime() - start_time);
 
 	// initialize the hash tables
 	ref.hash_tables.resize(params->n_tables);
