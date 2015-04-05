@@ -186,7 +186,7 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	file.close();
 }
 
-void store_kmer2_hashes(const char* refFname, const ref_t& ref, const index_params_t* params) {
+void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	printf("Pre-computing k2 kmer hashes... \n");
 	double start_time_k2 = omp_get_wtime();
 	ref.precomputed_kmer2_hashes(ref.len - params->k2 + 1);
