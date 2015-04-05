@@ -255,9 +255,9 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 
 				for(int j = start_bracket; j < end_bracket; j++) {
 					if(rc) {
-						(*r->ref_brackets_rc)[j]++;
+						//(*r->ref_brackets_rc)[j]++;
 					} else {
-						(*r->ref_brackets_f)[j]++;
+						//(*r->ref_brackets_f)[j]++;
 					}
 				}
 			}
