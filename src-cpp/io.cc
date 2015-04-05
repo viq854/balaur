@@ -163,7 +163,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 	file.close();
 }
 
-void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
+bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".window_mask.");
 	fname += std::to_string(params->ref_window_size);
@@ -172,8 +172,8 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 
 	if (!file.is_open()) {
-		printf("load_valid_window_mask: Cannot open the mask file %s!\n", fname.c_str());
-		exit(1);
+		printf("load_valid_window_mask: Could not open the mask file %s!\n", fname.c_str());
+		return false;
 	}
 	char b;
 	ref.ignore_window_bitmask.resize(ref.len - params->ref_window_size + 1);
@@ -184,6 +184,7 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 		}
 	}
 	file.close();
+	return true;
 }
 
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
