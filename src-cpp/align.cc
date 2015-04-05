@@ -668,7 +668,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	if(kmer_votes > r->max_votes) {
 		r->max_votes_second_best = r->max_votes;
 		r->max_votes = kmer_votes;
-		r->aln.ref_start = aln_ref_pos;
+		r->aln.ref_start = aln_ref_pos/r->max_votes;
 	} else if(kmer_votes > r->max_votes_second_best) {
 		r->max_votes_second_best = kmer_votes;
 	}
@@ -936,6 +936,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			votes_time += omp_get_wtime() - votes_time_s;
 
+			r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
 			if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
 				r->aln.score = 255*(r->max_votes - r->max_votes_second_best)/r->max_votes;
 
@@ -1001,6 +1002,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int q10 = 0;
 	int q30 = 0;
 	int q30acc = 0;
+	int q10acc = 0;
 	int processed_true = 0;
 	int bucketed_true = 0;
 	int q30processed_true = 0;
@@ -1019,8 +1021,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		if(r->aln.score <= 0) continue;
 		mapped++;
-		eval_read_hit(ref, r, params);
-		acc_hits += r->acc;
+		//eval_read_hit(ref, r, params);
 		acc_top += r->top_hit_acc;
 
 		if(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30) {
@@ -1032,6 +1033,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		score += r->aln.score;
 		if(r->n_max_votes == 1) {
 			confident++;
+			if(r->dp_hit_acc) {
+				acc_hits++;
+			}
 		}
 		if(r->aln.score >= 30) {
 			q30++;
@@ -1049,28 +1053,30 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		if(r->aln.score >= 10) {
 			q10++;
+			if(r->dp_hit_acc) {
+				q10acc++;
+			}
 		}
 	}
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
-	printf("Number of mapped reads %u \n", mapped);
+	printf("Number of mapped reads score %u \n", mapped);
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
 	printf("Number of mapped reads BUCK true hit %u \n", bucketed_true);
-	printf("Number of confidently mapped reads > 0 %u \n", confident);
-	printf("Number of confidently mapped reads Q10 %u \n", q10);
-	printf("Number of confidently mapped reads Q30 %u \n", q30);
+	printf("Number of confidently mapped reads > 0 %u / accurate %u \n", confident, acc_hits);
+	printf("Number of confidently mapped reads Q10 %u / accurate %u \n", q10, q10acc);
+	printf("Number of confidently mapped reads Q30 %u / accurate %u \n", q30, q30acc);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
-	printf("Number of confidently mapped ACCURATE reads Q30 %u \n", q30acc);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
 	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
 	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/mapped);
 	printf("Avg score per read %.8f \n", (float) score/mapped);
-	printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
-	printf("Total number of accurate hits matching top = %d \n", acc_top);
-	printf("Total number of accurate hits found = %d \n", acc_hits);
-	printf("Total DP number of accurate hits found = %d \n", acc_dp);
+	//printf("Avg contig length per read %.8f \n", (float) total_contigs_length/total_windows_matched);
+	//printf("Total number of accurate hits matching top = %d \n", acc_top);
+	//printf("Total number of accurate hits found = %d \n", acc_hits);
+	//printf("Total DP number of accurate hits found = %d \n", acc_dp);
 	printf("Total kmer count time: %f sec\n", votes_time);
 	printf("Total search time: %f sec\n", end_time - start_time);
 
