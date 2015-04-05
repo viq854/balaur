@@ -203,6 +203,8 @@ typedef struct {
 	VectorBool ignore_window_bitmask_RC;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index, T
+
+	std::vector<std::pair<minhash_t, uint32>> precomputed_kmer2_hashes;
 } ref_t;
 
 // **** Read Set Index ****

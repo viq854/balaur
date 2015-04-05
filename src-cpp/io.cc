@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <fstream>
-
+#include <omp.h>
 #include "io.h"
 #include "types.h"
 
@@ -182,6 +182,61 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 		if(b == '1') {
 			ref.ignore_window_bitmask[pos] = 1;
 		}
+	}
+	file.close();
+}
+
+void store_kmer2_hashes(const char* refFname, const ref_t& ref, const index_params_t* params) {
+	printf("Pre-computing k2 kmer hashes... \n");
+	double start_time_k2 = omp_get_wtime();
+	ref.precomputed_kmer2_hashes(ref.len - params->k2 + 1);
+	omp_set_num_threads(params->n_threads); // split the windows across the threads
+	#pragma omp parallel for
+	{
+		int tid = omp_get_thread_num();
+		int n_threads = omp_get_num_threads();
+		seq_t chunk_start = ((ref.len - params->k2 + 1) / n_threads)*tid;
+		seq_t chunk_end = ((ref.len - params->k2 + 1) / n_threads)*(tid + 1);
+		for (seq_t pos = chunk_start; pos != chunk_end; pos++) {
+			ref.precomputed_kmer2_hashes[pos] = std::make_pair(CityHash32(&ref.seq[pos], params->k2), pos);
+		}
+	}
+	printf("Total precomputation time : %.2f sec\n", omp_get_wtime() - start_time_k2);
+
+	std::string fname(refFname);
+	fname += std::string(".k2hash.");
+	fname += std::to_string(params->k2);
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::app | std::ios::binary);
+
+	if (!file.is_open()) {
+		printf("store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for (int i = 0; i < ref.len - params->k2 + 1; i++) {
+		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i].first), sizeof(ref.precomputed_kmer2_hashes[i].first));
+		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i].second), sizeof(ref.precomputed_kmer2_hashes[i].second));
+	}
+	file.close();
+}
+
+void load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".k2hash.");
+	fname += std::to_string(params->k2);
+
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+
+	if (!file.is_open()) {
+		printf("load_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
+		exit(1);
+	}
+	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
+	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
+		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos].first), sizeof(ref.precomputed_kmer2_hashes[pos].first));
+		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos].second), sizeof(ref.precomputed_kmer2_hashes[pos].second));
 	}
 	file.close();
 }

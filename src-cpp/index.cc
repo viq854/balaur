@@ -35,7 +35,7 @@ int is_inform_ref_window(const char* seq, const uint32_t len, const index_params
 
 	uint32 n_low = 0;
 	for(uint32 i = 0; i < 4; i++) {
-		if(base_counts[i] < params->ref_window_size/50) {
+		if(base_counts[i] < params->ref_window_size/100) {
 			n_low++;
 		}
 	}
@@ -366,6 +366,8 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	double end_time = omp_get_wtime();
 	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 
+	store_kmer2_hashes(fastaFname, ref, params);
+	load_kmer2_hashes(fastaFname, ref, params);
 }
 
 
