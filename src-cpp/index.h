@@ -238,11 +238,18 @@ struct read_t {
 	char valid_minhash;
 	char valid_minhash_rc;
 
+	// kmer hashes
+	std::vector<std::pair<minhash_t, uint32>> kmers_f;
+	std::vector<std::pair<minhash_t, uint32>> kmers_rc;
+
 	// Mappings
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 	std::vector<int> ref_match_sizes;
+
+	std::vector<uint16_t>* ref_brackets_f;
+	std::vector<uint16_t>* ref_brackets_rc;
 
 	int best_n_bucket_hits;
 	bool any_bucket_hits;
