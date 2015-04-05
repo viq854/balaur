@@ -366,7 +366,7 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	double end_time = omp_get_wtime();
 	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 
-	store_kmer2_hashes(fastaFname, ref, params);
+	//store_kmer2_hashes(fastaFname, ref, params);
 	load_kmer2_hashes(fastaFname, ref, params);
 }
 

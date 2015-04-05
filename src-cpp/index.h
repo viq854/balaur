@@ -257,6 +257,8 @@ struct read_t {
 	bool any_bucket_hits;
 	int n_max_votes;
 	aln_t aln;
+	int max_votes;
+	int max_votes_second_best;
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
