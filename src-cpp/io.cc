@@ -186,10 +186,10 @@ void load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	file.close();
 }
 
-void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
-	printf("Pre-computing k2 kmer hashes... \n");
-	double start_time_k2 = omp_get_wtime();
+void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
+	printf("Precomputing k2 kmer hashes... \n");
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
+	double start_time_k2 = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the windows across the threads
 	#pragma omp parallel
 	{
@@ -218,9 +218,10 @@ void store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* 
 		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i]), sizeof(ref.precomputed_kmer2_hashes[i]));
 	}
 	file.close();
+	printf("Stored k2 kmer hashes\n");
 }
 
-void load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
+bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".k2hash.");
 	fname += std::to_string(params->k2);
@@ -229,20 +230,29 @@ void load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 
 	if (!file.is_open()) {
-		printf("load_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
-		exit(1);
+		printf("load_kmer2_hashes: Could not open the file %s!\n", fname.c_str());
+		return false;
 	}
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos]), sizeof(ref.precomputed_kmer2_hashes[pos]));
 	}
 	file.close();
+	return true;
 }
 
 // store the reference index
 void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".idx");
+	fname += std::string(".idx.");
+	fname += std::string("h");
+	fname += std::to_string(params->h);
+	fname += std::string("T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("w");
+	fname += std::to_string(params->ref_window_size);
 
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
@@ -284,7 +294,15 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 // load the reference index buckets
 void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".idx");
+	fname += std::string(".idx.");
+	fname += std::string("h");
+	fname += std::to_string(params->h);
+	fname += std::string("T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("w");
+	fname += std::to_string(params->ref_window_size);
 
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
