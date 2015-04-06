@@ -873,7 +873,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads); // split the reads across the threads
-	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length, votes_time) //reduction(max:max_windows_matched)
+	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) //reduction(max:max_windows_matched)
 	{
 		int tid = omp_get_thread_num();
 		int n_threads = omp_get_num_threads();
