@@ -264,6 +264,11 @@ struct read_t {
 	aln_t aln;
 	int max_votes;
 	int max_votes_second_best;
+// SDM
+	int max_possible_votes; //number of votes maximally possible
+	int max_votes_noransac; //ignoring ransac, how many matches would there have been
+	int max_votes_noransac_second_best; //ignoring ransac, how many matches would the second have had
+	
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
