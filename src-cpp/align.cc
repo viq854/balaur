@@ -144,7 +144,6 @@ void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hi
 			}
 			ref_match_t rm(p, l, rc);
 			compute_ref_contig_votes(rm, ref, r, params);
-			//r->ref_matches[n_diff_table_hits-1].push_back(rm);
 		}
 
 		// DEBUG
@@ -206,8 +205,8 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 			occ.reset();
 			occ.set(e.tid);
 		}
-		if(heap_size > 1) {
-			/*seq_t next_min_pos_diff_bucket = heap[1].pos;
+		/*if(heap_size > 1) {
+			seq_t next_min_pos_diff_bucket = heap[1].pos;
 			if(e_last_pos < next_min_pos_diff_bucket) {
 				while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
 					e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
@@ -217,10 +216,10 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 						break;
 					}
 				}
-			}*/
+			}
 		} else {
 			break; // only this bucket is left => remaining entries cannot have more than 1 hit
-		}
+		}*/
 		// push the next match from this bucket
 		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
 			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
@@ -885,13 +884,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
 		// allocate per thread storage
-		int ref_pos_bracket = params->ref_window_size/2;
+		/*int ref_pos_bracket = params->ref_window_size/2;
 		int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
 		std::vector<int16_t> ref_brackets_f(n_ref_brackets); // stores bucket support or -1 if proccessed already
 		std::vector<int16_t> ref_brackets_rc(n_ref_brackets);
 		std::vector<int> ref_brackets_dirty_f(n_ref_brackets); // stores last used rid
 		std::vector<int> ref_brackets_dirty_rc(n_ref_brackets);
-
+		*/
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
@@ -899,10 +898,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 			read_t* r = &reads.reads[i];
 			r->rid = i;
-			r->ref_brackets_f = &ref_brackets_f;
-			r->ref_brackets_rc = &ref_brackets_rc;
-			r->ref_brackets_dirty_f = &ref_brackets_dirty_f;
-			r->ref_brackets_dirty_rc = &ref_brackets_dirty_rc;
+			//r->ref_brackets_f = &ref_brackets_f;
+			//r->ref_brackets_rc = &ref_brackets_rc;
+			//r->ref_brackets_dirty_f = &ref_brackets_dirty_f;
+			//r->ref_brackets_dirty_rc = &ref_brackets_dirty_rc;
 
 			//DEBUG--------
 			unsigned int seq_id, pos_r;
@@ -936,8 +935,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
-				//collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
-				mark_contig_brackets(ref, r, false, params);
+				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
+				//mark_contig_brackets(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
@@ -949,8 +948,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
-				//collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
-				mark_contig_brackets(ref, r, true, params);
+				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+				//mark_contig_brackets(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
