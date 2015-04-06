@@ -265,23 +265,23 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 				seq_t end_bracket = (p + params->ref_window_size + len - 1)/bracket_size;
 
 				for(int j = start_bracket; j < end_bracket; j++) {
-					if(ref_brackets_dirty_mask[j] != r->rid) {
-						ref_brackets_dirty_mask[j] = r->rid;
-						ref_brackets[j] = 0; // clear
+					if((*ref_brackets_dirty_mask)[j] != r->rid) {
+						(*ref_brackets_dirty_mask)[j] = r->rid;
+						(*ref_brackets)[j] = 0; // clear
 					}
-					if(ref_brackets[j] == -1) {
+					if((*ref_brackets)[j] == -1) {
 						continue; // this contig already was processed
 					}
-					ref_brackets[j]++;
+					(*ref_brackets)[j]++;
 
-					int n_diff_table_hits = ref_brackets[j];
+					int n_diff_table_hits = (*ref_brackets)[j];
 					if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 						if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 							r->best_n_bucket_hits = n_diff_table_hits;
 						}
 						ref_match_t rm(j*bracket_size + bracket_size, bracket_size, rc);
 						compute_ref_contig_votes(rm, ref, r, params);
-						ref_brackets[j] = -1; // mark as checked
+						(*ref_brackets)[j] = -1; // mark as checked
 					}
 				}
 			}
