@@ -250,8 +250,11 @@ struct read_t {
 	std::vector<VectorRefMatches> ref_matches;
 	std::vector<int> ref_match_sizes;
 
-	//std::vector<uint16_t>* ref_brackets_f;
-	//std::vector<uint16_t>* ref_brackets_rc;
+	std::vector<int16_t>* ref_brackets_f;
+	std::vector<int16_t>* ref_brackets_rc;
+	std::vector<int>* ref_brackets_dirty_f;
+	std::vector<int>* ref_brackets_dirty_rc;
+	uint32 rid;
 
 	int best_n_bucket_hits;
 	bool any_bucket_hits;
@@ -291,6 +294,11 @@ struct read_t {
 		dp_hit_acc = 0;
 		top_hit_acc = 0;
 		len = 0;
+		rid = 0;
+		ref_brackets_f = 0;
+		ref_brackets_rc = 0;
+		ref_brackets_dirty_f = 0;
+		ref_brackets_dirty_rc = 0;
 	}
 };
 typedef std::vector<read_t> VectorReads;
