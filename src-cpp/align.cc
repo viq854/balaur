@@ -934,8 +934,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						// DEBUG
 						if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
-								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][i].pos;
-								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][i].len;
+								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
+								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
 								if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
 									r->collected_true_hit = true;
 								}
@@ -957,8 +957,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						// DEBUG
 						if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
 							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
-								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][i].pos;
-								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][i].len;
+								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
+								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].len;
 								if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
 									r->collected_true_hit = true;
 								}
