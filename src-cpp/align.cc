@@ -242,6 +242,16 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 
 // output matches (ordered by the number of projections matched)
 void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
+	int bracket_size = params->ref_window_size/2;
+	std::vector<int16_t>* ref_brackets;
+	std::vector<int>* ref_brackets_dirty_mask;
+	if(rc) {
+		ref_brackets = r->ref_brackets_rc;
+		ref_brackets_dirty_mask = r->ref_brackets_dirty_rc;
+	} else {
+		ref_brackets = r->ref_brackets_f;
+		ref_brackets_dirty_mask = r->ref_brackets_dirty_f;
+	}
 	for(int t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
 			continue;
@@ -251,14 +261,27 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 				seq_t p = (*r->ref_bucket_matches_by_table[t])[i].pos;
 				int len = (*r->ref_bucket_matches_by_table[t])[i].len;
 
-				seq_t start_bracket = p/(params->ref_window_size/2);
-				seq_t end_bracket = (p + params->ref_window_size + len - 1)/(params->ref_window_size/2);
+				seq_t start_bracket = p/bracket_size;
+				seq_t end_bracket = (p + params->ref_window_size + len - 1)/bracket_size;
 
 				for(int j = start_bracket; j < end_bracket; j++) {
-					if(rc) {
-						//(*r->ref_brackets_rc)[j]++;
-					} else {
-						//(*r->ref_brackets_f)[j]++;
+					if(ref_brackets_dirty_mask[j] != r->rid) {
+						ref_brackets_dirty_mask[j] = r->rid;
+						ref_brackets[j] = 0; // clear
+					}
+					if(ref_brackets[j] == -1) {
+						continue; // this contig already was processed
+					}
+					ref_brackets[j]++;
+
+					int n_diff_table_hits = ref_brackets[j];
+					if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+						if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
+							r->best_n_bucket_hits = n_diff_table_hits;
+						}
+						ref_match_t rm(j*bracket_size + bracket_size, bracket_size, rc);
+						compute_ref_contig_votes(rm, ref, r, params);
+						ref_brackets[j] = -1; // mark as checked
 					}
 				}
 			}
@@ -849,7 +872,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	uint32 total_contigs_length = 0;
 	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
-	double votes_time = 0;
 	omp_set_num_threads(params->n_threads); // split the reads across the threads
 	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length, votes_time) //reduction(max:max_windows_matched)
 	{
@@ -862,11 +884,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
-
-		//int ref_pos_bracket = params->ref_window_size/2;
-		//int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
-		//std::vector<uint16_t> ref_brackets_f(n_ref_brackets);
-		//std::vector<uint16_t> ref_brackets_rc(n_ref_brackets);
+		// allocate per thread storage
+		int ref_pos_bracket = params->ref_window_size/2;
+		int n_ref_brackets = ceil((double)ref.len / ref_pos_bracket);
+		std::vector<int16_t> ref_brackets_f(n_ref_brackets); // stores bucket support or -1 if proccessed already
+		std::vector<int16_t> ref_brackets_rc(n_ref_brackets);
+		std::vector<int> ref_brackets_dirty_f(n_ref_brackets); // stores last used rid
+		std::vector<int> ref_brackets_dirty_rc(n_ref_brackets);
 
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
@@ -874,15 +898,22 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 			read_t* r = &reads.reads[i];
+			r->rid = i;
+			r->ref_brackets_f = &ref_brackets_f;
+			r->ref_brackets_rc = &ref_brackets_rc;
+			r->ref_brackets_dirty_f = &ref_brackets_dirty_f;
+			r->ref_brackets_dirty_rc = &ref_brackets_dirty_rc;
+
+			//DEBUG--------
 			unsigned int seq_id, pos_r;
 			int strand;
 			parse_read_mapping(r->name.c_str(), &seq_id, &r->ref_pos_l, &pos_r, &strand);
 			seq_id = seq_id - 1;
 			if(ref.subsequence_offsets.size() > 1) {
 				r->ref_pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
-			}
+			}//------------
 
-			// index the read sequence: generate and store all kmers
+			// 1. index the read sequence: generate and store all k2 kmers
 			r->kmers_f.resize((r->len - params->k2 + 1));
 			r->kmers_rc.resize((r->len - params->k2 + 1));
 			for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
@@ -892,11 +923,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			std::sort(r->kmers_f.begin(), r->kmers_f.end());
 			std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
 
-			/*r->ref_brackets_f = &ref_brackets_f;
-			r->ref_brackets_rc = &ref_brackets_rc;
-			std::fill(r->ref_brackets_f->begin(), r->ref_brackets_f->end(), 0);
-			std::fill(r->ref_brackets_rc->begin(), r->ref_brackets_rc->end(), 0);*/
-
+			// 2. index the read sequence using MinHash and collect the buckets
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
 			if(r->valid_minhash) { // FORWARD
@@ -909,8 +936,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
-				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
-				//mark_contig_brackets(ref, r, false, params);
+				//collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
+				mark_contig_brackets(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
@@ -922,19 +949,15 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
-				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
-				//mark_contig_brackets(ref, r, true, params);
+				//collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
+				mark_contig_brackets(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			double votes_time_s = omp_get_wtime();
 			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
-				//process_read_hits_se_opt(ref, r, params);
-				//process_read_hits_global(ref, r, params);
 				//process_read_hits_se_votes_opt(ref, r, params);
 			}
-			votes_time += omp_get_wtime() - votes_time_s;
 
 			r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
 			if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
@@ -963,27 +986,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			} else {
 				r->aln.score = 0;
 			}
-
-			// stats
-			/*uint32 n_contigs = 0;
-			uint32 top_contigs = 0;
-			uint32 contig_length = 0;
-			for(uint32 t = 0; t < params->n_tables; t++) {
-				n_contigs += r->ref_matches[t].size();
-				if(r->any_bucket_hits && t == r->best_n_bucket_hits) {
-					top_contigs += r->ref_matches[t].size();
-				}
-				for(uint32 j = 0; j < r->ref_matches[t].size(); j++) {
-				   ref_match_t match = r->ref_matches[t][j];
-				   contig_length += match.len;
-			   }
-			}
-			if(n_contigs > max_windows_matched) {
-				max_windows_matched = n_contigs;
-			}
-			total_windows_matched += n_contigs;
-			total_top_contigs += top_contigs;
-			total_contigs_length += contig_length;*/
 		}
 	}
 	double end_time = omp_get_wtime();
@@ -1077,7 +1079,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	//printf("Total number of accurate hits matching top = %d \n", acc_top);
 	//printf("Total number of accurate hits found = %d \n", acc_hits);
 	//printf("Total DP number of accurate hits found = %d \n", acc_dp);
-	printf("Total kmer count time: %f sec\n", votes_time);
 	printf("Total search time: %f sec\n", end_time - start_time);
 
 }
