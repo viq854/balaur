@@ -930,15 +930,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-					if(bucket_index == ref.hash_tables[t].n_buckets || ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+					if(bucket_index == ref.hash_tables[t].n_buckets) continue;
+					if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 						// DEBUG
-						if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
-							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
-								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
-								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
-								if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
-									r->collected_true_hit = true;
-								}
+						for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
+							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
+							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
+							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
+								r->collected_true_hit = true;
 							}
 						}
 						continue; // no reference window fell into this bucket
@@ -953,18 +952,16 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
 					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
-					if(bucket_index_rc == ref.hash_tables[t].n_buckets || ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+					if(bucket_index_rc == ref.hash_tables[t].n_buckets) continue;
+					if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
 						// DEBUG
-						if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
-							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
-								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
-								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].len;
-								if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
-									r->collected_true_hit = true;
-								}
+						for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
+							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
+							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].len;
+							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
+								r->collected_true_hit = true;
 							}
 						}
-
 						continue; // no reference window fell into this bucket
 					}
 					r->any_bucket_hits = true;
