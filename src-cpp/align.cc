@@ -21,6 +21,14 @@
 
 #include "ksw.h"
 
+static const int N_RAND_INLIERS = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 10);
+static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 20);
+static const bool MEDIAN = (getenv("MEDIAN") ? atoi(getenv("MEDIAN")) : false);
+static const bool VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : false);
+static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
+static const bool WEIGHT_SCORE = (WEIGHT_INT == 1);
+static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
+static const bool WEIGHT_SCORES_MAX = (WEIGHT_INT == 3);
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params);
 
@@ -124,6 +132,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
+// SDM rc == reversed
 void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	// DEBUG
 	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
@@ -622,8 +631,10 @@ int is_inform_kmer(const char* seq, const uint32_t len, const index_params_t* pa
 int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
 	const std::vector<std::pair<minhash_t, uint32>>& kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
 
+  //SDM pos == last position
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+//SDM r == "read"
 	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 	std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
 	for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
@@ -637,12 +648,17 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	// find how many kmers are in common
 	int kmer_votes = 0;
 	uint64 aln_ref_pos = 0;
-	int n_rand_inliers = 10;
+	const int n_rand_inliers = N_RAND_INLIERS;
 	int rand_inliers_idx = 0;
-	uint32 maybe_inliers[10];
+	uint32 maybe_inliers[n_rand_inliers];
 	uint64 avg_aln_pos = 0;
-	uint32 delta_pos = 20;
+	const uint32 delta_pos = DELTA_POS;
 	bool init_pass = true;
+	bool median = MEDIAN;
+	int votes_noransac = 0;
+	int max_possible_votes_total = kmers.size();
+  // SDM p == ransac iterations?
+  // SDM _r == ref, _q == query --> ref = contig, query = read
 	for(int p = 0; p < 2; p++) {
 		int idx_q = 0;
 		int idx_r = 0;
@@ -650,9 +666,12 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			uint32 kmer_hash_ref = kmers_ref[idx_r].first;
 			uint32 kmer_hash_q = kmers[idx_q].first;
 			if(kmer_hash_ref == kmer_hash_q) {
+				// regardless, increment number of votes
+				votes_noransac++;
 				// match
 				uint32 match_aln_pos = kmers_ref[idx_r].second - kmers[idx_q].second;
 				if(init_pass) {
+          // SDM if unique
 					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
 							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
 							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
@@ -663,10 +682,20 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 						} else {
 							maybe_inliers[rand_inliers_idx] = match_aln_pos;
 							// find the average
-							for(int z = 0; z < n_rand_inliers; z++) {
-								avg_aln_pos += maybe_inliers[z];
+							if (median)
+							{
+						        	std::sort(&maybe_inliers[0],maybe_inliers+n_rand_inliers);
+								avg_aln_pos = maybe_inliers[(n_rand_inliers-1)/2];	
+
 							}
-							avg_aln_pos = avg_aln_pos/n_rand_inliers;
+							else
+							{
+								for(int z = 0; z < n_rand_inliers; z++) {
+									avg_aln_pos += maybe_inliers[z];
+								}
+								avg_aln_pos = avg_aln_pos/n_rand_inliers;
+							}
+
 							init_pass = false;
 							break;
 						}
@@ -695,10 +724,17 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	// keep track of max and its alignment position
 	if(kmer_votes > r->max_votes) {
 		r->max_votes_second_best = r->max_votes;
+		r->max_votes_noransac_second_best = r->max_votes_noransac;
 		r->max_votes = kmer_votes;
 		r->aln.ref_start = aln_ref_pos/r->max_votes;
+		//SDM
+		r->max_votes_noransac = votes_noransac;
+		r->max_possible_votes = max_possible_votes_total;
+
 	} else if(kmer_votes > r->max_votes_second_best) {
 		r->max_votes_second_best = kmer_votes;
+		//SDM
+		r->max_votes_noransac_second_best = votes_noransac;
 	}
 
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
@@ -773,14 +809,18 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 	//	r->aln.ref_start = aln_ref_pos[top_contig_idx]/r->max_votes;
 	//}
 
+// SDM THIS SHOULDNT RUN
 	if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
 		r->aln.score = 255*(r->max_votes - r->max_votes_second_best)/r->max_votes;
+		printf("max_votes: %d, second_best: %d, score: %d\n", (int)r->max_votes, (int)r->max_votes_second_best, (int)r->aln.score);
 
 		if(r->aln.score >= 30) {
 			if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
-				//printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score,
-				//		max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start,
-				//		top_contig.pos, top_contig.len);
+				if (VERBOSE)
+				{
+					printf("score %u max %u second %u true votes %u bucket %u max buckt %u true position  %u vs found %u \n", r->aln.score,
+							r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start);
+							}
 				//if(r->bucketed_true_hit) {
 				//		print_read(r);
 				//		printf("TRUE \n");
@@ -984,26 +1024,51 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 			r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
 			if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
-				r->aln.score = 255*(r->max_votes - r->max_votes_second_best)/r->max_votes;
+				//Want: 50% difference = fully confident, linear from 0 to 50
+				if (WEIGHT_SCORE)
+				{
+					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/(float)r->max_votes * r->max_votes_noransac/(float)r->max_possible_votes;
+				}
+				else if (WEIGHT_SCORES_SEPARATELY)
+				{
+					r->aln.score = 250*(r->max_votes*((float)r->max_votes/(float)r->max_votes_noransac) - r->max_votes_second_best*((float)r->max_votes_second_best/(float)r->max_votes_noransac_second_best))/(float)(r->max_votes*(float)r->max_votes/(float)r->max_votes_noransac);
+				}
+				else if (WEIGHT_SCORES_MAX)
+				{
+					r->aln.score = 30;
+				}
+				else{
+					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes;
+				}
+				//SDM:
+				//r->aln.score = 30*(std::max(0.,std::min(1.,(1.-(r->max_votes_second_best/(float)r->max_votes))/0.5)));
+				if (VERBOSE)
+				{
+					printf("max_votes: %d, second_best: %d, noransac: %d, possible: %d, score: %d\n", (int)r->max_votes, (int)r->max_votes_second_best, 
+						(int)r->max_votes_noransac, (int)r->max_possible_votes, (int)r->aln.score);
+				}
 
 				if(r->aln.score >= 30) {
 					if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
-						//printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u contig pos %u len %u \n", r->aln.score,
-						//		max_votes, max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start,
-						//		top_contig.pos, top_contig.len);
-						//if(r->bucketed_true_hit) {
-						//		print_read(r);
-						//		printf("TRUE \n");
-						//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
-						//			printf("%c", iupacChar[(int)ref.seq[x]]);
-						//		}
-						//		printf("\n");
-						//		printf("FALSE \n");
-						//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
-						//			printf("%c", iupacChar[(int)ref.seq[x]]);
-						//		}
-						//		printf("\n");
-						//}
+						if (VERBOSE)
+						{
+							printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->aln.score,
+									r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start);
+									//,top_contig.pos, top_contig.len);
+							//if(r->bucketed_true_hit) {
+							//		print_read(r);
+							//		printf("TRUE \n");
+							//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
+							//			printf("%c", iupacChar[(int)ref.seq[x]]);
+							//		}
+							//		printf("\n");
+							//		printf("FALSE \n");
+							//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
+							//			printf("%c", iupacChar[(int)ref.seq[x]]);
+							//		}
+							//		printf("\n");
+							//}
+						}
 					}
 				}
 			} else {
@@ -1048,7 +1113,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(r->bucketed_true_hit) {
 			bucketed_true++;
 		}
-		if(r->aln.score <= 0) continue;
+		if(r->aln.score <= 0){
+			continue;
+		}
 		mapped++;
 		//eval_read_hit(ref, r, params);
 		acc_top += r->top_hit_acc;
@@ -1093,9 +1160,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of mapped reads COLLECTED true hit %u \n", n_collected);
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
 	printf("Number of mapped reads BUCK true hit %u \n", bucketed_true);
-	printf("Number of confidently mapped reads > 0 %u / accurate %u \n", confident, acc_hits);
-	printf("Number of confidently mapped reads Q10 %u / accurate %u \n", q10, q10acc);
-	printf("Number of confidently mapped reads Q30 %u / accurate %u \n", q30, q30acc);
+	printf("Number of confidently mapped reads > 0 %u / accurate %u (%f pct)\n", confident, acc_hits, (float)acc_hits/(float)confident);
+	printf("Number of confidently mapped reads Q10 %u / accurate %u (%f pct)\n", q10, q10acc, (float)q10acc/(float)q10);
+	printf("Number of confidently mapped reads Q30 %u / accurate %u (%f pct)\n", q30, q30acc, (float)q30acc/(float)q30);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
 	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
