@@ -127,6 +127,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	// DEBUG
 	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+		r->collected_true_hit = true;
 		r->processed_true_hit = true;
 	}
 
@@ -930,6 +931,16 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 					if(bucket_index == ref.hash_tables[t].n_buckets || ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+						// DEBUG
+						if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
+								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][i].pos;
+								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][i].len;
+								if(r->ref_pos_l >= r - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
+									r->collected_true_hit = true;
+								}
+							}
+						}
 						continue; // no reference window fell into this bucket
 					}
 					r->any_bucket_hits = true;
@@ -943,6 +954,17 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets || ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+						// DEBUG
+						if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+							for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
+								seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][i].pos;
+								uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][i].len;
+								if(r->ref_pos_l >= r - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
+									r->collected_true_hit = true;
+								}
+							}
+						}
+
 						continue; // no reference window fell into this bucket
 					}
 					r->any_bucket_hits = true;

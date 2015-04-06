@@ -266,6 +266,7 @@ struct read_t {
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
 	char dp_hit_acc;
+	bool collected_true_hit;
 	bool processed_true_hit;
 	int bucketed_true_hit;
 	int comp_votes_hit;
