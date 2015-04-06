@@ -25,7 +25,9 @@ static const int N_RAND_INLIERS = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAN
 static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 20);
 static const bool MEDIAN = (getenv("MEDIAN") ? atoi(getenv("MEDIAN")) : false);
 static const bool VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : false);
-
+static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
+static const bool WEIGHT_SCORE = (WEIGHT_INT == 1);
+static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
 int eval_read_hit(ref_t& ref, read_t* r, const index_params_t* params);
 int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params);
 
@@ -1022,7 +1024,17 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
 			if((r->max_votes > r->max_votes_second_best) && r->max_votes != 0) {// && max_votes > 50) {
 				//Want: 50% difference = fully confident, linear from 0 to 50
-				r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes * r->max_votes_noransac/r->max_possible_votes;
+				if (WEIGHT_SCORE)
+				{
+					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes * r->max_votes_noransac/r->max_possible_votes;
+				}
+				else if (WEIGHT_SCORES_SEPARATELY)
+				{
+					r->aln.score = 250*(r->max_votes*(r->max_votes/r->max_votes_noransac) - r->max_votes_second_best*(r->max_votes_second_best/r->max_votes_noransac_second_best))/(r->max_votes/r->max_votes_noransac);
+				}
+				else{
+					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes;
+				}
 				//SDM:
 				//r->aln.score = 30*(std::max(0.,std::min(1.,(1.-(r->max_votes_second_best/(float)r->max_votes))/0.5)));
 				if (VERBOSE)
