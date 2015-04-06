@@ -1015,6 +1015,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int mapped = 0;
+	int n_collected = 0;
 	int confident = 0;
 	int acc_hits = 0;
 	int acc_top = 0;
@@ -1035,6 +1036,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 		valid_hash++;
+		if(r->collected_true_hit) {
+			n_collected++;
+		}
 		if(!r->any_bucket_hits) continue;
 		if(r->processed_true_hit) {
 			processed_true++;
@@ -1084,6 +1088,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads score %u \n", mapped);
+	printf("Number of mapped reads COLLECTED true hit %u \n", n_collected);
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
 	printf("Number of mapped reads BUCK true hit %u \n", bucketed_true);
 	printf("Number of confidently mapped reads > 0 %u / accurate %u \n", confident, acc_hits);
