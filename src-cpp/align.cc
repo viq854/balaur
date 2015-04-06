@@ -26,7 +26,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 struct heap_entry_t {
 	seq_t pos;
-	uint16_t len;
+	uint32_t len;
 	uint16_t tid;
 	uint16_t next_idx;
 };
@@ -131,27 +131,32 @@ void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hi
 		r->processed_true_hit = true;
 	}
 
-	if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
-		if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
-			r->best_n_bucket_hits = n_diff_table_hits;
-		}
-		int contig_chunk_size = (r->len + 1000);
-		int n_contigs = ceil(((double)contig_len/contig_chunk_size));
-		for(int x = 0; x < n_contigs; x++) {
-			seq_t p = contig_pos - (n_contigs-1-x)*contig_chunk_size;
-			int l = contig_chunk_size;
-			if(x == 0) {
-				l = contig_len - (n_contigs-1)*contig_chunk_size;
-			}
-			ref_match_t rm(p, l, rc);
-			compute_ref_contig_votes(rm, ref, r, params);
-		}
+	// filters
+	if(contig_len > params->max_matched_contig_len) return;
+	if(n_diff_table_hits < (int) params->min_n_hits) return;
+	if(n_diff_table_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) return;
 
-		// DEBUG
-		if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
-			r->bucketed_true_hit = n_diff_table_hits;
-		}
+	// passed filters
+	if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
+		r->best_n_bucket_hits = n_diff_table_hits;
 	}
+	int contig_chunk_size = (r->len + 1000);
+	int n_contigs = ceil(((double)contig_len/contig_chunk_size));
+	for(int x = 0; x < n_contigs; x++) {
+		seq_t p = contig_pos - (n_contigs-1-x)*contig_chunk_size;
+		int l = contig_chunk_size;
+		if(x == 0) {
+			l = contig_len - (n_contigs-1)*contig_chunk_size;
+		}
+		ref_match_t rm(p, l, rc);
+		compute_ref_contig_votes(rm, ref, r, params);
+	}
+
+	// DEBUG
+	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+		r->bucketed_true_hit = n_diff_table_hits;
+	}
+
 }
 
 // output matches (ordered by the number of projections matched)
