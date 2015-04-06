@@ -268,9 +268,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					if((epos->pos + epos->len) == pos) {
 						epos->len++;
 						store_pos = false;
-					} else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) {
+					} /*else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) {
 						epos->len += pos - (epos->pos + epos->len - 1);
-					}
+						store_pos = false;
+					}*/
 				}
 				if(store_pos) {
 					loc_t new_loc;
