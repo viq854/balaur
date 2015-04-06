@@ -23,7 +23,7 @@ typedef struct {
 	uint32 k; 						// length of the sequence kmers
 	uint32 k2; 						// length of the sequence kmers for vote counting
 	uint32 kmer_dist;				// shift between consecutive kmers
-	CyclicHash* kmer_hasher;			// function used to generate kmer hashes for the sequence set
+	CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 h; 						// number of hash functions for min-hash sketches
 	VectorHashFunctions minhash_functions;	// hash functions for min-hash
 
@@ -54,6 +54,7 @@ typedef struct {
 	// alignment evaluation
 	uint32 min_n_hits;
 	uint32 dist_best_hit; // how many fewer than best table hits to still keep
+	uint32 max_matched_contig_len;
 	uint32 n_top_buckets_search;
 	uint32 max_best_hits;
 	uint32 max_suboptimal_hits;
@@ -96,10 +97,11 @@ typedef struct {
 
 		min_n_hits = 2;
 		dist_best_hit = 2;
+		max_matched_contig_len = 10000;
 		n_top_buckets_search = 1;
+
 		max_best_hits = 100;
 		max_suboptimal_hits = 500;
-
 		hit_collection_interval = 200000000;
 
 		bandw = 100;
