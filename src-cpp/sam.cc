@@ -31,7 +31,7 @@ void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
 		if (r->aln.rc) flag |= SAM_FSR;
 
 		// QNAME, FLAG, RNAME
-		fprintf(samFile, "%s\t%d\tREF_NAME\t", r->name, flag);
+		fprintf(samFile, "%s\t%d\tREF_NAME\t", r->name.c_str(), flag);
 		// POS (1-based), MAPQ
 		fprintf(samFile, "%d\t%d\t", (int)(r->aln.read_start+1), r->aln.score);
 
@@ -54,7 +54,7 @@ void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
 	} else { // unmapped read
 		int flag = SAM_FSU;
 		// QNAME, FLAG
-		fprintf(samFile, "%s\t%d\t*\t0\t0\t*\t*\t0\t0\t", r->name, flag);
+		fprintf(samFile, "%s\t%d\t*\t0\t0\t*\t*\t0\t0\t", r->name.c_str(), flag);
 
 		// SEQ, QUAL (print sequence and quality)
 		for (int i = 0; i != r->len; i++) {
@@ -62,7 +62,7 @@ void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
 		}
 		fprintf(samFile, "\t");
 		for (int i = 0; i != r->len; i++) {
-			fprintf(samFile, "%c", "*");
+			fprintf(samFile, "%c", '*');
 		}
 		fprintf(samFile, "\n");
 	}
