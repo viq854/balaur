@@ -8,7 +8,7 @@ void store_alns_sam(reads_t& reads, const ref_t& ref, const index_params_t* para
 
 	FILE* samFile = (FILE*) fopen(samFname.c_str(), "w");
 	if (samFile == NULL) {
-		printf("alns2sam: Cannot open SAM file: %s!\n", samFname);
+		printf("alns2sam: Cannot open SAM file: %s!\n", samFname.c_str());
 		exit(1);
 	}
 
