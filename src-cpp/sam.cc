@@ -48,7 +48,7 @@ void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
 		}
 		fprintf(samFile, "\t");
 		for (int i = 0; i != r->len; i++) {
-			fprintf(samFile, "%c", "*");
+			fprintf(samFile, "%c", '*');
 		}
 		fprintf(samFile, "\n");
 	} else { // unmapped read
