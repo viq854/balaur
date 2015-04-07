@@ -1,6 +1,6 @@
 #include "sam.h"
 
-void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref);
+void print_aln2sam(FILE* samFile, const read_t* r, const ref_t& ref);
 
 void store_alns_sam(const reads_t& reads, const ref_t& ref, const index_params_t* params) {
 	std::string samFname(reads.fname);
@@ -13,7 +13,7 @@ void store_alns_sam(const reads_t& reads, const ref_t& ref, const index_params_t
 	}
 
 	for (uint32 i = 0; i < reads.reads.size(); i++) {
-		read_t* r = &reads.reads[i];
+		const read_t* r = &reads.reads[i];
 		print_aln2sam(samFile, r, ref);
 	}
 	fclose(samFile);
@@ -21,7 +21,7 @@ void store_alns_sam(const reads_t& reads, const ref_t& ref, const index_params_t
 
 #define SAM_FSU   4 // self-unmapped
 #define SAM_FSR  16 // self on the reverse strand
-void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
+void print_aln2sam(FILE* samFile, const ref_t& ref, const read_t* r) {
 	int flag = 0; // FLAG
 	if(r->aln.ref_start != 0) {
 		if(ref.subsequence_offsets.size() > 1) {
