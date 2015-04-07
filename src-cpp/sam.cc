@@ -42,7 +42,7 @@ void print_aln2sam(FILE* samFile, const ref_t& ref, read_t* r) {
 		fprintf(samFile, "\t*\t0\t0\t");
 
 		// SEQ, QUAL (print sequence and quality)
-		char* seq = r->aln.rc ? r->rc : r->seq;
+		char* seq = r->aln.rc ? r->rc.c_str() : r->seq.c_str();
 		for (int i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", "AGCTN"[(int)seq[i]]);
 		}
