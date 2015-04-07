@@ -3,8 +3,6 @@
 
 #include "index.h"
 
-int openOutFile(char * filename);
-int writeAlignment(read_t& r);
-void closeOutFile();
+void store_alns_sam(char* samFname, const reads_t& reads, const ref_t& ref, const index_params_t* params);
 
 #endif

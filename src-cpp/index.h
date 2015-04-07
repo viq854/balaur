@@ -222,6 +222,7 @@ typedef std::vector<ref_match_t> VectorRefMatches;
 
 struct aln_t {
 	seq_t ref_start, ref_end; 	// [rb,re): reference sequence in the alignment
+	bool rc;
 	int read_start, read_end;   // [qb,qe): query sequence in the alignment
 	int score;
 	int truesc;     // actual score corresponding to the aligned region; possibly smaller than $score
@@ -264,7 +265,7 @@ struct read_t {
 	aln_t aln;
 	int max_votes;
 	int max_votes_second_best;
-// SDM
+
 	int max_possible_votes; //number of votes maximally possible
 	int max_votes_noransac; //ignoring ransac, how many matches would there have been
 	int max_votes_noransac_second_best; //ignoring ransac, how many matches would the second have had
@@ -280,6 +281,7 @@ struct read_t {
 
 	// original mapping information from simulations
 	int strand;
+	unsigned int seq_id;
 	uint32_t ref_pos_l;
 	uint32_t ref_pos_r;
 
@@ -290,13 +292,16 @@ struct read_t {
 		any_bucket_hits = false;
 		n_max_votes = 0;
 		aln.score = 0;
+		aln.ref_start = 0;
 		max_votes = 0;
 		max_votes_second_best = 0;
 		acc = 0;
+		collected_true_hit = 0;
 		processed_true_hit = false;
 		bucketed_true_hit = 0;
 		comp_votes_hit = 0;
 		strand = 0;
+		seq_id = 0;
 		ref_pos_l = 0;
 		ref_pos_r = 0;
 		dp_hit_acc = 0;
@@ -307,6 +312,10 @@ struct read_t {
 		ref_brackets_rc = 0;
 		ref_brackets_dirty_f = 0;
 		ref_brackets_dirty_rc = 0;
+
+		max_possible_votes = 0;
+		max_votes_noransac = 0;
+		max_votes_noransac_second_best = 0;
 	}
 };
 typedef std::vector<read_t> VectorReads;
@@ -315,6 +324,7 @@ typedef std::vector<read_t*> VectorPReads;
 
 // collection of reads
 typedef struct {
+	const char* fname;
 	VectorReads reads;				// read data
 	MapKmerCounts kmer_hist;		// kmer histogram
 	MapKmerCounts low_freq_kmer_hist;

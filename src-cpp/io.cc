@@ -477,6 +477,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		exit(1);
 	}
 
+	reads.fname = readsFname;
 	char c;
 	while(!feof(readsFile)) {
 		read_t r;
