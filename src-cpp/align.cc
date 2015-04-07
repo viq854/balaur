@@ -1135,8 +1135,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of confidently mapped reads Q30 %u / accurate %u (%f pct)\n", q30, q30acc, (float)q30acc/(float)q30);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
-	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
-	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
 	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/mapped);
 	printf("Avg score per read %.8f \n", (float) score/mapped);
