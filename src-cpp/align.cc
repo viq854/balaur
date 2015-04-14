@@ -86,7 +86,7 @@ void swap(heap_entry_t*x, heap_entry_t*y) {
 	heap_entry_t temp = *x;  *x = *y;  *y = temp;
 }
 
-void sift_down(heap_entry_t* heap, uint32 n, int i) {
+void sift_down(heap_entry_t* heap, int n, int i) {
 	int l = 2*i + 1;
 	int r = 2*i + 2;
 	int min = i;
@@ -136,7 +136,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-void process_merged_contig(seq_t contig_pos, int contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
+void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	// DEBUG
 	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
 		r->collected_true_hit = true;
@@ -179,7 +179,7 @@ void collect_read_hits_contigs_inssort_pqueue(ref_t& ref, read_t* r, const bool 
 	heap_entry_t heap[params->n_tables];
 	int heap_size = 0;
 	// push the first entries in each sorted bucket onto the heap
-	for(int t = 0; t < params->n_tables; t++) { // for each table
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
 			continue;
 		} else {
@@ -269,20 +269,20 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 		ref_brackets = r->ref_brackets_f;
 		ref_brackets_dirty_mask = r->ref_brackets_dirty_f;
 	}
-	for(int t = 0; t < params->n_tables; t++) { // for each table
+	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		if(r->ref_bucket_matches_by_table[t] == NULL) {
 			continue;
 		} else {
 			// for each window in the bucket
-			for(int i = 0; i < (*r->ref_bucket_matches_by_table[t]).size(); i++) {
+			for(uint32 i = 0; i < (*r->ref_bucket_matches_by_table[t]).size(); i++) {
 				seq_t p = (*r->ref_bucket_matches_by_table[t])[i].pos;
 				int len = (*r->ref_bucket_matches_by_table[t])[i].len;
 
 				seq_t start_bracket = p/bracket_size;
 				seq_t end_bracket = (p + params->ref_window_size + len - 1)/bracket_size;
 
-				for(int j = start_bracket; j < end_bracket; j++) {
-					if((*ref_brackets_dirty_mask)[j] != r->rid) {
+				for(uint32 j = start_bracket; j < end_bracket; j++) {
+					if((*ref_brackets_dirty_mask)[j] != (int) r->rid) {
 						(*ref_brackets_dirty_mask)[j] = r->rid;
 						(*ref_brackets)[j] = 0; // clear
 					}
@@ -292,7 +292,7 @@ void mark_contig_brackets(ref_t& ref, read_t* r, const bool rc, const index_para
 					(*ref_brackets)[j]++;
 
 					int n_diff_table_hits = (*ref_brackets)[j];
-					if(n_diff_table_hits >= params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+					if(n_diff_table_hits >= (int) params->min_n_hits && n_diff_table_hits >= (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
 						if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 							r->best_n_bucket_hits = n_diff_table_hits;
 						}
@@ -317,7 +317,7 @@ struct seed_t {
 typedef std::vector<seed_t> SeedChain;
 
 uint32 get_chain_weight(const SeedChain& seeds) {
-	int32_t chain_end_pos = 0;
+	uint32_t chain_end_pos = 0;
 	uint32 weight_read = 0;
 	for (uint32 i = 0; i < seeds.size(); i++) {
 		const seed_t s = seeds[i];
@@ -662,8 +662,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	int max_possible_votes_total = kmers.size();
 
 	for(int p = 0; p < 2; p++) {
-		int idx_q = 0;
-		int idx_r = 0;
+		uint32 idx_q = 0;
+		uint32 idx_r = 0;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
 			uint32 kmer_hash_ref = kmers_ref[idx_r].first;
 			uint32 kmer_hash_q = kmers[idx_q].first;
@@ -767,7 +767,7 @@ void process_read_hits_se_votes_opt(ref_t& ref, read_t* r, const index_params_t*
 		}
 		idx++;
 	}
-	std::vector<uint32> kmers_votes(n_collected_hits);
+	std::vector<int> kmers_votes(n_collected_hits);
 	std::vector<uint32> hit_bucket_index(n_collected_hits);
 	std::vector<uint32> hit_bucket_pos(n_collected_hits);
 	std::vector<uint64> aln_ref_pos(n_collected_hits);
@@ -911,14 +911,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 	}//------------
 
-	uint32 max_windows_matched = 0;
-	uint32 total_windows_matched = 0;
-	uint32 total_top_contigs = 0;
-	uint32 total_contigs_length = 0;
-	uint32 diff_num_top_hits = 0;
 	double start_time = omp_get_wtime();
 	// split the reads across the threads
-	#pragma omp parallel reduction(+:total_windows_matched, total_top_contigs, diff_num_top_hits, total_contigs_length) //reduction(max:max_windows_matched)
+	#pragma omp parallel
 	{
 		int tid = omp_get_thread_num();
 		int n_threads = omp_get_num_threads();
@@ -957,7 +952,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_index == ref.hash_tables[t].n_buckets) continue;
 					if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 						// DEBUG
-						for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
+						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
 							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
 							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
@@ -970,7 +965,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, false, params);
-				//mark_contig_brackets(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
@@ -979,7 +973,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets) continue;
 					if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
 						// DEBUG
-						for(int z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
+						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
 							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].len;
 							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
@@ -992,66 +986,55 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
-				//mark_contig_brackets(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {// && r->ref_matches[r->best_n_hits].size() < MAX_TOP_HITS) {
+			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
-				//process_read_hits_se_votes_opt(ref, r, params);
 			}
 
 			r->n_max_votes = 1 + (r->max_votes == r->max_votes_second_best ? 1 : 0);
-			if((r->max_votes > r->max_votes_second_best) && r->max_votes > CUTOFF) { //r->max_votes != 0) {// && max_votes > 50) {
-				//Want: 50% difference = fully confident, linear from 0 to 50
-				if (WEIGHT_SCORE)
-				{
+			if((r->max_votes > r->max_votes_second_best) && r->max_votes > CUTOFF) {
+				if (WEIGHT_SCORE) {
 					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/(float)r->max_votes * r->max_votes_noransac/(float)r->max_possible_votes;
 				}
-				else if (WEIGHT_SCORES_SEPARATELY)
-				{
+				else if (WEIGHT_SCORES_SEPARATELY) {
 					float second_best_score = 0;
 					if(r->max_votes_noransac_second_best > 0) {	
 						second_best_score =  r->max_votes_second_best*((float)r->max_votes_second_best/(float)r->max_votes_noransac_second_best);
 					}
 					r->aln.score = 250*(r->max_votes*((float)r->max_votes/(float)r->max_votes_noransac) - second_best_score)/(float)(r->max_votes*(float)r->max_votes/(float)r->max_votes_noransac);
 				}
-				else if (WEIGHT_SCORES_MAX)
-				{
+				else if (WEIGHT_SCORES_MAX) {
 					r->aln.score = 30;
 				}
-				else{
+				else {
 					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes;
 				}
 				r->aln.score *= WEIGHT_SCALE;
-				//r->aln.score = 30*(std::max(0.,std::min(1.,(1.-(r->max_votes_second_best/(float)r->max_votes))/0.5)));
-				if (VERBOSE)
-				{
+
+				if (VERBOSE) {
 					printf("max_votes: %d, second_best: %d, noransac: %d, possible: %d, score: %d\n", (int)r->max_votes, (int)r->max_votes_second_best, 
 						(int)r->max_votes_noransac, (int)r->max_possible_votes, (int)r->aln.score);
-				}
-
-				if(r->aln.score >= 30) {
 					if(r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
-						if (VERBOSE)
-						{
-							printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->aln.score,
-									r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start);
-									//,top_contig.pos, top_contig.len);
-							//if(r->bucketed_true_hit) {
-							//		print_read(r);
-							//		printf("TRUE \n");
-							//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
-							//			printf("%c", iupacChar[(int)ref.seq[x]]);
-							//		}
-							//		printf("\n");
-							//		printf("FALSE \n");
-							//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
-							//			printf("%c", iupacChar[(int)ref.seq[x]]);
-							//		}
-							//		printf("\n");
-							//}
-						}
+								printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->aln.score,
+										r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start);
+										//,top_contig.pos, top_contig.len);
+								//if(r->bucketed_true_hit) {
+								//		print_read(r);
+								//		printf("TRUE \n");
+								//		for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
+								//			printf("%c", iupacChar[(int)ref.seq[x]]);
+								//		}
+								//		printf("\n");
+								//		printf("FALSE \n");
+								//		for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
+								//			printf("%c", iupacChar[(int)ref.seq[x]]);
+								//		}
+								//		printf("\n");
+								//}
+
+
 					}
 				}
 			} else {
@@ -1062,7 +1045,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 	// write the results to file
 	store_alns_sam(reads, ref, params);
-
 
 	double end_time = omp_get_wtime();
 	printf("Collected read hits \n");
@@ -1153,8 +1135,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of confidently mapped reads Q30 %u / accurate %u (%f pct)\n", q30, q30acc, (float)q30acc/(float)q30);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
-	printf("Avg number of windows matched per read %.8f \n", (float) total_windows_matched/mapped);
-	printf("Avg number of top contigs (max bucket hit entries) matched per read %.8f \n", (float) total_top_contigs/mapped);
 	printf("Avg number of top votes matched per read %.8f \n", (float) n_max_votes/mapped);
 	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/mapped);
 	printf("Avg score per read %.8f \n", (float) score/mapped);
