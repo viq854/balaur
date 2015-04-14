@@ -85,7 +85,7 @@ typedef struct {
 		n_tables = 1;
 		sketch_proj_len = 4;
 		n_buckets_pow2 = 16;
-		bucket_size = 1000;
+		bucket_size = 200;
 		bucket_entry_coverage = 10;
 		contig_gap = 100;
 
@@ -97,7 +97,7 @@ typedef struct {
 
 		min_n_hits = 2;
 		dist_best_hit = 2;
-		max_matched_contig_len = 10000;
+		max_matched_contig_len = 100000;
 		n_top_buckets_search = 1;
 
 		max_best_hits = 100;
