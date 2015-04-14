@@ -17,10 +17,11 @@ typedef unsigned char uint8;
 typedef uint64 hash_t;
 typedef uint32 minhash_t;
 typedef uint32 seq_t;
+typedef uint32_t len_t;
 
 struct loc_t {
 	seq_t pos;
-	uint32_t len;
+	len_t len;
 };
 
 struct comp_loc
