@@ -268,10 +268,10 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					if((epos->pos + epos->len) == pos) {
 						epos->len++;
 						store_pos = false;
-					} /*else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) {
+					} else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) {
 						epos->len += pos - (epos->pos + epos->len - 1);
 						store_pos = false;
-					}*/
+					}
 				}
 				if(store_pos) {
 					loc_t new_loc;
@@ -330,7 +330,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 		buckets_t* buckets = &ref.hash_tables[t];
 		for(uint32 b = 0; b < buckets->next_free_bucket_index; b++) {
 			VectorSeqPos& bucket = buckets->buckets_data_vectors[b];
-			//std::sort(bucket.begin(), bucket.end());
 			std::sort(bucket.begin(), bucket.end(), comp_loc());
 		}
 	}
