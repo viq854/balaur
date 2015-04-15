@@ -1009,12 +1009,28 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("%u ", r->minhashes[x]);
 				}
 				printf("\n");
+				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
+					printf("t = %u, hash = %u\n", t, bucket_hash);
+					if(t == 0) {
+						uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
+						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
+							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
+							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
+							printf("pos %u len %u \n", p, len);
+						}	
+					}
+				}
+				printf("\n");
 				printf("READ HASHES RC (valid = %d): \n", r->valid_minhash_rc);
 				for(uint32 x = 0; x < params->h; x++) {
 					printf("%u ", r->minhashes_rc[x]);
 				}
 				printf("\n");
-
+				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
+					printf("t = %u, hash = %u\n", t, bucket_hash);
+				}
 				printf("WINDOW: \n");
 				for(uint32 x = r->ref_pos_l-1; x < r->ref_pos_l-1 + params->ref_window_size; x++) {
 					printf("%c", iupacChar[(int)ref.seq[x]]);
@@ -1025,6 +1041,10 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("%u ", window_hashes[x]);
 				}
 				printf("\n");
+				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
+					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(window_hashes, params->sketch_proj_indices, t*params->sketch_proj_len);
+					printf("t = %u, hash = %u\n", t, bucket_hash);
+				}
 
 			}
 
