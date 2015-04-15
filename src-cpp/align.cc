@@ -959,7 +959,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 								r->collected_true_hit = true;
 							}
 						}
-						continue; // no reference window fell into this bucket
+						continue;
 					}
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
@@ -988,6 +988,39 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				collect_read_hits_contigs_inssort_pqueue(ref, r, true, params);
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
+
+			if(!r->collected_true_hit) {
+				VectorMinHash window_hashes(params->h);
+				bool valid_hash = minhash(ref.seq.c_str(), r->ref_pos_l-1, params->ref_window_size,
+							ref.high_freq_kmer_trie,
+							ref.ignore_kmer_bitmask,
+							marisa::Trie(), params,
+							params->kmer_hasher, false,
+							window_hashes);
+				print_read(r);
+				printf("READ HASHES F: \n");
+				for(uint32 x = 0; x < params->h; x++) {
+					printf("%u ", r->minhashes[x]);
+				}
+				printf("\n");
+				printf("READ HASHES RC: \n");
+				for(uint32 x = 0; x < params->h; x++) {
+					printf("%u ", r->minhashes_rc[x]);
+				}
+				printf("\n");
+
+				printf("WINDOW: \n");
+				for(uint32 x = r->ref_pos_l-1; x < r->ref_pos_l-1 + params->ref_window_size; x++) {
+					printf("%c", iupacChar[(int)ref.seq[x]]);
+				}
+				printf("\n");
+				printf("WINDOW HASHES: \n");
+				for(uint32 x = 0; x < params->h; x++) {
+					printf("%u ", window_hashes[x]);
+				}
+				printf("\n");
+
+			}
 
 			if(r->any_bucket_hits && (r->best_n_bucket_hits > 0)) {
 				r->best_n_bucket_hits = r->best_n_bucket_hits - 1;
