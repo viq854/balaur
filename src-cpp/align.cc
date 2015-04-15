@@ -898,6 +898,11 @@ void process_read_hits_se_votes_opt2(ref_t& ref, read_t* r, const index_params_t
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
 
+	for(uint32 x = 0; x < params->sketch_proj_indices.size(); x++) {
+		printf("%u ", params->sketch_proj_indices[x]);
+	}
+	printf("\n");
+
 	omp_set_num_threads(params->n_threads);
 	//DEBUG--------
 	#pragma omp parallel for
