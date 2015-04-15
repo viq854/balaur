@@ -1003,7 +1003,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if((r->max_votes > r->max_votes_second_best) && r->max_votes > CUTOFF2 && && r->max_votes_noransac > CUTOFF) {
+			if((r->max_votes > r->max_votes_second_best) && r->max_votes > CUTOFF2 && r->max_votes_noransac > CUTOFF) {
 				if (WEIGHT_SCORE) {
 					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/(float)r->max_votes * r->max_votes_noransac/(float)r->max_possible_votes;
 				}
