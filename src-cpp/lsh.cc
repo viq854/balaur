@@ -97,7 +97,7 @@ bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
 			for(uint32_t h = 0; h < params->h; h++) { // update the min values
 				const rand_hash_function_t* f = &params->minhash_functions[h];
 				minhash_t min = f->apply(kmer_hash);
-				if(min < min_hashes[h] || i == 0) {
+				if(min < min_hashes[h] || !any_valid_kmers) {
 					min_hashes[h] = min;
 				}
 			}
@@ -143,7 +143,7 @@ bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t s
 				const rand_hash_function_t* f = &params->minhash_functions[h];
 				minhash_t min = f->apply(kmer_hash);
 				rolling_minhash_matrix.h_minhash_cols[i][h] = min;
-				if(min < min_hashes[h] || i == 0) {
+				if(min < min_hashes[h] || !any_valid_kmers) {
 					min_hashes[h] = min;
 				}
 			}
@@ -175,6 +175,7 @@ bool minhash_rolling(const char* seq, const seq_t ref_offset, const seq_t seq_le
 		new_kmer_hash_valid = true;
 		new_kmer_hash = CityHash32(&seq[last_kmer_pos], params->k);
 	}
+	bool any_valid_kmers = false;
 	for(uint32 h = 0; h < params->h; h++) {
 		minhash_t min_h = UINT_MAX;
 		if(new_kmer_hash_valid) {
@@ -199,11 +200,11 @@ bool minhash_rolling(const char* seq, const seq_t ref_offset, const seq_t seq_le
 			}
 		}
 		if(min_hashes[h] != UINT_MAX) {
-			new_kmer_hash_valid = true;
+			any_valid_kmers = true;
 		}
 	}
 	rolling_minhash_matrix.oldest_col_index = (rolling_minhash_matrix.oldest_col_index + 1) % (seq_len - params->k + 1);
-	return new_kmer_hash_valid;
+	return any_valid_kmers;
 }
 
 /////////////////////////
