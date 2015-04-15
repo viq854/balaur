@@ -21,6 +21,7 @@
 
 #include "ksw.h"
 #include "sam.h"
+#include "lsh.h"
 
 static const int N_RAND_INLIERS = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 10);
 static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 20);
