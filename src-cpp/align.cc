@@ -1004,12 +1004,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 							params->kmer_hasher, false,
 							window_hashes);
 				print_read(r);
-				printf("READ HASHES F: \n");
+				printf("READ HASHES F (valid = %d): \n", r->valid_minhash);
 				for(uint32 x = 0; x < params->h; x++) {
 					printf("%u ", r->minhashes[x]);
 				}
 				printf("\n");
-				printf("READ HASHES RC: \n");
+				printf("READ HASHES RC (valid = %d): \n", r->valid_minhash_rc);
 				for(uint32 x = 0; x < params->h; x++) {
 					printf("%u ", r->minhashes_rc[x]);
 				}
@@ -1020,7 +1020,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("%c", iupacChar[(int)ref.seq[x]]);
 				}
 				printf("\n");
-				printf("WINDOW HASHES: \n");
+				printf("WINDOW HASHES (valid = %d): \n", valid_hash);
 				for(uint32 x = 0; x < params->h; x++) {
 					printf("%u ", window_hashes[x]);
 				}
