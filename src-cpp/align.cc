@@ -914,7 +914,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
-		int max_score_per_thread = 0;
+		int avg_score_per_thread = 0;
+		int n_nonzero_scores = 0;
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
 			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
@@ -980,10 +981,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if(r->max_votes > max_score_per_thread) {
-				max_score_per_thread = r->max_votes;
+			if(r->max_votes > 0) {
+				avg_score_per_thread += r->max_votes;
+				n_nonzero_scores++;
 			}
 		}
+		avg_score_per_thread = avg_score_per_thread/n_nonzero_scores;
 
 		// assign alignment quality scores
 		for (uint32 i = chunk_start; i < chunk_end; i++) {
@@ -993,14 +996,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->max_votes > r->max_votes_second_best) {
 				// if top contig has fewer non-inlier votes
 				// only allow if there is a secondary hit, otherwise most likely an unanchored repeat
-				if(r->max_votes_noransac == r->max_votes_all || r->max_votes_second_best != 0) {
+				//if(r->max_votes_noransac == r->max_votes_all || r->max_votes_second_best != 0) {
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
 					if(r->max_votes > CUTOFF || (r->max_votes_second_best == 0 && r->max_votes > CUTOFF2)) {
 
 						r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/r->max_votes;
 
 						// scale by the distance from theoretical best possible votes
-						r->aln.score *= ((float) r->max_votes)/max_score_per_thread;
+						r->aln.score *= (float) r->max_votes/(float) avg_score_per_thread;
 
 						// alternative scoring scheme
 						if (WEIGHT_SCORES_SEPARATELY) {
@@ -1011,7 +1014,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 							r->aln.score = 250*(r->max_votes*((float)r->max_votes/(float)r->max_votes_noransac) - second_best_score)/(float)(r->max_votes*(float)r->max_votes/(float)r->max_votes_noransac);
 						}
 					}
-				}
+				//}
 			}
 
 			// DEBUG ------
