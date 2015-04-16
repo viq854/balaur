@@ -270,6 +270,7 @@ struct read_t {
 	int max_votes_noransac; //ignoring ransac, how many matches would there have been
 	int max_votes_noransac_second_best; //ignoring ransac, how many matches would the second have had
 	
+	int max_votes_all;
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
@@ -316,6 +317,7 @@ struct read_t {
 		max_possible_votes = 0;
 		max_votes_noransac = 0;
 		max_votes_noransac_second_best = 0;
+		max_votes_all = 0;
 	}
 };
 typedef std::vector<read_t> VectorReads;
