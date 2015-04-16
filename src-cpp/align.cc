@@ -30,8 +30,9 @@ static const bool VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : false
 static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
 static const bool WEIGHT_SCORE = (WEIGHT_INT == 1);
 static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
-static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 0);
-static const int CUTOFF2 = (getenv("CUTOFF2") ? atoi(getenv("CUTOFF2")) : 0);
+static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 400);
+static const int CUTOFF2 = (getenv("CUTOFF2") ? atoi(getenv("CUTOFF2")) : 400);
+static const int CUTOFF3 = (getenv("CUTOFF3") ? atoi(getenv("CUTOFF3")) : 350);
 static const float WEIGHT_SCALE = (getenv("WEIGHT_SCALE") ? atof(getenv("WEIGHT_SCALE")) : 1);
 
 
@@ -698,11 +699,10 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					idx_q++;
 					idx_r++;
 				} else {
-					// regardless, increment number of votes
-					votes_noransac++;
 					if(match_aln_pos > (avg_aln_pos - delta_pos) && match_aln_pos < (avg_aln_pos + delta_pos)) {
 						// within delta
 						kmer_votes++;
+						votes_noransac++;
 						aln_ref_pos += match_aln_pos;
 						idx_q++;
 						idx_r++;
@@ -711,6 +711,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					} else {
 						idx_q++;
 						idx_r++;
+						votes_noransac++;
 					}
 				}
 			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
@@ -1003,7 +1004,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
-			if((r->max_votes > r->max_votes_second_best) && r->max_votes > CUTOFF2 && r->max_votes_noransac > CUTOFF) {
+			if((r->max_votes > r->max_votes_second_best) && ((r->max_votes > CUTOFF2 && r->max_votes_noransac > CUTOFF) || (r->max_votes_second_best == 0 && r->max_votes > CUTOFF3))) {
 				if (WEIGHT_SCORE) {
 					r->aln.score = 250*(r->max_votes - r->max_votes_second_best)/(float)r->max_votes * r->max_votes_noransac/(float)r->max_possible_votes;
 				}
@@ -1082,17 +1083,32 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				if(r->bucketed_true_hit) {
 					print_read(r);
 					printf("TRUE \n");
-					for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + 1000; x++) {
+					for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + r->len; x++) {
 						printf("%c", iupacChar[(int)ref.seq[x]]);
 					}
 					printf("\n");
 					printf("FALSE \n");
-					for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + 1000; x++) {
+					for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + r->len; x++) {
 						printf("%c", iupacChar[(int)ref.seq[x]]);
 					}
 					printf("\n");
 				}
+			}
+			if (VERBOSE && r->aln.score == 0 && (r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
+					printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->aln.score,
+									r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit,
+									r->best_n_bucket_hits, r->ref_pos_l, r->aln.ref_start);
+					print_read(r);
 
+					printf("WINDOW \n");
+					for(uint32 x = r->aln.ref_start; x < r->aln.ref_start + r->len; x++) {
+						printf("%c", iupacChar[(int)ref.seq[x]]);
+					}
+					printf("\n");
+
+					for(int x = 0; x < r->len - params->k2 + 1; x++) {
+						printf("i = %d, read hash %u ref hash %u \n", x, CityHash32(&r->seq[x], params->k2), ref.precomputed_kmer2_hashes[r->aln.ref_start + x]);
+					}
 			}
 		}
 	}
