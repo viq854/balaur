@@ -30,9 +30,9 @@ static const bool VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : false
 static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
 static const bool WEIGHT_SCORE = (WEIGHT_INT == 1);
 static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
-static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 400);
-static const int CUTOFF2 = (getenv("CUTOFF2") ? atoi(getenv("CUTOFF2")) : 400);
-static const int CUTOFF3 = (getenv("CUTOFF3") ? atoi(getenv("CUTOFF3")) : 350);
+static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 200);
+static const int CUTOFF2 = (getenv("CUTOFF2") ? atoi(getenv("CUTOFF2")) : 200);
+static const int CUTOFF3 = (getenv("CUTOFF3") ? atoi(getenv("CUTOFF3")) : 150);
 static const float WEIGHT_SCALE = (getenv("WEIGHT_SCALE") ? atof(getenv("WEIGHT_SCALE")) : 1);
 
 
@@ -145,6 +145,12 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 		r->processed_true_hit = true;
 	}
 
+	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+       		if(contig_len > params->max_matched_contig_len || n_diff_table_hits < (int) params->min_n_hits || n_diff_table_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) {
+		//	printf("n table hits (true) %d contig len %u contig pos %u\n", n_diff_table_hits, contig_len, contig_pos);
+		}
+	}
+
 	// filters
 	if(contig_len > params->max_matched_contig_len) return;
 	if(n_diff_table_hits < (int) params->min_n_hits) return;
@@ -156,15 +162,16 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	}
 	int contig_chunk_size = (r->len + 1000);
 	int n_contigs = ceil(((double)contig_len/contig_chunk_size));
-	for(int x = 0; x < n_contigs; x++) {
-		seq_t p = contig_pos - (n_contigs-1-x)*contig_chunk_size;
-		int l = contig_chunk_size;
-		if(x == 0) {
-			l = contig_len - (n_contigs-1)*contig_chunk_size;
-		}
-		ref_match_t rm(p, l, rc);
+	//for(int x = 0; x < n_contigs; x++) {
+		//seq_t p = contig_pos - (n_contigs-1-x)*contig_chunk_size;
+		//int l = contig_chunk_size;
+		//if(x == 0) {
+		//	l = contig_len - (n_contigs-1)*contig_chunk_size;
+		//}
+		//ref_match_t rm(p, l, rc);
+		ref_match_t rm(contig_pos, contig_len, rc);
 		compute_ref_contig_votes(rm, ref, r, params);
-	}
+	//}
 
 	// DEBUG
 	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
@@ -662,6 +669,24 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	int max_possible_votes_total = kmers.size();
 
 	for(int p = 0; p < 2; p++) {
+		if(p == 1 && init_pass) {
+			// not all inliers were found
+			if(rand_inliers_idx > 1) {
+				// find the average
+				if (median) {
+					std::sort(&maybe_inliers[0],maybe_inliers+rand_inliers_idx);
+					avg_aln_pos = maybe_inliers[(rand_inliers_idx-1)/2];
+				}
+				else {
+					for(int z = 0; z < rand_inliers_idx; z++) {
+						avg_aln_pos += maybe_inliers[z];
+					}
+					avg_aln_pos = avg_aln_pos/rand_inliers_idx;
+				}
+				init_pass = false;
+			}
+		}
+
 		uint32 idx_q = 0;
 		uint32 idx_r = 0;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
@@ -727,7 +752,11 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	}
 
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-		//printf("TRUE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes,  avg_aln_pos, ref_contig.pos);
+		if(kmer_votes > 0) {
+			//printf("TRUE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes,  avg_aln_pos, ref_contig.pos);
+		} else {
+			//printf("TRUE n_inliers %u votes %u avg pos %u contig pos %u \n", rand_inliers_idx, kmer_votes,  avg_aln_pos, ref_contig.pos);
+		}	
 	} else if (kmer_votes > 0) {
 		//printf("FALSE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes, avg_aln_pos, ref_contig.pos);
 	}
@@ -1076,7 +1105,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 
 			}
-			if (VERBOSE && r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
+			if (true && r->aln.score >= 30 && !(r->ref_pos_l >= r->aln.ref_start - 30 && r->ref_pos_l <= r->aln.ref_start + 30)) {
 				printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->aln.score,
 						r->max_votes, r->max_votes_second_best, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits,
 						r->ref_pos_l, r->aln.ref_start);
