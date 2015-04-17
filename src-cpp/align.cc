@@ -220,7 +220,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					if(anchors_idx[UNIQUE1] == 0) break; // no unique matches exist
 
 					// compute the median first pass position
-					std::sort(&sample_anchors[UNIQUE1][0], sample_anchors[UNIQUE1] + anchors_idx[UNIQUE1]);
+					std::sort(&sample_anchors[UNIQUE1][0], &sample_anchors[UNIQUE1][0] + anchors_idx[UNIQUE1]);
 					init_aln_pos[UNIQUE1] = sample_anchors[UNIQUE1][(anchors_idx[UNIQUE1]-1)/2];
 
 					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
@@ -242,10 +242,11 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
 
 					// find the median alignment positions
-					for(int i = 1; i < 3; i++) {
-						std::sort(&sample_anchors[i][0], sample_anchors[i] + anchors_idx[i]);
-						init_aln_pos[i] = sample_anchors[i][(anchors_idx[i]-1)/2];
-					}
+					std::sort(&sample_anchors[UNIQUE2][0], &sample_anchors[UNIQUE2][0] + anchors_idx[UNIQUE2]);
+					init_aln_pos[UNIQUE2] = sample_anchors[UNIQUE2][(anchors_idx[UNIQUE2]-1)/2];
+					std::sort(&sample_anchors[RAND][0], &sample_anchors[RAND][0] + anchors_idx[RAND]);
+					init_aln_pos[RAND] = sample_anchors[RAND][(anchors_idx[RAND]-1)/2];
+
 					// count inliers
 					for(int i = 0; i < 3; i++) {
 						if(match_aln_pos > (init_aln_pos[i] - delta_pos) && match_aln_pos < (init_aln_pos[i] + delta_pos)) { // inliers (within delta)
@@ -281,6 +282,13 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			r->max_total_votes_low_anchors = total_kmer_matches;
 		}
 	}*/
+
+	int n_results = 2;
+	if(anchors_idx[UNIQUE1] == 0) {
+		// consider results for random sample if there are
+		// no unique hits
+		n_results++;
+	}
 
 	for(int i = 0; i < 3; i++) {
 		// keep track of max inlier votes and its alignment position
