@@ -25,7 +25,7 @@
 
 static const int N_RAND_INLIERS = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 10);
 static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 10);
-static const bool VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : false);
+static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
 static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
 static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 200);
@@ -283,12 +283,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}*/
 
-	int n_results = 2;
-	if(anchors_idx[UNIQUE1] != 0 && (aln_ref_pos[RAND] < aln_ref_pos[UNIQUE1] - 2*delta_pos || aln_ref_pos[RAND] > aln_ref_pos[UNIQUE1] + 2*delta_pos)) {
-		n_results++;
-	}
-
-	for(int i = 0; i < n_results; i++) {
+	for(int i = 0; i < 2; i++) {
 		// keep track of max inlier votes and its alignment position
 		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
 			r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
@@ -303,11 +298,11 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			r->second_best_aln.total_votes = total_kmer_matches;
 		}
 	}
-	if(anchors_idx[UNIQUE1] == 0) {
-		// consider results for random sample if there are
-		// no unique hits
-		//r->second_best_aln.inlier_votes = kmer_inliers[RAND];
-		r->max_total_votes_low_anchors = total_kmer_matches;
+	if(anchors_idx[UNIQUE1] < n_init_anchors) {
+		// too few unique hits
+		if(total_kmer_matches > r->max_total_votes_low_anchors) {
+			r->max_total_votes_low_anchors = total_kmer_matches;
+		}
 	}
 
 	// keep track of max total votes
@@ -318,15 +313,16 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	// DEBUG -----
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
 		r->comp_votes_hit = kmer_inliers[0] > kmer_inliers[1] ? kmer_inliers[0] : kmer_inliers[1];
-		r->comp_votes_hit = r->comp_votes_hit > kmer_inliers[2] ? r->comp_votes_hit : kmer_inliers[2];
-		//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
-
+		if(VERBOSE == 2) {
+			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
+		}
 	}
-	//printf("aln pos %u %u %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
-	//					aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
-	//					kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
-	//					total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
-
+	if(VERBOSE == 2) {
+		printf("aln pos %u %u %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
+						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
+						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
+						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
+	}
 	return 0;
 }
 
@@ -563,6 +559,17 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		}
 		avg_score_per_thread = avg_score_per_thread/n_nonzero_scores;
 
+		// find the standard deviation
+		uint32 std_dev = 0;
+		for (uint32 i = chunk_start; i < chunk_end; i++) {
+			read_t* r = &reads.reads[i];
+			if(r->top_aln.inlier_votes > 0) {
+				std_dev += pow((double)avg_score_per_thread - r->top_aln.inlier_votes, (double) 2);
+			}
+		}
+		std_dev = std_dev/n_nonzero_scores;
+		printf("STD DEV %u \n", std_dev);
+
 		// assign alignment quality scores
 		for (uint32 i = chunk_start; i < chunk_end; i++) {
 			read_t* r = &reads.reads[i];
@@ -571,7 +578,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->top_aln.inlier_votes > r->second_best_aln.inlier_votes) {
 				// if top contig has fewer non-inlier votes
 				// only allow if there is a secondary hit, otherwise most likely an unanchored repeat
-				if(r->max_total_votes_low_anchors < r->top_aln.total_votes) {
+				if(r->max_total_votes_low_anchors <= r->top_aln.total_votes) {
 
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
 					if(r->top_aln.inlier_votes > CUTOFF || (r->second_best_aln.inlier_votes == 0 && r->top_aln.inlier_votes > CUTOFF2)) {
@@ -586,7 +593,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 			// DEBUG ------
-			if(VERBOSE && !r->collected_true_hit) {
+			if(VERBOSE == 3 && !r->collected_true_hit) {
 				VectorMinHash window_hashes(params->h);
 				bool valid_hash = minhash(ref.seq.c_str(), r->ref_pos_l-1, params->ref_window_size,
 							ref.high_freq_kmer_trie,
@@ -638,7 +645,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 
 			}
-			if (true && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+			if (VERBOSE == 1 && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
 				printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits,
 						r->ref_pos_l, r->top_aln.ref_start);
@@ -656,7 +663,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("\n");
 				}
 			}
-			if (VERBOSE && r->top_aln.score == 0 && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+			if (VERBOSE == 3 && r->top_aln.score == 0 && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
 					printf("score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->top_aln.score,
 									r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit,
 									r->best_n_bucket_hits, r->ref_pos_l, r->top_aln.ref_start);
