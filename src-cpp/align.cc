@@ -296,19 +296,14 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 	// DEBUG -----
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-		r->comp_votes_hit = kmer_inliers;
+		r->comp_votes_hit = kmer_inliers[0] > 0 ? kmer_inliers[0] : kmer_inliers[2];
+		printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 
-		if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-			//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
-		}
-		if(kmer_inliers > 0) {
-			//printf("TRUE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
-		} else {
-			//printf("TRUE n_inliers %u votes %u noransac votes %u avg pos %u contig pos %u \n", anchors_idx, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
-		}
-	} else if (kmer_inliers > 0) {
-		//printf("FALSE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
 	}
+	printf("aln pos %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
+						aln_ref_pos/kmer_inliers,
+						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
+						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
 
 	return 0;
 }
