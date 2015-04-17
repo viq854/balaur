@@ -23,17 +23,17 @@ void store_alns_sam(reads_t& reads, const ref_t& ref, const index_params_t* para
 #define SAM_FSR  16 // self on the reverse strand
 void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 	int flag = 0; // FLAG
-	if(r->aln.ref_start != 0) {
+	if(r->top_aln.ref_start != 0) {
 		if(ref.subsequence_offsets.size() > 1) {
-			r->aln.read_start -= ref.subsequence_offsets[r->seq_id];
+			r->top_aln.ref_start -= ref.subsequence_offsets[r->seq_id];
 		}
 
-		if (r->aln.rc) flag |= SAM_FSR;
+		if (r->top_aln.rc) flag |= SAM_FSR;
 
 		// QNAME, FLAG, RNAME
 		fprintf(samFile, "%s\t%d\tREF_NAME\t", r->name.c_str(), flag);
 		// POS (1-based), MAPQ
-		fprintf(samFile, "%d\t%d\t", (int)(r->aln.read_start+1), r->aln.score);
+		fprintf(samFile, "%d\t%d\t", (int)(r->top_aln.ref_start+1), r->top_aln.score);
 
 		// CIGAR
 		fprintf(samFile, "CIGAR");
@@ -42,7 +42,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		fprintf(samFile, "\t*\t0\t0\t");
 
 		// SEQ, QUAL (print sequence and quality)
-		const char* seq = r->aln.rc ? r->rc.c_str() : r->seq.c_str();
+		const char* seq = r->top_aln.rc ? r->rc.c_str() : r->seq.c_str();
 		for (int i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", "AGCTN"[(int)seq[i]]);
 		}
