@@ -221,13 +221,13 @@ struct ref_match_t {
 typedef std::vector<ref_match_t> VectorRefMatches;
 
 struct aln_t {
-	seq_t ref_start, ref_end; 	// [rb,re): reference sequence in the alignment
-	bool rc;
-	int read_start, read_end;   // [qb,qe): query sequence in the alignment
+	seq_t ref_start; 	// start position in the reference sequence
+	bool rc;			// reverse complement match
 	int score;
-	int truesc;     // actual score corresponding to the aligned region; possibly smaller than $score
-	int sub;        // 2nd best SW score
-	int w;          // actual band width used in extension
+
+	int inlier_votes;       // number of kmers supporting the aln pos
+	int outlier_votes_ref;  // number of ref kmers not supporting the aln pos
+	int total_votes;		// total number of kmers that matched
 };
 
 struct read_t {
@@ -253,25 +253,16 @@ struct read_t {
 	std::vector<VectorRefMatches> ref_matches;
 	std::vector<int> ref_match_sizes;
 
-	std::vector<int16_t>* ref_brackets_f;
-	std::vector<int16_t>* ref_brackets_rc;
-	std::vector<int>* ref_brackets_dirty_f;
-	std::vector<int>* ref_brackets_dirty_rc;
 	uint32 rid;
 
 	int best_n_bucket_hits;
 	bool any_bucket_hits;
-	int n_max_votes;
-	aln_t aln;
-	int max_votes;
-	int max_votes_second_best;
 
-	int max_possible_votes; //number of votes maximally possible
-	int max_votes_noransac; //ignoring ransac, how many matches would there have been
-	int max_votes_noransac_second_best; //ignoring ransac, how many matches would the second have had
+	aln_t top_aln;
+	aln_t second_best_aln;
 	
-	int max_votes_all;
-	int max_votes_repeat;
+	int max_total_votes;
+	int max_total_votes_low_anchors;
 
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
@@ -292,9 +283,15 @@ struct read_t {
 		valid_minhash_rc = 0;
 		best_n_bucket_hits = 0;
 		any_bucket_hits = false;
-		n_max_votes = 0;
-		aln.score = 0;
-		aln.ref_start = 0;
+
+		top_aln.score = 0;
+		top_aln.ref_start = 0;
+		top_aln.inlier_votes = 0;
+		top_aln.outlier_votes_ref = 0;
+		top_aln.total_votes = 0;
+		second_best_aln.inlier_votes = 0;
+		second_best_aln.outlier_votes_ref = 0;
+		second_best_aln.total_votes = 0;
 
 		acc = 0;
 		collected_true_hit = 0;
@@ -309,18 +306,9 @@ struct read_t {
 		top_hit_acc = 0;
 		len = 0;
 		rid = 0;
-		ref_brackets_f = 0;
-		ref_brackets_rc = 0;
-		ref_brackets_dirty_f = 0;
-		ref_brackets_dirty_rc = 0;
 
-		max_votes = 0;
-		max_votes_second_best = 0;
-		max_votes_noransac = 0;
-		max_votes_noransac_second_best = 0;
-		max_votes_all = 0;
-		max_votes_repeat = 0;
-		max_possible_votes = 0;
+		max_total_votes = 0;
+		max_total_votes_low_anchors = 0;
 	}
 };
 typedef std::vector<read_t> VectorReads;
