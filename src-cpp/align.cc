@@ -232,6 +232,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 							break;
 						}
 					}
+					idx_q++;
+					idx_r++;
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
 
 					// find the median alignment position
