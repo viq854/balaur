@@ -283,14 +283,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}*/
 
-	int n_results = 2;
-	if(anchors_idx[UNIQUE1] == 0) {
-		// consider results for random sample if there are
-		// no unique hits
-		n_results++;
-	}
-
-	for(int i = 0; i < n_results; i++) {
+	for(int i = 0; i < 2; i++) {
 		// keep track of max inlier votes and its alignment position
 		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
 			r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
@@ -304,6 +297,12 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			r->second_best_aln.inlier_votes = kmer_inliers[i];
 			r->second_best_aln.total_votes = total_kmer_matches;
 		}
+	}
+	if(anchors_idx[UNIQUE1] == 0) {
+		// consider results for random sample if there are
+		// no unique hits
+		r->second_best_aln.inlier_votes = kmer_inliers[RAND];
+		r->second_best_aln.total_votes = total_kmer_matches;
 	}
 
 	// keep track of max total votes
