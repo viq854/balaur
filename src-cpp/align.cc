@@ -173,68 +173,82 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	std::sort(kmers_ref.begin(), kmers_ref.end());
 
 	// find how many kmers are in common
-	const int n_init_anchors = N_RAND_INLIERS;
-	uint32 sample_unique_anchors[n_init_anchors];
-	int anchors_idx = 0;
 	const uint32 delta_pos = DELTA_POS;
-
-	int kmer_inliers = 0;
-	int kmer_outliers_ref = 0;
+	const int n_init_anchors = N_RAND_INLIERS;
+	int UNIQUE1 = 0;
+	int UNIQUE2 = 1;
+	int RAND = 2;
+	uint32 sample_anchors[3][n_init_anchors];
+	int kmer_inliers[3] = { 0 };
+	int kmer_outliers_ref[3] = { 0 };
 	int total_kmer_matches = 0;
+	int anchors_idx[3] = { 0 };
+	uint64 init_aln_pos[3] = { 0 };
+	uint64 aln_ref_pos[3] = { 0 };
 
-	uint64 init_aln_pos = 0;
-	uint64 aln_ref_pos = 0;
-
-	bool init_pass = true;
 	for(int p = 0; p < 3; p++) {
-		if(p == 1 && init_pass) { // not all unique kmer anchors were found
-			if(anchors_idx > 0) { // found at least one anchor
-				// find the median
-				std::sort(&sample_unique_anchors[0],sample_unique_anchors+anchors_idx);
-				init_aln_pos = sample_unique_anchors[(anchors_idx-1)/2];
-			}
-			init_pass = false;
-		}
-
+		// start from the beginning in each pass
 		uint32 idx_q = 0;
 		uint32 idx_r = 0;
 		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
 			uint32 kmer_hash_ref = kmers_ref[idx_r].first;
 			uint32 kmer_hash_q = kmers[idx_q].first;
-			if(kmer_hash_ref == kmer_hash_q) { // match
+			if(kmer_hash_ref == kmer_hash_q) { // MATCH
 				uint32 match_aln_pos = kmers_ref[idx_r].second - kmers[idx_q].second;
-				if(init_pass) { // -------- FIRST PASS ---------
+
+				// get the first (not necessarily unique) random matches
+				if(anchors_idx[RAND] < n_init_anchors) {
+					sample_anchors[RAND][anchors_idx[RAND]] = match_aln_pos;
+					anchors_idx[RAND]++;
+				}
+
+				if(p == 0) { // -------- FIRST PASS: collect unique matches ---------
 					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
 							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
 							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
 							((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
-						if(anchors_idx < n_init_anchors-1) {
-							sample_unique_anchors[anchors_idx] = match_aln_pos;
-							anchors_idx++;
+						if(anchors_idx[UNIQUE1] < n_init_anchors) {
+							sample_anchors[UNIQUE1][anchors_idx[UNIQUE1]] = match_aln_pos;
+							anchors_idx[UNIQUE1]++;
 						} else { // found all the anchors
-							sample_unique_anchors[anchors_idx] = match_aln_pos;
-							// find the median
-							std::sort(&sample_unique_anchors[0],sample_unique_anchors+n_init_anchors);
-							init_aln_pos = sample_unique_anchors[(n_init_anchors-1)/2];
-							init_pass = false;
 							break;
 						}
 					}
 					idx_q++;
 					idx_r++;
-				} else { // --------- SECOND PASS -------
-					if(match_aln_pos > (init_aln_pos - delta_pos) && match_aln_pos < (init_aln_pos + delta_pos)) { // inliers (within delta)
-						kmer_inliers++;
-						total_kmer_matches++;
-						aln_ref_pos += match_aln_pos;
-						idx_q++;
+				} else if(p == 1) { // --------- SECOND PASS: collect DIFF unique matches -------
+					if(anchors_idx[UNIQUE1] == 0) break; // no unique matches exist
+					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
+							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
+							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
+							((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
+						if(match_aln_pos > init_aln_pos[UNIQUE1] - 2*delta_pos && match_aln_pos < init_aln_pos[UNIQUE1] + 2*delta_pos) {
+							continue; // this position is close to the first pick
+						}
+						if(anchors_idx[UNIQUE2] < n_init_anchors) {
+							sample_anchors[UNIQUE2][anchors_idx[UNIQUE2]] = match_aln_pos;
+							anchors_idx[UNIQUE2]++;
+						} else { // found all the anchors
+							break;
+						}
+					}
+				} else { // --------- THIRD PASS: count inliers to each candidate position -------
+
+					// find the median alignment position
+					for(int i = 0; i < 3; i++) {
+						std::sort(&sample_anchors[i][0], sample_anchors[i] + anchors_idx[i]);
+						init_aln_pos[i] = sample_anchors[i][anchors_idx[i]-1/2];
+
+						if(match_aln_pos > (init_aln_pos[i] - delta_pos) && match_aln_pos < (init_aln_pos + delta_pos)) { // inliers (within delta)
+							kmer_inliers[i]++;
+							aln_ref_pos[i] += match_aln_pos;
+						}
+					}
+
+					if(idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first == kmer_hash_ref) {
+						// if the next kmer is still a match in the reference, check it in next iteration as an inlier
 						idx_r++;
-					} else if(idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first == kmer_hash_ref) {
-						// if the next kmer is still a match in the reference, try to check if it's an inlier
-						kmer_outliers_ref++;
-						idx_r++;
-					} else { // outliers
-						kmer_outliers_ref++;
+					} else {
 						total_kmer_matches++;
 						idx_q++;
 						idx_r++;
@@ -243,10 +257,6 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
 				idx_q++;
 			} else {
-				// check if the ref kmer equals the previously matched read kmer
-				if(idx_q > 0 && kmers_ref[idx_r].first == kmers[idx_q-1].first) {
-					kmer_outliers_ref++;
-				}
 				idx_r++;
 			}
 			/*int max_possible_votes = kmers.size() - idx_q + kmer_votes;
@@ -256,25 +266,27 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}
 
-	if(anchors_idx < n_init_anchors-1) {
+	/*if(anchors_idx < n_init_anchors-1) {
 		// did not find min number of unique kmer anchors
 		if(total_kmer_matches > r->max_total_votes_low_anchors) {
 			r->max_total_votes_low_anchors = total_kmer_matches;
 		}
-	}
+	}*/
 
-	// keep track of max inlier votes and its alignment position
-	if(kmer_inliers > r->top_aln.inlier_votes) {
-		r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
-		r->second_best_aln.total_votes = r->top_aln.total_votes;
-		// update best alignment
-		r->top_aln.inlier_votes = kmer_inliers;
-		r->top_aln.total_votes = total_kmer_matches;
-		r->top_aln.ref_start = aln_ref_pos/kmer_inliers;
-		r->top_aln.rc = ref_contig.rc;
-	} else if(kmer_inliers > r->second_best_aln.inlier_votes) {
-		r->second_best_aln.inlier_votes = kmer_inliers;
-		r->second_best_aln.total_votes = total_kmer_matches;
+	for(int i = 0; i < 3; i++) {
+		// keep track of max inlier votes and its alignment position
+		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
+			r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
+			r->second_best_aln.total_votes = r->top_aln.total_votes;
+			// update best alignment
+			r->top_aln.inlier_votes = kmer_inliers[i];
+			r->top_aln.total_votes = total_kmer_matches[i];
+			r->top_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
+			r->top_aln.rc = ref_contig.rc;
+		} else if(kmer_inliers[i] > r->second_best_aln.inlier_votes) {
+			r->second_best_aln.inlier_votes = kmer_inliers[i];
+			r->second_best_aln.total_votes = total_kmer_matches[i];
+		}
 	}
 
 	// keep track of max total votes
@@ -287,18 +299,18 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		r->comp_votes_hit = kmer_inliers;
 
 		if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
+			//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 		}
 		if(kmer_inliers > 0) {
-			printf("TRUE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
+			//printf("TRUE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
 		} else {
-			printf("TRUE n_inliers %u votes %u noransac votes %u avg pos %u contig pos %u \n", anchors_idx, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
+			//printf("TRUE n_inliers %u votes %u noransac votes %u avg pos %u contig pos %u \n", anchors_idx, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
 		}
 	} else if (kmer_inliers > 0) {
-		printf("FALSE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
+		//printf("FALSE aln pos %u votes %u noransac votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_inliers, kmer_inliers, total_kmer_matches, init_aln_pos, ref_contig.pos);
 	}
 
-	return kmer_inliers;
+	return 0;
 }
 
 void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
