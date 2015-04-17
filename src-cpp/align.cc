@@ -290,7 +290,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		n_results++;
 	}
 
-	for(int i = 0; i < 3; i++) {
+	for(int i = 0; i < n_results; i++) {
 		// keep track of max inlier votes and its alignment position
 		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
 			r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
