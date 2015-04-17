@@ -28,8 +28,7 @@ static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 static const int WEIGHT_INT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 0);
 static const bool WEIGHT_SCORES_SEPARATELY = (WEIGHT_INT == 2);
-static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 200);
-static const int CUTOFF2 = (getenv("CUTOFF2") ? atoi(getenv("CUTOFF2")) : 200);
+static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 50);
 static const float WEIGHT_SCALE = (getenv("WEIGHT_SCALE") ? atof(getenv("WEIGHT_SCALE")) : 1);
 
 #define CONTIG_PADDING 100
@@ -567,8 +566,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				std_dev += pow((double)avg_score_per_thread - r->top_aln.inlier_votes, (double) 2);
 			}
 		}
-		std_dev = std_dev/n_nonzero_scores;
-		printf("STD DEV %u \n", std_dev);
+		std_dev = sqrt((double)std_dev/n_nonzero_scores);
+		int CUTOFF_3STDDEV = avg_score_per_thread - 3*std_dev;
+		if(CUTOFF_3STDDEV < 0) CUTOFF_3STDDEV = 0;
 
 		// assign alignment quality scores
 		for (uint32 i = chunk_start; i < chunk_end; i++) {
@@ -581,7 +581,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				if(r->max_total_votes_low_anchors <= r->top_aln.total_votes) {
 
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
-					if(r->top_aln.inlier_votes > CUTOFF || (r->second_best_aln.inlier_votes == 0 && r->top_aln.inlier_votes > CUTOFF2)) {
+					if(r->top_aln.inlier_votes > CUTOFF && r->top_aln.inlier_votes > CUTOFF_3STDDEV) {
 
 						r->top_aln.score = 250*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
 
