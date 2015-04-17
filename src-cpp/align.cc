@@ -227,14 +227,14 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
 							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
 							((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
-						if(match_aln_pos > init_aln_pos[UNIQUE1] - 2*delta_pos && match_aln_pos < init_aln_pos[UNIQUE1] + 2*delta_pos) {
-							continue; // this position is close to the first pick
-						}
-						if(anchors_idx[UNIQUE2] < n_init_anchors) {
-							sample_anchors[UNIQUE2][anchors_idx[UNIQUE2]] = match_aln_pos;
-							anchors_idx[UNIQUE2]++;
-						} else { // found all the anchors
-							break;
+						// if this position is not close to the first pick
+						if(match_aln_pos < init_aln_pos[UNIQUE1] - 2*delta_pos || match_aln_pos > init_aln_pos[UNIQUE1] + 2*delta_pos) {
+							if(anchors_idx[UNIQUE2] < n_init_anchors) {
+								sample_anchors[UNIQUE2][anchors_idx[UNIQUE2]] = match_aln_pos;
+								anchors_idx[UNIQUE2]++;
+							} else { // found all the anchors
+								break;
+							}
 						}
 					}
 					idx_q++;
