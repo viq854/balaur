@@ -306,8 +306,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	if(anchors_idx[UNIQUE1] == 0) {
 		// consider results for random sample if there are
 		// no unique hits
-		r->second_best_aln.inlier_votes = kmer_inliers[RAND];
-		r->second_best_aln.total_votes = total_kmer_matches;
+		//r->second_best_aln.inlier_votes = kmer_inliers[RAND];
+		r->max_total_votes_low_anchors = total_kmer_matches;
 	}
 
 	// keep track of max total votes
@@ -317,7 +317,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 	// DEBUG -----
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-		r->comp_votes_hit = kmer_inliers[0] > 0 ? kmer_inliers[0] : kmer_inliers[2];
+		r->comp_votes_hit = kmer_inliers[0] > kmer_inliers[1] ? kmer_inliers[0] : kmer_inliers[1];
+		r->comp_votes_hit = r->comp_votes_hit > kmer_inliers[2] ? r->comp_votes_hit : kmer_inliers[2];
 		//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 
 	}
