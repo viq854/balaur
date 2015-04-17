@@ -283,7 +283,12 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}*/
 
-	for(int i = 0; i < 2; i++) {
+	int n_results = 2;
+	if(anchors_idx[UNIQUE1] != 0 && (aln_ref_pos[RAND] < aln_ref_pos[UNIQUE1] - 2*delta_pos || aln_ref_pos[RAND] > aln_ref_pos[UNIQUE1] + 2*delta_pos)) {
+		n_results++;
+	}
+
+	for(int i = 0; i < n_results; i++) {
 		// keep track of max inlier votes and its alignment position
 		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
 			r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
