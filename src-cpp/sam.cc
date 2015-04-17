@@ -24,8 +24,9 @@ void store_alns_sam(reads_t& reads, const ref_t& ref, const index_params_t* para
 void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 	int flag = 0; // FLAG
 	if(r->top_aln.ref_start != 0) {
+		seq_t aln_pos = r->top_aln.ref_start;
 		if(ref.subsequence_offsets.size() > 1) {
-			r->top_aln.ref_start -= ref.subsequence_offsets[r->seq_id];
+			aln_pos -= ref.subsequence_offsets[r->seq_id];
 		}
 
 		if (r->top_aln.rc) flag |= SAM_FSR;
@@ -33,7 +34,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		// QNAME, FLAG, RNAME
 		fprintf(samFile, "%s\t%d\tREF_NAME\t", r->name.c_str(), flag);
 		// POS (1-based), MAPQ
-		fprintf(samFile, "%d\t%d\t", (int)(r->top_aln.ref_start+1), r->top_aln.score);
+		fprintf(samFile, "%d\t%d\t", (int)(aln_pos+1), r->top_aln.score);
 
 		// CIGAR
 		fprintf(samFile, "CIGAR");
