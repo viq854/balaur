@@ -136,7 +136,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 
 
 void global_alignment(const ref_match_t ref_contig, const ref_t& ref, read_t* r, const index_params_t* params) {
-	aln_t* aln = &r->aln;
+	aln_t* aln = &r->top_aln;
 	int hit_len = r->len + ref_contig.len;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
