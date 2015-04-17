@@ -1002,7 +1002,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->max_votes > r->max_votes_second_best) {
 				// if top contig has fewer non-inlier votes
 				// only allow if there is a secondary hit, otherwise most likely an unanchored repeat
-				//if(r->max_votes_noransac == r->max_votes_all || r->max_votes_second_best != 0) {
+				if(r->max_votes_repeat < r->max_votes) {
+
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
 					if(r->max_votes > CUTOFF || (r->max_votes_second_best == 0 && r->max_votes > CUTOFF2)) {
 
@@ -1020,7 +1021,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 							r->aln.score = 250*(r->max_votes*((float)r->max_votes/(float)r->max_votes_noransac) - second_best_score)/(float)(r->max_votes*(float)r->max_votes/(float)r->max_votes_noransac);
 						}
 					}
-				//}
+				}
 			}
 
 			// DEBUG ------
