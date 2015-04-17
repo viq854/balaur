@@ -239,7 +239,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 						std::sort(&sample_anchors[i][0], sample_anchors[i] + anchors_idx[i]);
 						init_aln_pos[i] = sample_anchors[i][anchors_idx[i]-1/2];
 
-						if(match_aln_pos > (init_aln_pos[i] - delta_pos) && match_aln_pos < (init_aln_pos + delta_pos)) { // inliers (within delta)
+						if(match_aln_pos > (init_aln_pos[i] - delta_pos) && match_aln_pos < (init_aln_pos[i] + delta_pos)) { // inliers (within delta)
 							kmer_inliers[i]++;
 							aln_ref_pos[i] += match_aln_pos;
 						}
@@ -280,18 +280,18 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			r->second_best_aln.total_votes = r->top_aln.total_votes;
 			// update best alignment
 			r->top_aln.inlier_votes = kmer_inliers[i];
-			r->top_aln.total_votes = total_kmer_matches[i];
+			r->top_aln.total_votes = total_kmer_matches;
 			r->top_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
 			r->top_aln.rc = ref_contig.rc;
 		} else if(kmer_inliers[i] > r->second_best_aln.inlier_votes) {
 			r->second_best_aln.inlier_votes = kmer_inliers[i];
-			r->second_best_aln.total_votes = total_kmer_matches[i];
+			r->second_best_aln.total_votes = total_kmer_matches;
 		}
 	}
 
 	// keep track of max total votes
 	if(total_kmer_matches > r->max_total_votes) {
-		r->max_total_votes;
+		r->max_total_votes = total_kmer_matches;
 	}
 
 	// DEBUG -----
