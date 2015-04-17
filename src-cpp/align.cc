@@ -646,9 +646,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	bool median = MEDIAN;
 	bool init_pass = true;
 	for(int p = 0; p < 2; p++) {
-		if(p == 1 && init_pass) {
-			// not all inliers were found
-			if(rand_inliers_idx > 1) {
+		if(p == 1 && init_pass) { // not all unique kmer anchors were found
+			if(rand_inliers_idx > 1) { // found at least 2
 				// find the average
 				if (median) {
 					std::sort(&maybe_inliers[0],maybe_inliers+rand_inliers_idx);
@@ -728,6 +727,13 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}
 
+	if(rand_inliers_idx < n_rand_inliers-1) {
+		// did not find min number of unique kmer anchors
+		if(votes_noransac > r->max_votes_repeat) {
+			r->max_votes_repeat = votes_noransac;
+		}
+	}
+
 	// keep track of max inlier votes and its alignment position
 	if(kmer_votes > r->max_votes) {
 		r->max_votes_second_best = r->max_votes;
@@ -751,15 +757,15 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		r->comp_votes_hit = kmer_votes;
 
 		if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-			//printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
+			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 		}
 		if(kmer_votes > 0) {
-			//printf("TRUE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes,  avg_aln_pos, ref_contig.pos);
+			printf("TRUE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes,  avg_aln_pos, ref_contig.pos);
 		} else {
-			//printf("TRUE n_inliers %u votes %u avg pos %u contig pos %u \n", rand_inliers_idx, kmer_votes,  avg_aln_pos, ref_contig.pos);
+			printf("TRUE n_inliers %u votes %u avg pos %u contig pos %u \n", rand_inliers_idx, kmer_votes,  avg_aln_pos, ref_contig.pos);
 		}
 	} else if (kmer_votes > 0) {
-		//printf("FALSE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes, avg_aln_pos, ref_contig.pos);
+		printf("FALSE aln pos %u votes %u avg pos %u contig pos %u \n", aln_ref_pos/kmer_votes, kmer_votes, avg_aln_pos, ref_contig.pos);
 	}
 
 	return kmer_votes;
