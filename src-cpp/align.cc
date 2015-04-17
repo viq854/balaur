@@ -300,8 +300,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 
 	}
-	printf("aln pos %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
-						aln_ref_pos/kmer_inliers,
+	printf("aln pos %u %u %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
+						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
 						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
 						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
 
