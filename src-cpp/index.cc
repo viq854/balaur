@@ -122,7 +122,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
 	mark_freq_kmers(ref, params);
 
 	printf("Loading valid windows mask... \n");
