@@ -116,7 +116,7 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa
 		exit(1);
 	}
 
-	freq_kmers_bitmap.resize(1U<<32);
+	freq_kmers_bitmap.resize(UINT_MAX + 1);
 	marisa::Keyset keys;
 	uint32 kmer, count;
 	uint32 filtered = 0;
@@ -152,7 +152,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 		printf("store_valid_window_mask: Cannot open the mask file %s!\n", fname.c_str());
 		exit(1);
 	}
-	for (int i = 0; i < ref.ignore_window_bitmask.size(); i++) {
+	for (uint32 i = 0; i < ref.ignore_window_bitmask.size(); i++) {
 		if(ref.ignore_window_bitmask[i]) {
 			char b = '1';
 			file.write(reinterpret_cast<char*>(&b), sizeof(char));
@@ -217,7 +217,7 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 		printf("store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
 		exit(1);
 	}
-	for (int i = 0; i < ref.len - params->k2 + 1; i++) {
+	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
 		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i]), sizeof(ref.precomputed_kmer2_hashes[i]));
 	}
 	file.close();
@@ -536,7 +536,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		}
 
 		// compute the reverse complement
-		for(int i = 0; i < r.len; i++) {
+		for(uint32 i = 0; i < r.len; i++) {
 			r.rc.append(1, nt4_complement[(int)r.seq.at(r.len-i-1)]);
 		}
 		reads.reads.push_back(r);
