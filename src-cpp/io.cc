@@ -116,7 +116,7 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa
 		exit(1);
 	}
 
-	freq_kmers_bitmap.resize(1<<32);
+	freq_kmers_bitmap.resize(1U<<32);
 	marisa::Keyset keys;
 	uint32 kmer, count;
 	uint32 filtered = 0;
