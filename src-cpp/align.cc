@@ -26,8 +26,8 @@
 static const int N_RAND_INLIERS = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 10);
 static const int DELTA_POS = (getenv("DELTA_POS") ? atoi(getenv("DELTA_POS")) : 10);
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
-static const int CUTOFF_STDDEV_WEIGHT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 5);
-static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 50);
+static const int CUTOFF_STDDEV_WEIGHT = (getenv("WEIGHT_SCORE") ? atoi(getenv("WEIGHT_SCORE")) : 1000);
+static const int CUTOFF = (getenv("CUTOFF") ? atoi(getenv("CUTOFF")) : 4000);
 
 #define CONTIG_PADDING 100
 
