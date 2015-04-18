@@ -317,7 +317,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}
 	if(VERBOSE == 2) {
-		printf("aln pos %u %u %u votes %u %u %u noransac votes %u avg pos %u %u %u contig pos %u len %u \n",
+		printf("aln pos %llu %llu %llu votes %u %u %u noransac votes %u avg pos %llu %llu %llu contig pos %u len %u \n",
 						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
 						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
 						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
@@ -594,13 +594,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 			// DEBUG ------
 			if(VERBOSE == 4 && !r->collected_true_hit) {
-				VectorMinHash window_hashes(params->h);
-				bool valid_hash = minhash(ref.seq.c_str(), r->ref_pos_l-1, params->ref_window_size,
-							ref.high_freq_kmer_trie,
-							ref.ignore_kmer_bitmask,
-							marisa::Trie(), params,
-							params->kmer_hasher, false,
-							window_hashes);
 				print_read(r);
 				printf("READ HASHES F (valid = %d): \n", r->valid_minhash);
 				for(uint32 x = 0; x < params->h; x++) {
