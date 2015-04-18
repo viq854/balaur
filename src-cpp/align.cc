@@ -627,15 +627,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("%c", iupacChar[(int)ref.seq[x]]);
 				}
 				printf("\n");
-				printf("WINDOW HASHES (valid = %d): \n", valid_hash);
-				for(uint32 x = 0; x < params->h; x++) {
-					printf("%u ", window_hashes[x]);
-				}
-				printf("\n");
-				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(window_hashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-					printf("t = %u, hash = %u\n", t, bucket_hash);
-				}
 
 			}
 			if (VERBOSE == 1 && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
