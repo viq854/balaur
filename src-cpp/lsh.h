@@ -17,11 +17,11 @@ struct minhash_matrix_t {
 	uint32 oldest_col_index;
 };
 
-bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+bool minhash(const char* seq, const seq_t seq_len,
+		const VectorBool& ref_freq_kmer_bitmask,
 		const marisa::Trie& ref_freq_kmer_trie,
-		const VectorBool& ref_freq_kmers_bitmask,
 		const marisa::Trie& reads_hist,
-		const index_params_t* params, CyclicHash* hasher, const bool is_ref,
+		const index_params_t* params, CyclicHash* hasher,
 		VectorMinHash& min_hashes);
 bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t seq_len,
 		minhash_matrix_t& rolling_minhash_matrix,

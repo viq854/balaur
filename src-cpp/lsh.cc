@@ -34,88 +34,66 @@ uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 	if(ref_high_freq_hist.lookup(agent)) {
 		return 0;
 	}
-
-//	if(!is_ref) {
-//		if(contains_kmer(kmer, reads_low_freq_hist)) {
-//			return 0;
-//		}
-//	}
 	return 1;
 }
 
 /////////////////////////
 // --- LSH: minhash ---
 
-bool minhash(const char* seq, const seq_t seq_offset, const seq_t seq_len,
+bool minhash(const char* seq, const seq_t seq_len,
+			const VectorBool& ref_freq_kmer_bitmap,
 			const marisa::Trie& ref_freq_kmer_trie,
-			const VectorBool& ref_freq_kmer_bitmask,
 			const marisa::Trie& reads_hist,
-			const index_params_t* params, CyclicHash* kmer_hasher, const bool is_ref,
+			const index_params_t* params,
+			CyclicHash* kmer_hasher,
 			VectorMinHash& min_hashes) {
 
-//	kmer_hasher->hashvalue = 0;
-//	for(uint32 i = 0; i < params->k; i++) {
-//		unsigned char c = seq[seq_offset + i];
-//		kmer_hasher->eat(c);
-//	}
-
-//	bool any_valid_kmers = false;
-//	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
-//		// check if the kmer should be discarded
-//		if(!get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params)) {
-//			//minhash_t kmer_hash = kmer_hasher->hashvalue;
-//			minhash_t kmer_hash = CityHash32(&seq[seq_offset + i], params->k);
-//			for(uint32_t h = 0; h < params->h; h++) { // update the min values
-//				const rand_hash_function_t* f = &params->minhash_functions[h];
-//				minhash_t min = f->apply(kmer_hash);
-//				if(min < min_hashes[h] || i == 0) {
-//					min_hashes[h] = min;
-//				}
-//			}
-//			//any_valid_kmers = true;
-//		}
-//		// roll the hash
-////		if(i < seq_len - params->k) {
-////			unsigned char c_out = seq[seq_offset + i];
-////			unsigned char c_in = seq[seq_offset + i + params->k];
-////			kmer_hasher->update(c_out, c_in);
-////		}
-//	}
-//	return any_valid_kmers;
+	/*kmer_hasher->hashvalue = 0; //----- rolling hash
+	for(uint32 i = 0; i < params->k; i++) {
+		unsigned char c = seq[seq_offset + i];
+		kmer_hasher->eat(c);
+	}
 	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if the kmer should be discarded
-		char weight = 0;
-		if(is_ref) {
-			weight = !ref_freq_kmer_bitmask[seq_offset + i];
-		} else {
-			weight = get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params);
-		}
-		if(weight != 0) {
+		if(!get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params)) {
 			//minhash_t kmer_hash = kmer_hasher->hashvalue;
 			minhash_t kmer_hash = CityHash32(&seq[seq_offset + i], params->k);
 			for(uint32_t h = 0; h < params->h; h++) { // update the min values
 				const rand_hash_function_t* f = &params->minhash_functions[h];
 				minhash_t min = f->apply(kmer_hash);
-				if(min < min_hashes[h] || !any_valid_kmers) {
+				if(min < min_hashes[h] || i == 0) {
 					min_hashes[h] = min;
 				}
 			}
-		} else {
-			continue;
+			//any_valid_kmers = true;
 		}
-
 		// roll the hash
-//		if(i < seq_len - params->k) {
-//			unsigned char c_out = seq[seq_offset + i];
-//			unsigned char c_in = seq[seq_offset + i + params->k];
-//			kmer_hasher->update(c_out, c_in);
-//		}
-		any_valid_kmers = true;
+		if(i < seq_len - params->k) {
+			unsigned char c_out = seq[seq_offset + i];
+			unsigned char c_in = seq[seq_offset + i + params->k];
+			kmer_hasher->update(c_out, c_in);
+		}
 	}
+	return any_valid_kmers;-------*/
 
-	if(!any_valid_kmers) {
-		std::fill(min_hashes.begin(), min_hashes.end(), UINT_MAX);
+	bool any_valid_kmers = false;
+	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
+		// check if this kmer should be discarded
+		uint32_t packed_kmer;
+		if(pack_32(&seq[i], params->k, &packed_kmer) < 0) {
+			continue; // has ambiguous bases
+		}
+		if(ref_freq_kmer_bitmap[packed_kmer]) continue; // this is a high-freq kmer
+		minhash_t kmer_hash = CityHash32(&seq[i], params->k);
+		for(uint32_t h = 0; h < params->h; h++) { // update the min values
+			const rand_hash_function_t* f = &params->minhash_functions[h];
+			minhash_t min = f->apply(kmer_hash);
+			if(min < min_hashes[h] || !any_valid_kmers) {
+				min_hashes[h] = min;
+			}
+		}
+		any_valid_kmers = true;
 	}
 	return any_valid_kmers;
 }

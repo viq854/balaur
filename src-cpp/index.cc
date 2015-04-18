@@ -360,8 +360,7 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 
 	// 3. load the frequency of each kmer and collect high-frequency kmers
 	double start_time = omp_get_wtime();
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_trie, params->max_count);
-	//mark_freq_kmers(ref, params);
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
 	double end_time = omp_get_wtime();
 	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
 
@@ -411,19 +410,19 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes.resize(params->h);
-		r->valid_minhash = minhash(r->seq.c_str(), 0, r->len,
+		r->valid_minhash = minhash(r->seq.c_str(), r->len,
+				ref.high_freq_kmer_bitmap,
 				ref.high_freq_kmer_trie,
-				ref.ignore_kmer_bitmask,
 				marisa::Trie(), params,
-				params->kmer_hasher, false,
+				params->kmer_hasher,
 				r->minhashes);
 
 		r->minhashes_rc.resize(params->h);
-		r->valid_minhash_rc = minhash(r->rc.c_str(), 0, r->len,
+		r->valid_minhash_rc = minhash(r->rc.c_str(), r->len,
+				ref.high_freq_kmer_bitmap,
 				ref.high_freq_kmer_trie,
-				ref.ignore_kmer_bitmask,
 				marisa::Trie(), params,
-				params->kmer_hasher, false,
+				params->kmer_hasher,
 				r->minhashes_rc);
 	}
 	double end_time = omp_get_wtime();
