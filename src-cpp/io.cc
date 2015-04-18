@@ -104,7 +104,7 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
-void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
+void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 
@@ -116,6 +116,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 		exit(1);
 	}
 
+	freq_kmers_bitmap.resize(1<<32);
 	marisa::Keyset keys;
 	uint32 kmer, count;
 	uint32 filtered = 0;
@@ -125,6 +126,7 @@ void load_freq_kmers(const char* refFname, marisa::Trie& freq_trie, const uint32
 		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
 		file.read(reinterpret_cast<char*>(&count), sizeof(count));
 		if(count >= max_count_threshold) {
+			freq_kmers_bitmap[kmer] = true;
 			unsigned char* seq = (unsigned char*) malloc(17*sizeof(char));
 			unpack_32(kmer, seq, 16);
 			seq[16] = '\0';

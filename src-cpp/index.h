@@ -197,12 +197,11 @@ typedef struct {
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	marisa::Trie high_freq_kmer_trie;	// frequent reference kmers
-	marisa::Trie high_freq_kmer_trie_RC;// frequent RC kmers
+	marisa::Trie high_freq_kmer_trie;	// frequent reference kmers TRIE
+	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
+
 	VectorBool ignore_kmer_bitmask;
-	VectorBool ignore_kmer_bitmask_RC;
 	VectorBool ignore_window_bitmask;
-	VectorBool ignore_window_bitmask_RC;
 
 	VectorBucketTables hash_tables;		// LSH min-hash index, T
 
