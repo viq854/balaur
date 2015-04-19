@@ -80,13 +80,15 @@ bool minhash(const char* seq, const seq_t seq_len,
 	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if this kmer should be discarded
-		//uint32_t packed_kmer;
-		//if(pack_32(&seq[i], params->k, &packed_kmer) < 0) {
-		//	continue; // has ambiguous bases
-		//}
-		//if(ref_freq_kmer_bitmap[packed_kmer]) continue; // this is a high-freq kmer
+		uint32_t packed_kmer;
+		if(pack_32(&seq[i], params->k, &packed_kmer) < 0) {
+			continue; // has ambiguous bases
+		}
+		if(ref_freq_kmer_bitmap[packed_kmer]) {
+			continue; // this is a high-freq kmer
+		}
 
-		if(!get_kmer_weight(&seq[i], params->k, ref_freq_kmer_trie, reads_hist, params)) continue;
+		//if(!get_kmer_weight(&seq[i], params->k, ref_freq_kmer_trie, reads_hist, params)) continue;
 
 		minhash_t kmer_hash = CityHash32(&seq[i], params->k);
 		for(uint32_t h = 0; h < params->h; h++) { // update the min values

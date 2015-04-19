@@ -70,9 +70,16 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 		seq_t chunk_start = tid*(ref.len - params->k + 1) / n_threads;
 		seq_t chunk_end = (tid + 1)*(ref.len - params->k + 1) / n_threads;
 
-		marisa::Agent agent;
+		//marisa::Agent agent;
 		for(seq_t i = chunk_start; i < chunk_end; i++) {
-			for (uint32 k = 0; k < params->k; k++) {
+			uint32_t packed_kmer;
+			if(pack_32(&ref.seq.c_str()[i], params->k, &packed_kmer) < 0) {
+				ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
+			}
+			if(ref.high_freq_kmer_bitmap[packed_kmer]) {
+				ref.ignore_kmer_bitmask[i] = 1;
+			}
+			/*for (uint32 k = 0; k < params->k; k++) {
 				if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
 					ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
 					break;
@@ -81,7 +88,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 			agent.set_query(&ref.seq.c_str()[i], params->k);
 			if(ref.high_freq_kmer_trie.lookup(agent)) {
 				ref.ignore_kmer_bitmask[i] = 1;
-			}
+			}*/
 		}
 	}
 	printf("Done marking frequent kmers time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
