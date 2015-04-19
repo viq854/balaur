@@ -106,7 +106,7 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 
 bool kmer_has_zero(uint32 kmer) {
 	uint32 mask = (3 << (BITS_IN_WORD - BITS_PER_CHAR));
-	for (int i = 0; i < 15; i++) {
+	for (int i = 0; i < 16; i++) {
 		if (!(kmer & mask)) {
 			return true;
 		}
