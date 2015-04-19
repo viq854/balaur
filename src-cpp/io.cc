@@ -104,6 +104,17 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
+bool kmer_has_zero(uint32 kmer) {
+	uint32 mask = (3 << (BITS_IN_WORD - BITS_PER_CHAR));
+	for (int i = 0; i < 15; i++) {
+		if (!(kmer & mask)) {
+			return true;
+		}
+		mask >>= BITS_PER_CHAR;
+	}
+	return false;
+}
+
 void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa::Trie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
@@ -120,24 +131,29 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa
 	marisa::Keyset keys;
 	uint32 kmer, count;
 	uint32 filtered = 0;
+	uint32 tot_filtered = 0;
 	int map_size;
 	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
 	while(map_size >= 0) {
 		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
 		file.read(reinterpret_cast<char*>(&count), sizeof(count));
 		if(count >= max_count_threshold) {
-			freq_kmers_bitmap[kmer] = true;
+			tot_filtered++;
+			if (!kmer_has_zero(kmer)) {
+				freq_kmers_bitmap[kmer] = true;
+				filtered++;
+			}
 			unsigned char* seq = (unsigned char*) malloc(17*sizeof(char));
 			unpack_32(kmer, seq, 16);
 			seq[16] = '\0';
 			keys.push_back((const char*) seq);
-			filtered++;
+			free(seq);
 		}
 		map_size--;
 	}
 	freq_trie.build(keys, 0);
 	file.close();
-	printf("Filtered %u kmers \n", filtered);
+	printf("Filtered %u kmers, tot %u \n", filtered, tot_filtered);
 }
 
 void store_valid_window_mask(const char* refFname, const ref_t& ref, const index_params_t* params) {
