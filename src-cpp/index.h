@@ -6,63 +6,50 @@
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
 typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 
-#include <omp.h>
 #include "hash.h"
 
-#define INDEX_READS_RC 1
-#define INDEX_READS_REF 0
 #define DISK_SYNC_PARTIAL_TABLES 0
+#define ENABLE_MARISA_TRIE 0
 
 // program parameters
 typedef struct {	
 	algorithm alg; 					// LSH scheme to use
+
+	// LSH parameters
 	kmer_selection kmer_type; 		// scheme for extracting the kmer features
-
-	// sequence hashing parameters => to produce sequence sketches
-	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 k; 						// length of the sequence kmers
-	uint32 k2; 						// length of the sequence kmers for vote counting
 	uint32 kmer_dist;				// shift between consecutive kmers
-	CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 h; 						// number of hash functions for min-hash sketches
-	VectorHashFunctions minhash_functions;	// hash functions for min-hash
-
-	// sequence kmer filtering
-	uint64 max_count;				// upper bound on kmer occurrence in the reference
-	uint64 min_count;				// lower bound on kmer occurrence in the read set
-
-	// min-hash sketch hashing
 	uint32 n_tables; 				// number of hash tables for the sketches
 	uint32 sketch_proj_len;			// length of the sketch projection
 	VectorU32 sketch_proj_indices;	// indices into the sketch for the sparse projections
 	uint32 n_buckets_pow2;  		// n_buckets in a hash table = 2^n_buckets_pow2
 	uint32 bucket_size;				// max number of entries to keep per bucket
 	rand_hash_function_t sketch_proj_hash_func; // hash function for sketch projection vector hashing
+	VectorHashFunctions minhash_functions;	// hash functions for min-hash
+	CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
+	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 bucket_entry_coverage;
-	uint32 contig_gap;
 
-	// seed extension / chaining
-	uint32 bandw;
-	uint32 max_chain_gap;
-	uint32 match;
-	uint32 mismatch;
-	uint32 gap_open;
-	uint32 gap_extend;
-	uint32 zdrop;
-	int8_t score_matrix[25];
+	// sequence kmer filtering
+	uint64 max_count;				// upper bound on kmer occurrence in the reference
+	uint64 min_count;				// lower bound on kmer occurrence in the read set
 
 	// alignment evaluation
+	uint32 k2; 						// length of the sequence kmers for vote counting
+	bool precomp_k2;				// precompute k2 kmers for the reference
 	uint32 min_n_hits;
-	uint32 dist_best_hit; // how many fewer than best table hits to still keep
+	uint32 dist_best_hit; 			// how many fewer than best table hits to still keep
 	uint32 max_matched_contig_len;
-	uint32 n_top_buckets_search;
-	uint32 max_best_hits;
-	uint32 max_suboptimal_hits;
-	uint32 hit_collection_interval;
+	uint32 delta_inlier;
+	uint32 delta_x;
+	uint32 n_init_anchors;
+	uint32 votes_cutoff;
+	bool enable_scale;
 
-	// sim-hash mapping parameters
+	// simhash mapping parameters
 	uint32 p; 					// number of permutation tables
-	uint32 msbits_match;			// number of most significant bits to match
+	uint32 msbits_match;		// number of most significant bits to match
 	uint32 max_hammd; 			// maximum hamming distance to
 
 	// multi-threading
@@ -74,53 +61,29 @@ typedef struct {
 
 	void set_default_index_params() {
 		kmer_type = OVERLAP;
-		ref_window_size = 150;
-		k = 16;
-		k2 = 16;
-		kmer_dist = 1;
 		h = 64;
-		max_count = 200;
-		min_count = 0;
-
-		n_tables = 1;
-		sketch_proj_len = 4;
+		n_tables = 32;
+		sketch_proj_len = 2;
 		n_buckets_pow2 = 16;
 		bucket_size = 200;
+		k = 16;
+		kmer_dist = 1;
 		bucket_entry_coverage = 10;
-		contig_gap = 100;
-
-		p = 1;
-		msbits_match = 24;
-		max_hammd = 10;
-
-		n_threads = 1;
-
+		ref_window_size = 1000;
+		max_count = 300;
+		min_count = 0;
+		k2 = 32;
+		precomp_k2 = true;
 		min_n_hits = 2;
 		dist_best_hit = 2;
 		max_matched_contig_len = 100000;
-		n_top_buckets_search = 1;
+		n_init_anchors = 10;
+		delta_inlier = 10;
+		delta_x = 3;
+		votes_cutoff = 50;
+		enable_scale = true;
 
-		max_best_hits = 100;
-		max_suboptimal_hits = 500;
-		hit_collection_interval = 200000000;
-
-		bandw = 100;
-		max_chain_gap = 500;
-		match = 1;
-		mismatch = 4;
-		gap_open = 6;
-		gap_extend = 1;
-		zdrop = 100;
-		int i, j, k;
-		for (i = k = 0; i < 4; ++i) {
-			for (j = 0; j < 4; ++j) {
-				score_matrix[k++] = i == j? match : -mismatch;
-			}
-			score_matrix[k++] = -1; // ambiguous base
-		}
-		for (j = 0; j < 5; ++j) {
-			score_matrix[k++] = -1;
-		}
+		n_threads = 1;
 	}
 
 	// set the initial kmer hash function (rolling hash)
@@ -192,19 +155,15 @@ typedef std::vector<buckets_t> VectorBucketTables;
 // reference genome index
 typedef struct {
 	std::string seq; 					// reference sequence
-	std::string seq_RC; 				// reference RC
 	seq_t len;							// reference sequence length
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
 	marisa::Trie high_freq_kmer_trie;	// frequent reference kmers TRIE
 	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
-
 	VectorBool ignore_kmer_bitmask;
 	VectorBool ignore_window_bitmask;
-
 	VectorBucketTables hash_tables;		// LSH min-hash index, T
-
 	std::vector<minhash_t> precomputed_kmer2_hashes;
 } ref_t;
 
@@ -223,9 +182,7 @@ struct aln_t {
 	seq_t ref_start; 	// start position in the reference sequence
 	bool rc;			// reverse complement match
 	int score;
-
 	int inlier_votes;       // number of kmers supporting the aln pos
-	int outlier_votes_ref;  // number of ref kmers not supporting the aln pos
 	int total_votes;		// total number of kmers that matched
 };
 
@@ -235,6 +192,7 @@ struct read_t {
 	std::string seq;				// read sequence
 	std::string rc;					// reverse complement sequence
 	std::string qual;				// quality scores
+	uint32 rid;
 
 	// LSH sketches
 	VectorMinHash minhashes;		// minhash vector
@@ -242,27 +200,22 @@ struct read_t {
 	char valid_minhash;
 	char valid_minhash_rc;
 
-	// kmer hashes
+	// kmer k2 hashes
 	std::vector<std::pair<minhash_t, uint32>> kmers_f;
 	std::vector<std::pair<minhash_t, uint32>> kmers_rc;
 
-	// Mappings
+	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
-	std::vector< VectorSeqPos * > ref_bucket_matches_by_table;
+	std::vector<VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
-	std::vector<int> ref_match_sizes;
-
-	uint32 rid;
-
 	int best_n_bucket_hits;
 	bool any_bucket_hits;
-
 	aln_t top_aln;
 	aln_t second_best_aln;
-	
 	int max_total_votes;
 	int max_total_votes_low_anchors;
 
+	// simulation alignment info/stats
 	char acc; // DEBUG: whether read matched accurately
 	char top_hit_acc;
 	char dp_hit_acc;
@@ -278,41 +231,40 @@ struct read_t {
 	uint32_t ref_pos_r;
 
 	read_t() {
+		len = 0;
+		rid = 0;
+
 		valid_minhash = 0;
 		valid_minhash_rc = 0;
 		best_n_bucket_hits = 0;
 		any_bucket_hits = false;
 
+		// alignment info
 		top_aln.score = 0;
 		top_aln.ref_start = 0;
 		top_aln.inlier_votes = 0;
-		top_aln.outlier_votes_ref = 0;
 		top_aln.total_votes = 0;
 		second_best_aln.inlier_votes = 0;
-		second_best_aln.outlier_votes_ref = 0;
 		second_best_aln.total_votes = 0;
+		max_total_votes = 0;
+		max_total_votes_low_anchors = 0;
 
+		// simulation alignment info/stats
 		acc = 0;
 		collected_true_hit = 0;
 		processed_true_hit = false;
 		bucketed_true_hit = 0;
 		comp_votes_hit = 0;
+		dp_hit_acc = 0;
+		top_hit_acc = 0;
 		strand = 0;
 		seq_id = 0;
 		ref_pos_l = 0;
 		ref_pos_r = 0;
-		dp_hit_acc = 0;
-		top_hit_acc = 0;
-		len = 0;
-		rid = 0;
-
-		max_total_votes = 0;
-		max_total_votes_low_anchors = 0;
 	}
 };
 typedef std::vector<read_t> VectorReads;
 typedef std::vector<read_t*> VectorPReads;
-
 
 // collection of reads
 typedef struct {
@@ -321,19 +273,6 @@ typedef struct {
 	MapKmerCounts kmer_hist;		// kmer histogram
 	MapKmerCounts low_freq_kmer_hist;
 } reads_t;
-
-
-//typedef struct {
-//	std::string freq_kmer_hist_fname;
-//	std::string hash_func_fname;
-//	std::string sparse_ind_fname;
-//
-//	void prep_index_files(std::string& fname) {
-//		freq_kmer_hist_fname += fname + std::string(".freq");
-//		hash_func_fname += fname + std::string(".hash");
-//		sparse_ind_fname += fname + std::string(".sparse");
-//	}
-//} index_files_t;
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx);
 void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);

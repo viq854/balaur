@@ -1,3 +1,30 @@
+/*
+ * Program TOTORO
+ * Victoria Popic (viq@stanford.edu) 2013-2015
+ *
+ * MIT License
+ *
+ * Copyright (c) 2015 Victoria Popic.
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+*/
 #include <stdio.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -6,156 +33,89 @@
 #include <math.h>
 #include <getopt.h>
 #include <string.h>
-
-#include "types.h"
 #include "index.h"
 #include "align.h"
-#include "io.h"
 
-
-void compute_hash_diff_stats(ref_t& ref, const reads_t& reads, const index_params_t* params) {
-//	printf("**********Diff Stats**************\n");
-//
-//	VectorU32 diff_hist(SIMHASH_BITLEN);
-//	VectorU32 minh_hist(params->h);
-//	uint32 n_unmapped = 0;
-//
-//	uint32 n_checked = 0;
-//
-//	#pragma omp parallel for
-//	for(uint32 i = 0; i < reads.reads.size(); i++) {
-//			read_t r = reads.reads[i];
-//			unsigned int pos_l, pos_r;
-//			int strand;
-//			parse_read_mapping(r.name.c_str(), &pos_l, &pos_r, &strand);
-//			seq_t true_pos = pos_l - 1;
-//
-//			MapPos2Window::iterator v;
-//			if((v = ref.windows_by_pos.find(true_pos)) == ref.windows_by_pos.end()) {
-//				print_read(&r);
-//				n_unmapped++;
-//				continue;
-//			}
-//			ref_win_t ref_window = v->second;
-//
-//			if(params->alg == MINH) {
-//					// count the number of minh values shared between the read and its window
-//					uint32 n_minh_shared = 0;
-//					for(uint32 h = 0; h < params->h; h++) {
-//						minhash_t minh = r.minhashes[h];
-//						for(uint32 h_ref = 0; h_ref < params->h; h_ref++) {
-//								if(ref_window.minhashes[h_ref] == minh) {
-//										n_minh_shared++;
-//										break;
-//								}
-//						}
-//					}
-//
-//					#pragma omp critical
-//					{
-//						if(n_minh_shared == 0 && n_checked < 5) {
-//								//printf("%s \n", r.name.c_str());
-//								//print_read(&r);
-//								//for(uint32 p = 0; p < params->ref_window_size; p++) {
-//								///		printf("%c", iupacChar[(int) ref.seq[true_pos + p]]);
-//								//} printf("\n");
-//								//printf("%d %llu \n", strand, true_pos);
-//
-//								for(uint32 h = 0; h < params->h; h++) {
-//									//printf("%u %u \n", r.minhashes[h], ref_window.minhashes[h]);
-//								}
-//								n_checked++;
-//						}
-//					}
-//
-//					#pragma omp atomic
-//					minh_hist[n_minh_shared]++;
-//
-//			} else {
-//					int d = hamming_dist(ref_window.simhash, r.simhash);
-//					#pragma omp atomic
-//					diff_hist[d]++;
-//			}
-//	}
-//
-//	if(params->alg == MINH) {
-//		for(uint32 i = 0; i < params->h; i++) {
-//			printf("%d: %d\n", i, minh_hist[i]);
-//		}
-//		printf("unmapped: %d\n", n_unmapped);
-//	}
-//	else {
-//		for(uint32 i = 0; i < SIMHASH_BITLEN; i++) {
-//			printf("%d: %d\n", i, diff_hist[i]);
-//		}
-//	}
+void print_usage(index_params_t* params) {
+	printf("Usage: ./totoro [options] <index|align> <ref.fa> <reads.fq> \n");
+	printf("Hashing options:\n\n");
+	printf("       -h        number of hash functions for MinHash fingerprint construction (i.e. fingerprint length) [%d]\n", params->h);
+	printf("       -T        number of hash tables [%d]\n", params->n_tables);
+	printf("       -k        length of the sequence kmers [%d]\n", params->k);
+	printf("       -b        length of the fingerprint projections [%d]\n", params->sketch_proj_len);
+	printf("\Index-only options:\n\n");
+	printf("       -w        length of the reference windows to hash (should be set to the expected read length for optimal results) [%d]\n", params->ref_window_size);
+	printf("       -H        upper bound on kmer occurrence in the reference [%d]\n", params->max_count);
+	printf("       -s        initially allocated hash table bucket size [%d]\n", params->bucket_size);
+	printf("\nAlignment-only options:\n\n");
+	printf("       -m        minimum required number of buckets shared between a reference window and the read for a contig to be examined [%d]\n", params->min_n_hits);
+	printf("       -N        maximum distance from the best number of shared buckets found for a contig to be examined [%d]\n", params->dist_best_hit);
+	printf("       -v        length k2 of kmers counted during voting [%d]\n", params->k2);
+	printf("       -P        disable the pre-computation of k2 hash values for the reference kmers (executed once per k2 length) [ON]\n");
+	printf("       -n        number of initial inlier anchors to consider [%d]\n", params->n_init_anchors);
+	printf("       -d        delta distance from the inlier anchor median considered close enough [%d]\n", params->delta_inlier);
+	printf("       -x        delta multiplier for the second RANSAC pass (i.e. number of deltas away the second position must be from the first pass median) [%d]\n", params->delta_x);
+	printf("       -c        cutoff minimum number of inlier votes [dynamic]\n");
+	printf("       -S        disable votes scaling [ON]\n");
+	printf("\nOther options:\n\n");
+	printf("       -t        number of threads [%d]\n", params->n_threads);
 }
 
 int main(int argc, char *argv[]) {
-	if (argc < 4) {
-		printf("Usage: ./rx [options] <index|align|cluster> <ref.fa> <reads.fq> \n");
-		exit(1);
-	}
-
 	index_params_t params;
 	params.set_default_index_params();
 
+	if (argc < 4) {
+		print_usage(&params);
+		exit(1);
+	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:g:St:I:m:s:d:v:N:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:")) >= 0) {
 		switch (c) {
-			case 'i': params.in_index_fname = std::string(optarg); break;
-			case 'o': params.out_index_fname = std::string(optarg); break;
-			case 'w': params.ref_window_size = atoi(optarg); break;
-			case 'k': params.k = atoi(optarg); break;
-			case 'v': params.k2 = atoi(optarg); break;
 			case 'h': params.h = atoi(optarg); break;
+			case 'T': params.n_tables = atoi(optarg); break;
+			case 'k': params.k = atoi(optarg); break;
+			case 'b': params.sketch_proj_len = atoi(optarg); break;
+			case 'w': params.ref_window_size = atoi(optarg); break;
+			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
+			case 's': params.bucket_size = atoi(optarg); break;
+			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
 			case 'H': params.max_count = atoi(optarg); break;
 			case 'L': params.min_count = atoi(optarg); break;
-			case 'T': params.n_tables = atoi(optarg); break;
-			case 'b': params.sketch_proj_len = atoi(optarg); break;
-			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
-			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
-			case 'g': params.contig_gap = atoi(optarg); break;
-			case 't': params.n_threads = atoi(optarg); break;
-			case 'I': params.hit_collection_interval = atoi(optarg); break;
 			case 'm': params.min_n_hits = atoi(optarg); break;
-			case 's': params.bucket_size = atoi(optarg); break;
-			case 'd': params.dist_best_hit = atoi(optarg); break;
-			case 'N': params.n_top_buckets_search = atoi(optarg); break;
+			case 'N': params.dist_best_hit = atoi(optarg); break;
+			case 'v': params.k2 = atoi(optarg); break;
+			case 'P': params.precomp_k2 = false; break;
+			case 'S': params.enable_scale = false; break;
+			case 'n': params.n_init_anchors = atoi(optarg); break;
+			case 'd': params.delta_inlier = atoi(optarg); break;
+			case 'x': params.delta_x = atoi(optarg); break;
+			case 'c': params.votes_cutoff = atoi(optarg); break;
+			case 'i': params.in_index_fname = std::string(optarg); break;
+			case 'o': params.out_index_fname = std::string(optarg); break;
+			case 't': params.n_threads = atoi(optarg); break;
 			default: return 0;
 		}
 	}
 
-	printf("**********RX**************\n");
-	printf("Configuration: \n");
-	printf("w = %u \n", params.ref_window_size);
-	printf("k = %u \n", params.k);
-	printf("h = %u \n", params.h);
-	printf("T = %u \n", params.n_tables);
-	printf("b = %u \n", params.sketch_proj_len);
-	printf("m = %u \n", params.min_n_hits);
-	printf("n_buckets = %f \n", pow(2, params.n_buckets_pow2));
-
-
+	printf("**********TOTORO**************\n");
 	srand(1);
 	if (strcmp(argv[1], "index") == 0) {
 		printf("Mode: Indexing \n");
-		params.alg = MINH; // only min-hash enabled for now
+		params.alg = MINH; // only minhash enabled for now
 		params.set_kmer_hash_function();
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
 		params.generate_sparse_sketch_projections();
 
-		// index the reference
+		// index the reference and store
 		ref_t ref;
 		index_ref_lsh(argv[optind+1], &params, ref);
-
-		// store the index
 		store_index_ref_lsh(argv[optind+1], &params, ref);
 
 	} else if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
-		params.alg = MINH; // only min-hash enabled for now
+		params.alg = MINH; // only minhash enabled for now
 		params.set_kmer_hash_function();
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
@@ -169,15 +129,12 @@ int main(int argc, char *argv[]) {
 		reads_t reads;
 		index_reads_lsh(argv[optind+2], ref, &params, reads);
 
-		// 3. map the hashes
+		// 3. align
 		align_reads_minhash(ref, reads, &params);
 
-	} else if (strcmp(argv[1], "cluster") == 0) {
-
 	} else {
-		printf("Usage: ./rx [options] <align|cluster> <ref.fa> <reads.fq> \n");
+		print_usage(&params);
 		exit(1);
 	}
-
 	return 0;
 }

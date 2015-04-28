@@ -1,10 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include <omp.h>
 #include <algorithm>
 #include <time.h>
-
 #include <omp.h>
 #include "types.h"
 #include "index.h"
@@ -13,43 +11,8 @@
 #include "hash.h"
 
 
-// checks if the given sequence is informative or not
-// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
-int is_inform_ref_window(const char* seq, const uint32_t len, const index_params_t* params) {
-	uint32 base_counts[5] = { 0 };
-	for(uint32 i = 0; i < len; i++) {
-		base_counts[(int) seq[i]]++;
-	}
-	if(base_counts[4] > params->ref_window_size/50) { // N ambiguous bases
-		return 0;
-	}
-	uint32 n_empty = 0;
-	for(uint32 i = 0; i < 4; i++) {
-		if(base_counts[i] == 0) {
-			n_empty++;
-		}
-	}
-	if(n_empty > 1) { // repetitions of 2 or 1 base
-		return 0;
-	}
-
-	uint32 n_low = 0;
-	for(uint32 i = 0; i < 4; i++) {
-		if(base_counts[i] < params->ref_window_size/100) {
-			n_low++;
-		}
-	}
-
-	if(n_low > 1) { // almost repetitions of 2 or 1 base
-		return 0;
-	}
-
-	return 1;
-}
-
-// compute and store the frequency of each kmer in the given sequence
-void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_params_t* params,
-		MapKmerCounts& hist) {
+// compute and store the frequency of each kmer in the given sequence (up to length 16)
+void compute_kmer_hist16(const char* seq, const seq_t seq_len, const index_params_t* params, MapKmerCounts& hist) {
 	for(seq_t j = 0; j <= (seq_len - params->k); j++) {
 		uint32_t kmer;
 		if(pack_32(&seq[j], params->k, &kmer) < 0) {
@@ -62,36 +25,60 @@ void compute_kmer_counts(const char* seq, const seq_t seq_len, const index_param
 void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	clock_t t = clock();
 	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
-	omp_set_num_threads(params->n_threads); // split the windows across the threads
-	#pragma omp parallel
-	{
-		int tid = omp_get_thread_num();
-		int n_threads = omp_get_num_threads();
-		seq_t chunk_start = tid*(ref.len - params->k + 1) / n_threads;
-		seq_t chunk_end = (tid + 1)*(ref.len - params->k + 1) / n_threads;
-
-		//marisa::Agent agent;
-		for(seq_t i = chunk_start; i < chunk_end; i++) {
-			uint32_t packed_kmer;
-			if(pack_32(&ref.seq.c_str()[i], params->k, &packed_kmer) < 0) {
+	#pragma omp parallel for
+	for(seq_t i = 0; i < ref.len - params->k + 1; i++) { // for each window of the genome
+#if ENABLE_MARISA_TRIE
+		marisa::Agent agent;
+		for (uint32 k = 0; k < params->k; k++) {
+			if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
 				ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
+				break;
 			}
-			if(ref.high_freq_kmer_bitmap[packed_kmer]) {
-				ref.ignore_kmer_bitmask[i] = 1;
-			}
-			/*for (uint32 k = 0; k < params->k; k++) {
-				if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
-					ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
-					break;
-				}
-			}
-			agent.set_query(&ref.seq.c_str()[i], params->k);
-			if(ref.high_freq_kmer_trie.lookup(agent)) {
-				ref.ignore_kmer_bitmask[i] = 1;
-			}*/
 		}
+		agent.set_query(&ref.seq.c_str()[i], params->k);
+		if(ref.high_freq_kmer_trie.lookup(agent)) {
+			ref.ignore_kmer_bitmask[i] = 1;
+		}
+#else
+		uint32_t packed_kmer;
+		if(pack_32(&ref.seq.c_str()[i], params->k, &packed_kmer) < 0) {
+			ref.ignore_kmer_bitmask[i] = 1; // contains ambiguous bases
+			continue;
+		}
+		if(ref.high_freq_kmer_bitmap[packed_kmer]) {
+			ref.ignore_kmer_bitmask[i] = 1;
+		}
+#endif
 	}
 	printf("Done marking frequent kmers time: %.2f sec \n", (float) (clock() - t)/CLOCKS_PER_SEC);
+}
+
+// checks if the given sequence is informative or not
+// e.g. non-informative seq: same character is repeated throughout the seq (NN...N)
+#define AMBIG_BASE_FRAC 50
+#define LOW_BASE_FRAC 100
+int is_inform_ref_window(const char* seq, const uint32_t len, const index_params_t* params) {
+	uint32 base_counts[5] = { 0 };
+	for(uint32 i = 0; i < len; i++) {
+		base_counts[(int) seq[i]]++;
+	}
+	if(base_counts[4] > params->ref_window_size/AMBIG_BASE_FRAC) { // N ambiguous bases
+		return 0;
+	}
+	uint32 n_empty = 0;
+	uint32 n_low = 0;
+	for(uint32 i = 0; i < 4; i++) {
+		if(base_counts[i] == 0) {
+			n_empty++;
+		}
+		if(base_counts[i] < params->ref_window_size/LOW_BASE_FRAC) {
+			n_low++;
+		}
+	}
+	if(n_empty > 1 || n_low > 1) { // repetitions of 2 or 1 base
+		return 0;
+	}
+	return 1;
 }
 
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
@@ -109,14 +96,13 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params) {
 // index reference:
 // - load fasta
 // - generate valid windows (sliding window)
-// - compute the hash of each window
-// - sort
+// - compute the fingerprint of each window
+// - bucket into multiple hash tables using different projections
+// - sort buckets
 
 #define MAX_NTABLES_NO_DISK 1024
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
-	printf("**** SRX Reference Indexing ****\n");
-		
 	// 1. load the reference
 	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();
@@ -126,7 +112,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	// 2. load the frequency of each kmer and collect high-frequency kmers
 	printf("Loading frequent kmers... \n");
 	double start_time = omp_get_wtime();
-	//compute_kmer_counts(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
+	//compute_kmer_hist16(ref.seq.c_str(), ref.seq.size(), params, ref.kmer_hist);
 	//store_kmer_hist(fastaFname, ref.kmer_hist);
 	//ref.kmer_hist = MapKmerCounts(); // free memory
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
@@ -180,11 +166,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	uint32 n_valid_hashes = 0;
 	uint64 n_bucket_entries = 0;
 	uint64 n_filtered = 0;
-	uint64 n_dropped = 0;
-
 	int file_nsync_points = 0;
 	if(params->n_tables > MAX_NTABLES_NO_DISK) {
-		file_nsync_points = 42*params->n_tables/128; //params->n_tables / MAX_NTABLES_NO_DISK - 1;
+		file_nsync_points = 42*params->n_tables/128;
 	}
 	VectorU32 nsync_per_thread(params->n_threads);
 
@@ -275,7 +259,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 					if((epos->pos + epos->len) == pos) {
 						epos->len++;
 						store_pos = false;
-					} /*else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) {
+					} /*else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) { // sampling
 						epos->len += pos - (epos->pos + epos->len - 1);
 						store_pos = false;
 					}*/
@@ -316,7 +300,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][thread_bucket_index]);
 			}
 		}
-		//VectorPerThreadIndices().swap(buckets->per_thread_bucket_indices);
 		VectorPerThreadSizes().swap(buckets->per_thread_bucket_sizes);
 		VectorU32().swap(buckets->per_thread_next_free_bucket_index);
 		VectorPerThreadBuckets().swap(buckets->per_thread_buckets_data_vectors);
@@ -326,7 +309,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 			load_ref_idx_per_thread(tid, nsync_per_thread[tid], fastaFname, ref, params);
 		}
 	}
-
 	printf("Collected all the buckets. Time : %.2f sec\n", omp_get_wtime() - start_coll_sort);
 
 	// 5. sort each bucket!
@@ -346,70 +328,63 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total number of valid reference windows with valid hashes: %u \n", n_valid_hashes);
 	printf("Total number of window bucket entries: %llu \n", n_bucket_entries);
 	printf("Total number of window bucket entries filtered: %llu \n", n_filtered);
-	printf("Total number of window bucket entries dropped: %llu \n", n_dropped);
 	printf("Total hashing time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
 void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
-	printf("**** SRX Reference Index Loading ****\n");
-
-	// 1. load the reference
+	// load the reference
 	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();
 	fasta2ref(fastaFname, ref);
 	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 2. load the index
+	// load the index and high-frequency kmers
 	printf("Loading reference index for reference file %s... \n", fastaFname);
 	t = clock();
 	load_ref_idx(fastaFname, ref, params);
+	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
 	printf("Reference index loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 3. load the frequency of each kmer and collect high-frequency kmers
-	double start_time = omp_get_wtime();
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
-	double end_time = omp_get_wtime();
-	printf("Total kmer pre-processing time: %.2f sec\n", end_time - start_time);
-
-	if(!load_kmer2_hashes(fastaFname, ref, params)) {
+	// load/precompute k2 voting kmers
+	if(params->precomp_k2 && !load_kmer2_hashes(fastaFname, ref, params)) {
+		printf("Precomputing/storing k2 kmer hashes... \n");
+		double k2_t = omp_get_wtime();
+		omp_set_num_threads(params->n_threads);
 		compute_store_kmer2_hashes(fastaFname, ref, params);
+		printf("Total k2 hash computation time: %.2f sec\n", omp_get_wtime() - k2_t);
 	}
 }
 
-
 void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
-	printf("**** SRX Reference Index Loading ****\n");
-
 	// store the reference buckets
 	printf("Storing the reference index for reference file %s... \n", fastaFname);
 	clock_t t = clock();
 	store_ref_idx(fastaFname, ref, params);
-	printf("Reference storing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Reference index storing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& reads) {
-	printf("**** SRX Read Indexing ****\n");
 
-	// 1. load the reads (TODO: batch mode)
+	// load the reads (TODO: batch mode)
 	printf("Loading FATQ reads...\n");
 	clock_t t = clock();
 	fastq2reads(readsFname, reads);
 	printf("Total read loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// 2. compute the frequency of each kmer in the read set
-	t = clock();
+	// compute the frequency of each kmer in the read set
+	/*t = clock();
 	if(params->min_count != 0) {
-		/*for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
+		for(uint32 i = 0; i < reads.reads.size(); i++) { // add the contribution of each read
 			read_t r = reads.reads[i];
-			//compute_kmer_counts(r.seq.c_str(), r.len, params, reads.kmer_hist);
+			compute_kmer_hist16(r.seq.c_str(), r.len, params, reads.kmer_hist);
 		}
 		find_low_freq_kmers(reads.kmer_hist, reads.low_freq_kmer_hist, params);
 		reads.kmer_hist = MapKmerCounts(); // free memory
-		*/
 	}
 	printf("Total kmer pre-processing time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	*/
 
-	// 3. compute the min-hash signature of each read
+	// compute the minhash fingerprint of each read
 	printf("Hashing reads...\n");
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
@@ -434,34 +409,4 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	}
 	double end_time = omp_get_wtime();
 	printf("Total read hashing time: %.2f sec\n", end_time - start_time);
-	// TODO: free memory
 }
-
-// --- Sampling ---
-
-// create hash table i 
-// - hash each window
-// - sort
-//void index_ref_table_i(ref_t& ref, const index_params_t* params, const seq_t i) {
-//	// hash each window using sampling ids i
-//	clock_t t = clock();
-//	for(seq_t j = 0; j < ref.windows_by_pos.size(); j++) {
-//		ref.windows_by_pos[j].simhash = sampling_hash(ref.seq.c_str(), ref.windows_by_pos[j].pos, i, params);
-//	}
-//	printf("Total hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
-//
-//	// sort the hashes
-//	t = clock();
-//	sort_windows_hash(ref);
-//	printf("Total sorting time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
-//	printf("Total number of distinct window hashes = %llu \n", (uint64) get_num_distinct(ref));
-//}
-//
-//void index_reads_table_i(reads_t& reads, const index_params_t* params, const seq_t i) {
-//	// hash each read using sampling ids i
-//	clock_t t = clock();
-//	for(uint32 j = 0; j < reads.reads.size(); j++) {
-//		reads.reads[j].simhash = sampling_hash(reads.reads[j].seq.c_str(), 0, i, params);
-//	}
-//	printf("Total read hash table %llu computation time: %.2f sec\n", (uint64) i, (float)(clock() - t) / CLOCKS_PER_SEC);
-//}

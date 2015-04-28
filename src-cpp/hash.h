@@ -53,10 +53,4 @@ struct rand_range_generator_t {
 	}
 };
 
-void hashlittle2( 
-  const void *key,       /* the key to hash */
-  size_t      length,    /* length of the key */
-  uint32_t   *pc,        /* IN: primary initval, OUT: primary hash */
-  uint32_t   *pb); 
-
 #endif /*HASH_H_*/

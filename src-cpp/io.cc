@@ -54,10 +54,8 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist_stats");
-
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::app);
-
 	if (!file.is_open()) {
 		printf("store_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
 		exit(1);
@@ -73,7 +71,6 @@ void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist) {
 			freq_buckets[count]++;
 		}
 	}
-
 	for(uint32 i = 0; i < NUM_HIST_BUCKETS; i++) {
 		file << i << "\t" << freq_buckets[i] << "\n";
 	}
@@ -206,50 +203,34 @@ bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 }
 
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
-	printf("Precomputing k2 kmer hashes... \n");
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
-	double start_time_k2 = omp_get_wtime();
-	omp_set_num_threads(params->n_threads); // split the windows across the threads
-	#pragma omp parallel
-	{
-		int tid = omp_get_thread_num();
-		int n_threads = omp_get_num_threads();
-		seq_t chunk_start = ((ref.len - params->k2 + 1) / n_threads)*tid;
-		seq_t chunk_end = ((ref.len - params->k2 + 1) / n_threads)*(tid + 1);
-		for (seq_t pos = chunk_start; pos != chunk_end; pos++) {
-			ref.precomputed_kmer2_hashes[pos] = CityHash32(&ref.seq[pos], params->k2);
-		}
+	#pragma omp parallel for
+	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
+		ref.precomputed_kmer2_hashes[pos] = CityHash32(&ref.seq[pos], params->k2);
 	}
-	printf("Total precomputation time : %.2f sec\n", omp_get_wtime() - start_time_k2);
-
 	std::string fname(refFname);
 	fname += std::string(".k2hash.");
 	fname += std::to_string(params->k2);
-
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 
 	if (!file.is_open()) {
-		printf("store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
+		printf("compute_store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
 		exit(1);
 	}
 	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
 		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i]), sizeof(ref.precomputed_kmer2_hashes[i]));
 	}
 	file.close();
-	printf("Stored k2 kmer hashes\n");
 }
 
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".k2hash.");
 	fname += std::to_string(params->k2);
-
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
-
 	if (!file.is_open()) {
-		printf("load_kmer2_hashes: Could not open the file %s!\n", fname.c_str());
 		return false;
 	}
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
@@ -562,42 +543,17 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 
 // assumes that reads were generated with wgsim
 void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
-    /*printf("name %s \n", read_name);
-    int token_index = 0;
-    const char delimiters[] = "_";
-    const char* read_name_dup = std::string(read_name).c_str();
-    char* ptr;
-    char* token = strtok_r((char *) read_name_dup, delimiters, &ptr);
-    while (token != NULL) {
-    	if(token_index == 0) {
-		sscanf(token, "%u", seq_id);
-		if(*seq_id > 22)  *seq_id = 23;
-	} else if(token_index == 1) {
-                sscanf(token, "%u", ref_pos_l);
-        } else if(token_index == 2) {
-                sscanf(token, "%u", ref_pos_r);
-        } else if(token_index == 3) {
-                *strand = (strcmp(token, "nm") == 0) ? 1 : 0;
-        } else if(token_index > 3){
-        	break;
-        }
-        token = strtok_r(NULL, delimiters, &ptr);
-        token_index++;
-    }*/
     std::istringstream is((std::string(read_name)));
     std::string seqid;
     std::string refl;    
-
     std::getline(is, seqid, '_');
     std::getline(is, refl, '_');
-   
     if(seqid.compare("X") == 0) {
     	*seq_id = 23;
     } else {
     	*seq_id = atoi(seqid.c_str());
     }
     *ref_pos_l = atoi(refl.c_str());
-    //printf("Parsed %u %u %u \n", *seq_id, *ref_pos_l, *ref_pos_r);
 }
 
 void print_read(read_t* read) {

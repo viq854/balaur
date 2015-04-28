@@ -29,6 +29,14 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 			aln_pos -= ref.subsequence_offsets[r->seq_id];
 		}
 
+		r->seq_id = ref.subsequence_offsets.size()-1;
+		for(uint32 i = 0; i < ref.subsequence_offsets.size()-1; i++) {
+			if(r->top_aln.ref_start >= ref.subsequence_offsets[i] && r->top_aln.ref_start < ref.subsequence_offsets[i+1]) {
+				r->seq_id = i;
+				break;
+			}
+		}
+
 		if (r->top_aln.rc) flag |= SAM_FSR;
 
 		// QNAME, FLAG, RNAME
