@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <queue>
 #include <unordered_map>
+#include <omp.h>
 
 #include "index.h"
 #include "io.h"
@@ -25,7 +26,7 @@
 
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 static const int N_RAND_INLIERS_MAX = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 20);
-#define SIM_EVAL 0
+#define SIM_EVAL 1
 
 struct heap_entry_t {
 	seq_t pos;
@@ -172,9 +173,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	int RAND = 2;
 	uint32 sample_anchors[3][N_RAND_INLIERS_MAX];
 	int kmer_inliers[3] = { 0 };
-	int kmer_outliers_ref[3] = { 0 };
 	int total_kmer_matches = 0;
-	int anchors_idx[3] = { 0 };
+	uint32 anchors_idx[3] = { 0 };
 	uint64 init_aln_pos[3] = { 0 };
 	uint64 aln_ref_pos[3] = { 0 };
 
@@ -212,9 +212,10 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					if(anchors_idx[UNIQUE1] == 0) break; // no unique matches exist
 
 					// compute the median first pass position
-					std::sort(&sample_anchors[UNIQUE1][0], &sample_anchors[UNIQUE1][0] + anchors_idx[UNIQUE1]);
-					init_aln_pos[UNIQUE1] = sample_anchors[UNIQUE1][(anchors_idx[UNIQUE1]-1)/2];
-
+					if(init_aln_pos[UNIQUE1] == 0) {
+						std::sort(&sample_anchors[UNIQUE1][0], &sample_anchors[UNIQUE1][0] + anchors_idx[UNIQUE1]);
+						init_aln_pos[UNIQUE1] = sample_anchors[UNIQUE1][(anchors_idx[UNIQUE1]-1)/2];
+					}
 					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
 							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
 							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
@@ -232,15 +233,20 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					idx_q++;
 					idx_r++;
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
+					if(anchors_idx[UNIQUE1] == 0 && anchors_idx[RAND] == 0) break;
 
 					// find the median alignment positions
-					std::sort(&sample_anchors[UNIQUE2][0], &sample_anchors[UNIQUE2][0] + anchors_idx[UNIQUE2]);
-					init_aln_pos[UNIQUE2] = sample_anchors[UNIQUE2][(anchors_idx[UNIQUE2]-1)/2];
-					std::sort(&sample_anchors[RAND][0], &sample_anchors[RAND][0] + anchors_idx[RAND]);
-					init_aln_pos[RAND] = sample_anchors[RAND][(anchors_idx[RAND]-1)/2];
-
+					if(anchors_idx[UNIQUE2] > 0 && init_aln_pos[UNIQUE2] == 0) {
+						std::sort(&sample_anchors[UNIQUE2][0], &sample_anchors[UNIQUE2][0] + anchors_idx[UNIQUE2]);
+						init_aln_pos[UNIQUE2] = sample_anchors[UNIQUE2][(anchors_idx[UNIQUE2]-1)/2];
+					}
+					if(init_aln_pos[RAND] == 0) {
+						std::sort(&sample_anchors[RAND][0], &sample_anchors[RAND][0] + anchors_idx[RAND]);
+						init_aln_pos[RAND] = sample_anchors[RAND][(anchors_idx[RAND]-1)/2];
+					}
 					// count inliers
 					for(int i = 0; i < 3; i++) {
+						if(anchors_idx[i] == 0) continue;
 						if(match_aln_pos > (init_aln_pos[i] - params->delta_inlier) && match_aln_pos < (init_aln_pos[i] + params->delta_inlier)) { // inliers (within delta)
 							kmer_inliers[i]++;
 							aln_ref_pos[i] += match_aln_pos;
@@ -549,8 +555,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				n_nonzero_scores++;
 			}
 		}
-		avg_score_per_thread = avg_score_per_thread/n_nonzero_scores;
-
+		if(n_nonzero_scores > 0) {	
+			avg_score_per_thread = avg_score_per_thread/n_nonzero_scores;
+		}
 		// find the standard deviation
 		/*uint32 std_dev = 0;
 		for (uint32 i = chunk_start; i < chunk_end; i++) {

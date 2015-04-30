@@ -43,7 +43,7 @@ void print_usage(index_params_t* params) {
 	printf("       -T        number of hash tables [%d]\n", params->n_tables);
 	printf("       -k        length of the sequence kmers [%d]\n", params->k);
 	printf("       -b        length of the fingerprint projections [%d]\n", params->sketch_proj_len);
-	printf("\Index-only options:\n\n");
+	printf("\nIndex-only options:\n\n");
 	printf("       -w        length of the reference windows to hash (should be set to the expected read length for optimal results) [%d]\n", params->ref_window_size);
 	printf("       -H        upper bound on kmer occurrence in the reference [%llu]\n", params->max_count);
 	printf("       -s        initially allocated hash table bucket size [%d]\n", params->bucket_size);

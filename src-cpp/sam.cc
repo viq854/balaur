@@ -52,11 +52,11 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 
 		// SEQ, QUAL (print sequence and quality)
 		const char* seq = r->top_aln.rc ? r->rc.c_str() : r->seq.c_str();
-		for (int i = 0; i != r->len; i++) {
+		for (uint32 i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", "AGCTN"[(int)seq[i]]);
 		}
 		fprintf(samFile, "\t");
-		for (int i = 0; i != r->len; i++) {
+		for (uint32 i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", '*');
 		}
 		fprintf(samFile, "\n");
@@ -66,11 +66,11 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		fprintf(samFile, "%s\t%d\t*\t0\t0\t*\t*\t0\t0\t", r->name.c_str(), flag);
 
 		// SEQ, QUAL (print sequence and quality)
-		for (int i = 0; i != r->len; i++) {
+		for (uint32 i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", "AGCTN"[(int)r->seq[i]]);
 		}
 		fprintf(samFile, "\t");
-		for (int i = 0; i != r->len; i++) {
+		for (uint32 i = 0; i != r->len; i++) {
 			fprintf(samFile, "%c", '*');
 		}
 		fprintf(samFile, "\n");

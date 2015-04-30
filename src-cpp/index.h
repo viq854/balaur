@@ -44,7 +44,7 @@ typedef struct {
 	uint32 delta_inlier;
 	uint32 delta_x;
 	uint32 n_init_anchors;
-	uint32 votes_cutoff;
+	int votes_cutoff;
 	bool enable_scale;
 
 	// simhash mapping parameters
@@ -75,7 +75,7 @@ typedef struct {
 		k2 = 32;
 		precomp_k2 = true;
 		min_n_hits = 2;
-		dist_best_hit = 2;
+		dist_best_hit = 15;
 		max_matched_contig_len = 100000;
 		n_init_anchors = 10;
 		delta_inlier = 10;
