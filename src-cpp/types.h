@@ -6,9 +6,6 @@
 #include <vector>
 #include <map>
 #include <string>
-#include <marisa.h>
-#include <tbb/tbb.h>
-#include "tbb/scalable_allocator.h"
 
 typedef unsigned int uint32;
 typedef unsigned long long int uint64;
@@ -17,7 +14,7 @@ typedef unsigned char uint8;
 typedef uint64 hash_t;
 typedef uint32 minhash_t;
 typedef uint32 seq_t;
-typedef uint32_t len_t;
+typedef uint32 len_t;
 
 struct loc_t {
 	seq_t pos;
@@ -36,9 +33,21 @@ typedef std::vector<uint8> VectorU8;
 typedef std::vector<bool> VectorBool;
 typedef std::vector<hash_t> VectorHash;
 typedef std::vector<minhash_t> VectorMinHash;
-//typedef std::vector<seq_t, tbb::scalable_allocator<seq_t>> VectorSeqPos;
-typedef std::vector<loc_t, tbb::scalable_allocator<loc_t>> VectorSeqPos;
-typedef std::map<uint32, seq_t> MapKmerCounts;
 
+#if(USE_TBB)
+#include <tbb/tbb.h>
+#include "tbb/scalable_allocator.h"
+typedef std::vector<loc_t, tbb::scalable_allocator<loc_t>> VectorSeqPos;
+#else
+typedef std::vector<loc_t> VectorSeqPos;
+#endif
+
+#if(USE_MARISA)
+#include <marisa.h>
+typedef marisa::Trie MarisaTrie;
+#else
+struct none_t {};
+typedef none_t MarisaTrie;
+#endif
 
 #endif /*TYPES_H_*/

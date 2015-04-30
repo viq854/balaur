@@ -19,8 +19,8 @@ struct minhash_matrix_t {
 
 bool minhash(const char* seq, const seq_t seq_len,
 		const VectorBool& ref_freq_kmer_bitmask,
-		const marisa::Trie& ref_freq_kmer_trie,
-		const marisa::Trie& reads_hist,
+		const MarisaTrie& ref_freq_kmer_trie,
+		const MarisaTrie& reads_hist,
 		const index_params_t* params, CyclicHash* hasher,
 		VectorMinHash& min_hashes);
 bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t seq_len,

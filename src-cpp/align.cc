@@ -25,7 +25,6 @@
 
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 static const int N_RAND_INLIERS_MAX = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 20);
-
 #define SIM_EVAL 0
 
 struct heap_entry_t {

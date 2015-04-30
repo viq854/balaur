@@ -36,7 +36,7 @@ void load_kmer_hist(const char* refFname, MapKmerCounts& hist, const uint32 max_
 void store_kmer_hist(const char* refFname, const MapKmerCounts& hist);
 void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
 void store_freq_kmers(const MapKmerCounts& hist);
-void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, marisa::Trie& freq_trie, const uint32 max_count_threshold);
+void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
 void store_valid_window_mask(const char* refFname, const ref_t& ref, const index_params_t* params);
 bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params);
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);

@@ -18,8 +18,8 @@ int hamming_dist(hash_t h1, hash_t h2) {
 // returns the weight of the given kmer
 // 0 if the kmer should be ignored
 uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
-		const marisa::Trie& ref_high_freq_hist,
-		const marisa::Trie& reads_low_freq_hist,
+		const MarisaTrie& ref_high_freq_hist,
+		const MarisaTrie& reads_low_freq_hist,
 		const index_params_t* params) {
 
 	for (uint32 k = 0; k < kmer_len; k++) {
@@ -28,12 +28,14 @@ uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 		}
 	}
 
+#if(USE_MARISA)
 	// lookup high frequency kmer trie
 	marisa::Agent agent;
 	agent.set_query(kmer_seq, kmer_len);
 	if(ref_high_freq_hist.lookup(agent)) {
 		return 0;
 	}
+#endif
 	return 1;
 }
 
@@ -42,8 +44,8 @@ uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 
 bool minhash(const char* seq, const seq_t seq_len,
 			const VectorBool& ref_freq_kmer_bitmap,
-			const marisa::Trie& ref_freq_kmer_trie,
-			const marisa::Trie& reads_hist,
+			const MarisaTrie& ref_freq_kmer_trie,
+			const MarisaTrie& reads_hist,
 			const index_params_t* params,
 			CyclicHash* kmer_hasher,
 			VectorMinHash& min_hashes) {
@@ -80,7 +82,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 	bool any_valid_kmers = false;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if this kmer should be discarded
-#if ENABLE_MARISA_TRIE
+#if USE_MARISA
 		if(!get_kmer_weight(&seq[i], params->k, ref_freq_kmer_trie, reads_hist, params)) continue;
 #else
 		uint32_t packed_kmer;

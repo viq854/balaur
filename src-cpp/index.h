@@ -134,6 +134,7 @@ typedef std::vector<VectorSeqPos> VectorBuckets;
 typedef std::vector<std::vector<VectorSeqPos> > VectorPerThreadBuckets;
 typedef std::vector<VectorU32> VectorPerThreadIndices;
 typedef std::vector<VectorU32> VectorPerThreadSizes;
+typedef std::map<uint32, seq_t> MapKmerCounts;
 
 // min-hash signature index
 struct buckets_t {
@@ -159,7 +160,7 @@ typedef struct {
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	marisa::Trie high_freq_kmer_trie;	// frequent reference kmers TRIE
+	MarisaTrie high_freq_kmer_trie;	// frequent reference kmers TRIE
 	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
 	VectorBool ignore_kmer_bitmask;
 	VectorBool ignore_window_bitmask;

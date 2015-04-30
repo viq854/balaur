@@ -27,7 +27,7 @@ void mark_freq_kmers(ref_t& ref, const index_params_t* params) {
 	ref.ignore_kmer_bitmask.resize(ref.len - params->k);
 	#pragma omp parallel for
 	for(seq_t i = 0; i < ref.len - params->k + 1; i++) { // for each window of the genome
-#if ENABLE_MARISA_TRIE
+#if USE_MARISA
 		marisa::Agent agent;
 		for (uint32 k = 0; k < params->k; k++) {
 			if(ref.seq.c_str()[i+k] == BASE_IGNORE) {
