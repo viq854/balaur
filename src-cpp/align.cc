@@ -9,24 +9,19 @@
 #include <algorithm>
 #include <utility>
 #include <limits.h>
-#include <assert.h>
 #include <queue>
 #include <unordered_map>
+#include <bitset>
 #include <omp.h>
-
 #include "index.h"
 #include "io.h"
 #include "hash.h"
-#include "cluster.h"
-#include <bitset>
-
-#include "ksw.h"
 #include "sam.h"
 #include "lsh.h"
 
+static const int N_INIT_ANCHORS_MAX = (getenv("N_INIT_ANCHORS_MAX") ? atoi(getenv("N_INIT_ANCHORS_MAX")) : 20);
+static const int N_TABLES_MAX = (getenv("N_TABLES_MAX") ? atoi(getenv("N_TABLES_MAX")) : 256);
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
-static const int N_RAND_INLIERS_MAX = (getenv("N_RAND_INLIERS") ? atoi(getenv("N_RAND_INLIERS")) : 20);
-#define SIM_EVAL 1
 
 struct heap_entry_t {
 	seq_t pos;
@@ -128,31 +123,6 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-
-/*void global_alignment(const ref_match_t ref_contig, const ref_t& ref, read_t* r, const index_params_t* params) {
-	aln_t* aln = &r->top_aln;
-	int hit_len = r->len + ref_contig.len;
-	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-	uint32_t ref_len = hit_len + 2*CONTIG_PADDING;
-
-	int n_cigar;
-	uint32_t* cigar;
-
-	aln->score = ksw_global(r->len,  (const unsigned char*) r->seq.c_str(),
-			ref_len, (const unsigned char*)ref.seq.c_str(),
-			5, params->score_matrix, params->gap_open, params->gap_extend, params->bandw,
-			&n_cigar, &cigar);
-}
-
-void process_read_hits_global(ref_t& ref, read_t* r, const index_params_t* params) {
-
-	for(uint32 i = 0; i < r->ref_matches[r->best_n_bucket_hits].size(); i++) {
-		ref_match_t ref_contig = r->ref_matches[r->best_n_bucket_hits][i];
-		global_alignment(ref_contig, ref, r, params);
-	}
-} */
-
 // compute number of votes for this contig and its interior alignment
 #define CONTIG_PADDING 100
 int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
@@ -171,7 +141,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	int UNIQUE1 = 0;
 	int UNIQUE2 = 1;
 	int RAND = 2;
-	uint32 sample_anchors[3][N_RAND_INLIERS_MAX];
+	uint32 sample_anchors[3][N_INIT_ANCHORS_MAX];
 	int kmer_inliers[3] = { 0 };
 	int total_kmer_matches = 0;
 	uint32 anchors_idx[3] = { 0 };
@@ -311,11 +281,11 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	// DEBUG -----
 	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
 		r->comp_votes_hit = kmer_inliers[0] > kmer_inliers[1] ? kmer_inliers[0] : kmer_inliers[1];
-		if(VERBOSE == 2) {
+		if(VERBOSE > 1) {
 			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 		}
 	}
-	if(VERBOSE == 1) {
+	if(VERBOSE > 3) {
 		printf("aln pos %llu %llu %llu votes %u %u %u noransac votes %u avg pos %llu %llu %llu contig pos %u len %u \n",
 						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
 						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
@@ -390,7 +360,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_
 	int n_diff_table_hits = 0;
 	int len = 0;
 	seq_t last_pos = -1;
-	std::bitset<256> occ;
+	std::bitset<N_TABLES_MAX> occ;
 	while(heap_size > 0) {
 		heap_entry_t e = heap[0]; // get min
 		seq_t e_last_pos = e.pos + e.len - 1;
@@ -595,24 +565,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 
 #if(SIM_EVAL)
-			if(VERBOSE == 4 && !r->collected_true_hit) {
+			if(VERBOSE > 4 && !r->collected_true_hit) {
 				print_read(r);
 				printf("forward (valid = %d): \n", r->valid_minhash);
 				for(uint32 x = 0; x < params->h; x++) {
 					printf("%u ", r->minhashes[x]);
-				}
-				printf("\n");
-				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-					printf("t = %u, hash = %u\n", t, bucket_hash);
-					if(t == 0) {
-						uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
-							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
-							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
-							printf("pos %u len %u \n", p, len);
-						}	
-					}
 				}
 				printf("\n");
 				printf("rc (valid = %d): \n", r->valid_minhash_rc);
@@ -620,10 +577,6 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					printf("%u ", r->minhashes_rc[x]);
 				}
 				printf("\n");
-				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
-					printf("t = %u, hash = %u\n", t, bucket_hash);
-				}
 				printf("ref: \n");
 				for(uint32 x = r->ref_pos_l-1; x < r->ref_pos_l-1 + params->ref_window_size; x++) {
 					printf("%c", iupacChar[(int)ref.seq[x]]);
@@ -631,11 +584,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("\n");
 
 			}
-			if (VERBOSE == 1 && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+			if (VERBOSE > 0 && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
 				printf("WRONG: score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits,
 						r->ref_pos_l, r->top_aln.ref_start);
-				if(VERBOSE == 5 && r->bucketed_true_hit) {
+				if(VERBOSE > 3 && r->bucketed_true_hit) {
 					print_read(r);
 					printf("true \n");
 					for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + r->len; x++) {
@@ -650,11 +603,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				}
 			}
 #endif
-			if (VERBOSE == 1 && r->top_aln.score < 30 && r->top_aln.score >=10) { // && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+#if(DEBUG)
+			if (VERBOSE > 0 && r->top_aln.score < 30 && r->top_aln.score >=10) { // && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
 					printf("LOW: score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u second %u\n", r->top_aln.score,
 									r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit,
 									r->best_n_bucket_hits, r->ref_pos_l, r->top_aln.ref_start, r->second_best_aln.ref_start);
 			}
+#endif
 		}
 	}
 

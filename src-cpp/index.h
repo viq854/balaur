@@ -9,7 +9,6 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 #include "hash.h"
 
 #define DISK_SYNC_PARTIAL_TABLES 0
-#define ENABLE_MARISA_TRIE 0
 
 // program parameters
 typedef struct {	

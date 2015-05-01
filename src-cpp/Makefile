@@ -6,10 +6,10 @@ TBB_INCLUDE_DIR=
 # MARISA trie library
 ENABLE_MARISA=0
 MARISA_LIBRARY_DIR=	#/usr/local/lib
-MARISA_INCLUDE_DIR= 	#/usr/local/include/marisa
+MARISA_INCLUDE_DIR= #/usr/local/include/marisa
 
 PROG=		totoro
-CC=		g++
+CC=			g++
 CFLAGS=		-Wall -Ofast -fopenmp -std=c++0x
 DFLAGS=		-DUSE_TBB=$(ENABLE_TBB) -DUSE_MARISA=$(ENABLE_MARISA)
 
@@ -30,7 +30,7 @@ OBJDIR_GUARD = @mkdir -p $(OBJDIR)
 
 INCLUDES=	-I$(TBB_INCLUDE_DIR) -I$(MARISA_INCLUDE_DIR)
 LIBS=		-lm -lz -L$(TBB_LIBRARY_DIR) -ltbb -ltbbmalloc -L$(MARISA_LIBRARY_DIR) -lmarisa
-
+LOG=0
 
 $(OBJDIR)/%.o: %.cc $(DEPS)
 		$(OBJDIR_GUARD)
@@ -42,8 +42,11 @@ $(PROG): $(OBJS)
 		@mkdir -p $(OBJDIR)
 		$(CC) $(CFLAGS) $(DFLAGS) $(OBJS) -o $@ $(LIBS)
 
-debug: CFLAGS += -g
+debug: CFLAGS += -g -DDEBUG -DLOG=$(LOG)
 debug: $(PROG)
+
+sim: CFLAGS += -g -DSIM_EVAL -DDEBUG -DLOG=$(LOG)
+sim: $(PROG)
 
 clean:
 		rm -f gmon.out $(OBJDIR)/*.o a.out $(PROG) *~ *.a
