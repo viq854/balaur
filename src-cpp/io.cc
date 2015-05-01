@@ -398,7 +398,7 @@ void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFna
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
-		cerr << "Error: " << strerror(errno) << "\n";
+		std::cerr << "Error: " << strerror(errno) << "\n";
 		exit(1);
 	}
 
