@@ -5,7 +5,7 @@
 #include "types.h"
 #include "city.h"
 #include "mt64.h"
-#include "../rollinghashcpp/cyclichash.h"
+//#include "../rollinghashcpp/cyclichash.h"
 
 // universal hash function:
 // single value: a*x mod n_buckets
