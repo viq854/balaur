@@ -312,7 +312,7 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
-		cerr << "Error: " << strerror(errno);
+		std::cerr << "Error: " << strerror(errno);
 		exit(1);
 	}
 

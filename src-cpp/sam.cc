@@ -40,7 +40,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		if (r->top_aln.rc) flag |= SAM_FSR;
 
 		// QNAME, FLAG, RNAME
-		fprintf(samFile, "%s\t%d\tREF_NAME\t", r->name.c_str(), flag);
+		fprintf(samFile, "%s\t%d\tref\t", r->name.c_str(), flag);
 		// POS (1-based), MAPQ
 		fprintf(samFile, "%d\t%d\t", (int)(aln_pos+1), r->top_aln.score);
 
