@@ -20,7 +20,7 @@
 #include "lsh.h"
 
 static const int N_INIT_ANCHORS_MAX = (getenv("N_INIT_ANCHORS_MAX") ? atoi(getenv("N_INIT_ANCHORS_MAX")) : 20);
-static const int N_TABLES_MAX = (getenv("N_TABLES_MAX") ? atoi(getenv("N_TABLES_MAX")) : 256);
+//static const int N_TABLES_MAX = (getenv("N_TABLES_MAX") ? atoi(getenv("N_TABLES_MAX")) : 256);
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 
 struct heap_entry_t {
@@ -335,6 +335,7 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 #endif
 }
 
+#define N_TABLES_MAX 256
 // output matches (ordered by the number of projections matched)
 void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	r->ref_matches.resize(params->n_tables);
