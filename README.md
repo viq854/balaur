@@ -1,4 +1,2 @@
-srx
+TOTORO aligner
 ===
-
-Short read indexing
