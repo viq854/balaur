@@ -6,7 +6,7 @@
 #include "city.h"
 #include "mt64.h"
 //#include "../rollinghashcpp/cyclichash.h"
-struct CyclicHash{};
+struct CyclicHash{ CyclicHash(int x, int y){}; };
 
 // universal hash function:
 // single value: a*x mod n_buckets
