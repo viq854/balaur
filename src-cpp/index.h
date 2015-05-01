@@ -26,7 +26,7 @@ typedef struct {
 	uint32 bucket_size;				// max number of entries to keep per bucket
 	rand_hash_function_t sketch_proj_hash_func; // hash function for sketch projection vector hashing
 	VectorHashFunctions minhash_functions;	// hash functions for min-hash
-	//CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
+	CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 bucket_entry_coverage;
 
