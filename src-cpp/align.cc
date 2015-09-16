@@ -300,6 +300,7 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
 		r->collected_true_hit = true;
 		r->processed_true_hit = true;
+		r->true_n_bucket_hits = n_diff_table_hits;
 	}
 #endif
 
@@ -335,7 +336,7 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 #endif
 }
 
-#define N_TABLES_MAX 256
+#define N_TABLES_MAX 1024
 // output matches (ordered by the number of projections matched)
 void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 	r->ref_matches.resize(params->n_tables);
@@ -430,11 +431,11 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	#pragma omp parallel for
 	for (uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		unsigned int pos_r;
-		parse_read_mapping(r->name.c_str(), &r->seq_id, &r->ref_pos_l, &pos_r, &r->strand);
+		parse_read_mapping(r->name.c_str(), &r->seq_id, &r->ref_pos_l, &r->ref_pos_r, &r->strand);
 		r->seq_id = r->seq_id - 1;
 		if(ref.subsequence_offsets.size() > 1) {
 			r->ref_pos_l += ref.subsequence_offsets[r->seq_id]; // convert to global id
+			r->ref_pos_r += ref.subsequence_offsets[r->seq_id];
 		}
 	}
 #endif
@@ -455,7 +456,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		int avg_score_per_thread = 0;
 		int n_nonzero_scores = 0;
 		for (uint32 i = chunk_start; i < chunk_end; i++) { // for each read of the thread's chunk
-			if((i - chunk_start) % 10000 == 0 && (i - chunk_start) != 0) {
+			if((i - chunk_start) % 1000 == 0 && (i - chunk_start) != 0) {
 				printf("Thread %d processed %u reads \n", tid, i - chunk_start);
 			}
 
@@ -480,7 +481,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 					if(bucket_index == ref.hash_tables[t].n_buckets) continue;
-					if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index].size());
+					/*if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
@@ -491,7 +493,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						}
 #endif
 						continue;
-					}
+					}*/
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
@@ -502,7 +504,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
 					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets) continue;
-					if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size());
+					/*if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
@@ -513,7 +516,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						}
 #endif
 						continue;
-					}
+					}*/
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
@@ -563,6 +566,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 					}
 				}
+				if(r->top_aln.rc) {
+                                        r->top_aln.ref_start += r->len;
+                                }
 			}
 
 #if(SIM_EVAL)
@@ -585,11 +591,12 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("\n");
 
 			}
-			if (VERBOSE > 0 && r->top_aln.score >= 30 && !(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+			if (VERBOSE == 0 && r->top_aln.score >= 30 && (!(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) && 
+					 (!(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)))) {
 				printf("WRONG: score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits,
 						r->ref_pos_l, r->top_aln.ref_start);
-				if(VERBOSE > 3 && r->bucketed_true_hit) {
+				if(VERBOSE == 0 && r->bucketed_true_hit) {
 					print_read(r);
 					printf("true \n");
 					for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + r->len; x++) {
@@ -605,7 +612,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 #endif
 #if(DEBUG)
-			if (VERBOSE > 0 && r->top_aln.score < 30 && r->top_aln.score >=10) { // && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
+			if (VERBOSE > 0 && r->top_aln.score < 30) {// && r->top_aln.score >=10) { // && (r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)) {
 					printf("LOW: score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u second %u\n", r->top_aln.score,
 									r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit,
 									r->best_n_bucket_hits, r->ref_pos_l, r->top_aln.ref_start, r->second_best_aln.ref_start);
@@ -629,6 +636,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int confident = 0;
 	int acc = 0;
 	int best_hits = 0;
+	int true_pos_hits = 0;
 	int score = 0;
 	int max_votes_inl = 0;
 	int max_votes_all = 0;
@@ -642,6 +650,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 		valid_hash++;
+		
+		true_pos_hits += r->true_n_bucket_hits;
+
 		if(r->collected_true_hit) {
 			n_collected++;
 		}
@@ -652,14 +663,20 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(r->bucketed_true_hit) {
 			bucketed_true++;
 		}
-		if(r->top_aln.score <= 0){
+		if(r->top_aln.score < 0){
 			continue;
 		}
 		confident++;
 
-		if(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30) {
-			r->dp_hit_acc = 1;
-		}
+		if(!r->top_aln.rc) {
+                       if(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30) {
+                               r->dp_hit_acc = 1;
+                       }
+                } else {
+                       if(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) {
+                               r->dp_hit_acc = 1;
+			}
+                }
 		acc += r->dp_hit_acc;
 		best_hits += r->best_n_bucket_hits;
 		score += r->top_aln.score;
@@ -685,6 +702,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 		}
 	}
+	float avg_true_pos_hits = (float) true_pos_hits/valid_hash;
+	double stddev_true_pos_hits = 0;
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
+		stddev_true_pos_hits += pow((double)avg_true_pos_hits - r->true_n_bucket_hits, (double) 2);
+	}
+	stddev_true_pos_hits = sqrt((double)stddev_true_pos_hits/valid_hash);
 
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads COLLECTED true hit %u \n", n_collected);
@@ -696,6 +721,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
 	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/confident);
+	printf("MEAN number of bucket hits with TRUE pos per read %.8f \n", (float) avg_true_pos_hits);
+	printf("STDDEV number of bucket hits with TRUE pos per read %.8f \n", (float) stddev_true_pos_hits);
 	printf("Avg score per read %.8f \n", (float) score/confident);
 	printf("Avg max inlier votes per read %.8f \n", (float) max_votes_inl/confident);
 	printf("Avg max all votes per read %.8f \n", (float) max_votes_all/confident);

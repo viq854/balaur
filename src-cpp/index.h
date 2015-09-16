@@ -209,6 +209,7 @@ struct read_t {
 	std::vector<VectorSeqPos * > ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 	int best_n_bucket_hits;
+	int true_n_bucket_hits;
 	bool any_bucket_hits;
 	aln_t top_aln;
 	aln_t second_best_aln;
@@ -237,6 +238,7 @@ struct read_t {
 		valid_minhash = 0;
 		valid_minhash_rc = 0;
 		best_n_bucket_hits = 0;
+		true_n_bucket_hits = 0;
 		any_bucket_hits = false;
 
 		// alignment info

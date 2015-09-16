@@ -552,14 +552,17 @@ void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned in
     std::istringstream is((std::string(read_name)));
     std::string seqid;
     std::string refl;    
+    std::string refr;
     std::getline(is, seqid, '_');
     std::getline(is, refl, '_');
+    std::getline(is, refr, '_');
     if(seqid.compare("X") == 0) {
     	*seq_id = 23;
     } else {
     	*seq_id = atoi(seqid.c_str());
     }
     *ref_pos_l = atoi(refl.c_str());
+    *ref_pos_r = atoi(refr.c_str());
 }
 
 void print_read(read_t* read) {
