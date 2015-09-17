@@ -295,6 +295,50 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 	file.close();
 }
 
+void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".idx.");
+	fname += std::string("h");
+	fname += std::to_string(params->h);
+	fname += std::string("T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("w");
+	fname += std::to_string(params->ref_window_size);
+	fname += std::string("__stats");
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::app);
+	if (!file.is_open()) {
+		printf("store_ref_idx: Cannot open the STATS IDX file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
+		const buckets_t& buckets = ref.hash_tables[i];
+		for(uint32 j = 0; j < buckets.n_buckets; j++) {
+			if(buckets.bucket_indices[j] == buckets.n_buckets) {
+				// table id, bucket id, size, average contig len
+				file << i << "," << j << "," << "0" << "," << "0" << "\n";
+				continue;
+			}
+			const VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
+			uint32 size = bucket.size();
+			uint32 len_avg = 0;
+			for(uint32 k = 0; k < size; k++) {
+				len_avg += bucket[k].len;
+			}
+			if(bucket.size() > 0) {
+				len_avg = len_avg/bucket.size();
+			}
+			// table id, bucket id, size, average contig len
+			file << i << "," << j << "," << size << "," << len_avg << "\n";
+		}
+	}
+	file.close();
+}
+
 // load the reference index buckets
 void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	std::string fname(refFname);
