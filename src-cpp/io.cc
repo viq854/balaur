@@ -259,6 +259,8 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 	fname += std::to_string(params->sketch_proj_len);
 	fname += std::string("w");
 	fname += std::to_string(params->ref_window_size);
+	fname += std::string("__p");
+        fname += std::to_string(params->n_buckets_pow2);
 
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
@@ -306,6 +308,8 @@ void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_p
 	fname += std::to_string(params->sketch_proj_len);
 	fname += std::string("w");
 	fname += std::to_string(params->ref_window_size);
+	fname += std::string("__p");
+        fname += std::to_string(params->n_buckets_pow2);
 	fname += std::string("__stats");
 
 	std::ofstream file;
@@ -351,6 +355,8 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	fname += std::to_string(params->sketch_proj_len);
 	fname += std::string("w");
 	fname += std::to_string(params->ref_window_size);
+        fname += std::string("__p");
+	fname += std::to_string(params->n_buckets_pow2);
 
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
