@@ -123,18 +123,47 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
+void generate_voting_kmers(const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params, std::vector<std::pair<minhash_t, uint32>>& voting_kmers) {
+	uint32 num_kmers = (seq_len - params->k2 + 1); // + (seq_len - (params->k2+1) + 1) + (seq_len - (2*params->k2) + 1);
+	voting_kmers.resize(num_kmers);
+	for(uint32 j = 0; j < seq_len - params->k2 + 1; j++) {
+		voting_kmers[j] = std::make_pair(CityHash32(&seq[seq_offset + j], params->k2), seq_offset+j);
+		//std::make_pair(ref.precomputed_kmer2_hashes[padded_hit_offset + j], padded_hit_offset+j);
+	}
+	/*
+	uint32 offset = seq_len - params->k2 + 1;
+	for(uint32 j = 0; j < seq_len - (params->k2 + 1) + 1; j++) {
+		std::string buffer;
+		for(uint32 k = 0; k < params->k2+1; k++) {
+			if (k == 1) continue;
+			buffer.append(1, (int) seq[seq_offset + j + k]);
+		}
+		voting_kmers[offset + j] = std::make_pair(CityHash32(buffer.c_str(), params->k2), seq_offset+j);
+	}
+
+	offset += seq_len - (params->k2 + 1) + 1;
+	for(uint32 j = 0; j < seq_len - (2*params->k2) + 1; j++) {
+		std::string buffer;
+		for(uint32 k = 0; k < 2*params->k2; k++) {
+			if (k % 2 == 1) continue;
+			buffer.append(1, (int) seq[seq_offset + j + k]);
+		}
+		voting_kmers[offset + j] = std::make_pair(CityHash32(buffer.c_str(), params->k2), seq_offset+j);
+	}*/
+}
+
 // compute number of votes for this contig and its interior alignment
 #define CONTIG_PADDING 100
 int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
+	// get read voting kmers
 	const std::vector<std::pair<minhash_t, uint32>>& kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
-
+	// generate ref voting kmers
+	std::vector<std::pair<minhash_t, uint32>> kmers_ref;
 	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-	std::vector<std::pair<minhash_t, uint32>> kmers_ref((search_len - params->k2 + 1));
-	for(uint32 j = 0; j < search_len - params->k2 + 1; j++) {
-			kmers_ref[j] = std::make_pair(ref.precomputed_kmer2_hashes[padded_hit_offset + j], padded_hit_offset+j);//std::make_pair(CityHash32(&ref.seq[padded_hit_offset + j], params->k2), padded_hit_offset+j);
-	}
+	generate_voting_kmers(ref.seq.c_str(), padded_hit_offset, search_len, params, kmers_ref);	
+
 	std::sort(kmers_ref.begin(), kmers_ref.end());
 
 	// find how many kmers are in common
@@ -147,6 +176,9 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	uint32 anchors_idx[3] = { 0 };
 	uint64 init_aln_pos[3] = { 0 };
 	uint64 aln_ref_pos[3] = { 0 };
+
+	//xxx
+	std::vector<std::vector<uint8>> matched_mask(2, std::vector<uint8>(r->len));
 
 	for(int p = 0; p < 3; p++) {
 		// start from the beginning in each pass
@@ -166,9 +198,9 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 				if(p == 0) { // -------- FIRST PASS: collect unique matches ---------
 					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
-							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
-							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
-							((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
+							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0)) { //&&
+							//((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
+							//((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
 						if(anchors_idx[UNIQUE1] < params->n_init_anchors) {
 							sample_anchors[UNIQUE1][anchors_idx[UNIQUE1]] = match_aln_pos;
 							anchors_idx[UNIQUE1]++;
@@ -220,7 +252,12 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 						if(match_aln_pos > (init_aln_pos[i] - params->delta_inlier) && match_aln_pos < (init_aln_pos[i] + params->delta_inlier)) { // inliers (within delta)
 							kmer_inliers[i]++;
 							aln_ref_pos[i] += match_aln_pos;
+							 //xxx
+                                                	if(i < 2) {
+                                                        	matched_mask[i][kmers[idx_q].second] = 1;
+                                               		}
 						}
+
 					}
 
 					if(idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first == kmer_hash_ref) {
@@ -244,22 +281,71 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}
 
+	//xxx
+	int min_err[2] = { 0 };
+	int min_match[2] = { 0 };
+	int max_err[2] = { 0 };
+	int total_err[2] = { 0 };
+	for(int i = 0; i < 2; i++) {
+		if(kmer_inliers[i] == 0) continue;
+		int last_match_pos = -1;
+        	int last_err_pos = -1;
+		for(uint32 z = 0; z < r->len; z++) {	
+			//printf("z = %u match = %d \n", z, matched_mask[i][z]);
+			if(matched_mask[i][z] == 1) {
+				//std::cout << "z = " << z << "; inc match " << min_match[i] + 1 << "\n"; 
+				min_match[i]++;
+				last_match_pos = z;
+				// anything before must be error, k-1 after must be correct
+				if(z > 0 && matched_mask[i][z-1] == 0 && last_err_pos != (z-1)) {
+					min_err[i]++;
+					//std::cout << "z = " << z << "; inc min_err " << min_err[i] << "\n";
+				}
+				last_err_pos = -1;
+			} else {
+				total_err[i]++;
+				if(last_match_pos != -1 && z - last_match_pos < params->k2) {
+					//std::cout << "z = " << z << "; last match closer than k2 " << last_match_pos << " => inc match " << min_match[i] + 1 << "\n";
+					min_match[i]++;
+				}
+				if(last_match_pos != -1 && z - last_match_pos == params->k2) {
+					min_err[i]++;
+					last_err_pos = z;
+					//std::cout << "z = " << z << "; inc min_err (xx) " << min_err[i] << "\n";
+				} else if((z - last_err_pos) % params->k2 == 0) {
+					min_err[i]++;
+					last_err_pos = z;
+					//std::cout << "z = " << z << "; inc min_err (xxx) " << min_err[i] << "\n";
+				}
+			}
+		}
+		//printf("\n");
+	}
+	//if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
+		//printf("\n");
+	//}
+	//std::cout << " inliers[0] " << kmer_inliers[0] << " inliers[1] " << kmer_inliers[1] << " min_match[0] " << min_match[0] << " min_match[1] " << min_match[1] << "\n";
+
 	for(int i = 0; i < 2; i++) {
 		// keep track of max inlier votes and its alignment position
-		if(kmer_inliers[i] > r->top_aln.inlier_votes) {
+		//if(kmer_inliers[i] > r->top_aln.inlier_votes) {
+		//if(min_err[i] > 10) continue;
+		
+		if(min_match[i]*3 > r->top_aln.inlier_votes) {
 			if(aln_ref_pos[i]/kmer_inliers[i] < r->top_aln.ref_start - 30 || aln_ref_pos[i]/kmer_inliers[i] > r->top_aln.ref_start + 30) {
 				r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
 				r->second_best_aln.total_votes = r->top_aln.total_votes;
 				r->second_best_aln.ref_start = r->top_aln.ref_start;
 			}
 			// update best alignment
-			r->top_aln.inlier_votes = kmer_inliers[i];
+			r->top_aln.inlier_votes = min_match[i]*3; //kmer_inliers[i];
 			r->top_aln.total_votes = total_kmer_matches;
 			r->top_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
 			r->top_aln.rc = ref_contig.rc;
-		} else if(kmer_inliers[i] > r->second_best_aln.inlier_votes) {
+		} //else if(kmer_inliers[i] > r->second_best_aln.inlier_votes) {
+		else if(min_match[i]*3 > r->second_best_aln.inlier_votes) {
 			if(aln_ref_pos[i]/kmer_inliers[i] < r->top_aln.ref_start - 30 || aln_ref_pos[i]/kmer_inliers[i] > r->top_aln.ref_start + 30) {
-				r->second_best_aln.inlier_votes = kmer_inliers[i];
+				r->second_best_aln.inlier_votes = min_match[i]*3; //kmer_inliers[i];
 				r->second_best_aln.total_votes = total_kmer_matches;
 				r->second_best_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
 			}
@@ -279,25 +365,27 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 #if(SIM_EVAL)
 	// DEBUG -----
-	if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
+	if((r->ref_pos_r >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_r <= ref_contig.pos + params->ref_window_size) || 
+               (r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size)) {	
 		r->comp_votes_hit = kmer_inliers[0] > kmer_inliers[1] ? kmer_inliers[0] : kmer_inliers[1];
-		if(VERBOSE > 1) {
+		if(VERBOSE > 0) {
 			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
 		}
-	}
-	if(VERBOSE > 3) {
+	//}
+	if(VERBOSE > 0) {
 		printf("aln pos %llu %llu %llu votes %u %u %u noransac votes %u avg pos %llu %llu %llu contig pos %u len %u \n",
 						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
 						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
 						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
-	}
+	}}
 #endif
 	return 0;
 }
 
 void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 #if(SIM_EVAL)
-	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+	 if((r->ref_pos_r >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_r <= contig_pos + params->ref_window_size) || 
+               (r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size))  {
 		r->collected_true_hit = true;
 		r->processed_true_hit = true;
 		r->true_n_bucket_hits = n_diff_table_hits;
@@ -330,7 +418,8 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	}*/
 
 #if(SIM_EVAL)
-	if(r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size) {
+	 if((r->ref_pos_r >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_r <= contig_pos + params->ref_window_size) ||
+                (r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size))  {	
 		r->bucketed_true_hit = n_diff_table_hits;
 	}
 #endif
@@ -464,12 +553,16 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->rid = i;
 
 			// 1. index the read sequence: generate and store all k2 kmers
-			r->kmers_f.resize((r->len - params->k2 + 1));
+			/*r->kmers_f.resize((r->len - params->k2 + 1));
 			r->kmers_rc.resize((r->len - params->k2 + 1));
 			for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
 				r->kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
 				r->kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
-			}
+			}*/
+
+			generate_voting_kmers(r->seq.c_str(), 0, r->len, params, r->kmers_f);
+			generate_voting_kmers(r->rc.c_str(), 0, r->len, params, r->kmers_rc);
+
 			std::sort(r->kmers_f.begin(), r->kmers_f.end());
 			std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
 
@@ -482,7 +575,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
 					if(bucket_index == ref.hash_tables[t].n_buckets) continue;
 					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index].size());
-					/*if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+					if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
@@ -493,7 +586,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						}
 #endif
 						continue;
-					}*/
+					}
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
 				}
@@ -505,7 +598,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
 					if(bucket_index_rc == ref.hash_tables[t].n_buckets) continue;
 					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size());
-					/*if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+					if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
@@ -516,7 +609,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						}
 #endif
 						continue;
-					}*/
+					}
 					r->any_bucket_hits = true;
 					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
 				}
@@ -560,7 +653,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 						r->top_aln.score = 250*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
 
 						// scale by the distance from theoretical best possible votes
-						if(params->enable_scale) {
+						if(avg_score_per_thread > 0 && params->enable_scale) {
 							r->top_aln.score *= (float) r->top_aln.inlier_votes/(float) avg_score_per_thread;
 						}
 
@@ -591,22 +684,27 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("\n");
 
 			}
-			if (VERBOSE == 0 && r->top_aln.score >= 30 && (!(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) && 
+			if (VERBOSE == 0 && r->top_aln.score >= 10 && (!(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) && 
 					 (!(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)))) {
-				printf("WRONG: score %u max %u second %u true votes %u bucket %u max buckt %u true  %u found %u\n", r->top_aln.score,
-						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->bucketed_true_hit, r->best_n_bucket_hits,
-						r->ref_pos_l, r->top_aln.ref_start);
-				if(VERBOSE == 0 && r->bucketed_true_hit) {
+				printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n", 
+						r->top_aln.score,
+						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
+						r->ref_pos_l, r->ref_pos_r, r->top_aln.ref_start);
+				if(VERBOSE == 0) {// && r->bucketed_true_hit) {
 					print_read(r);
 					printf("true \n");
 					for(uint32 x = r->ref_pos_l; x < r->ref_pos_l + r->len; x++) {
 						printf("%c", iupacChar[(int)ref.seq[x]]);
 					}
 					printf("\n");
-					printf("false \n");
-					for(uint32 x = r->top_aln.ref_start; x < r->top_aln.ref_start + r->len; x++) {
-						printf("%c", iupacChar[(int)ref.seq[x]]);
-					}
+					seq_t p = r->top_aln.ref_start;
+                                        if(r->top_aln.rc) {
+                                                p -= r->len;
+                                        }
+                                        printf("false \n");
+                                        for(uint32 x = p; x < p + r->len; x++) {
+                                                printf("%c", iupacChar[(int)ref.seq[x]]);
+                                        }
 					printf("\n");
 				}
 			}
@@ -646,6 +744,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	int q10acc = 0;
 	int q30processed_true = 0;
 	int q30bucketed_true = 0;
+	int q10bucketed_true = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
@@ -700,6 +799,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->dp_hit_acc) {
 				q10acc++;
 			}
+			 if(r->bucketed_true_hit) {
+                                q10bucketed_true++;
+                        }
 		}
 	}
 	float avg_true_pos_hits = (float) true_pos_hits/valid_hash;
@@ -720,6 +822,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Number of confidently mapped reads Q30 %u / accurate %u (%f pct)\n", q30, q30acc, (float)q30acc/(float)q30);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
+	printf("Number of confidently mapped reads Q10 BUCKET true %u \n", q10bucketed_true);
 	printf("Avg number of max bucket hits per read %.8f \n", (float) best_hits/confident);
 	printf("MEAN number of bucket hits with TRUE pos per read %.8f \n", (float) avg_true_pos_hits);
 	printf("STDDEV number of bucket hits with TRUE pos per read %.8f \n", (float) stddev_true_pos_hits);

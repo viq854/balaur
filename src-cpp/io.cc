@@ -138,10 +138,10 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, Marisa
 		file.read(reinterpret_cast<char*>(&count), sizeof(count));
 		if(count >= max_count_threshold) {
 			tot_filtered++;
-			if (!kmer_has_zero(kmer)) {
-				freq_kmers_bitmap[kmer] = true;
-				filtered++;
-			}
+			//if (!kmer_has_zero(kmer)) {
+			freq_kmers_bitmap[kmer] = true;
+			filtered++;
+			//}
 #if(USE_MARISA)
 			unsigned char* seq = (unsigned char*) malloc(17*sizeof(char));
 			unpack_32(kmer, seq, 16);
@@ -332,6 +332,13 @@ void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_p
 			uint32 len_avg = 0;
 			for(uint32 k = 0; k < size; k++) {
 				len_avg += bucket[k].len;
+				if(size > 30000) {
+					printf("T %d b %d size %d pos %u \n", i, j, size, bucket[k].pos);
+					for(seq_t x = 0; x < params->ref_window_size; x++) {
+						printf("%c", iupacChar[(int) ref.seq[bucket[k].pos+x]]);
+					}
+					printf("\n");
+				}
 			}
 			if(bucket.size() > 0) {
 				len_avg = len_avg/bucket.size();

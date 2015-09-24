@@ -80,6 +80,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 	return any_valid_kmers;-------*/
 
 	bool any_valid_kmers = false;
+	int n_valid_kmers = 0;
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if this kmer should be discarded
 #if USE_MARISA
@@ -93,6 +94,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 			continue; // this is a high-freq kmer
 		}
 #endif
+		n_valid_kmers++;
 		minhash_t kmer_hash = CityHash32(&seq[i], params->k);
 		for(uint32_t h = 0; h < params->h; h++) { // update the min values
 			const rand_hash_function_t* f = &params->minhash_functions[h];
@@ -103,7 +105,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 		}
 		any_valid_kmers = true;
 	}
-	return any_valid_kmers;
+	return n_valid_kmers > 2*params->k;
 }
 
 // avoid redundant computations
