@@ -425,6 +425,30 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 #endif
 }
 
+int get_next_contig(const ref_t& ref, read_t* r, uint32 t, heap_entry_t* entry) {
+	uint64 bid = r->ref_bucket_matches_by_table[t].first;
+	if(bid == ref.index.bucket_offsets.size()) { // table ignored
+		return 0;
+	}
+
+	minhash_t read_proj_hash = r->ref_bucket_matches_by_table[t].second;
+	uint64 bucket_data_size = ref.index.bucket_offsets[bid+1] - ref.index.bucket_offsets[bid];
+	uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
+	// get the next entry in the bucket that matches the read projection hash value
+	while(entry->next_idx < bucket_data_size) {
+		if(ref.index.buckets_data[bucket_data_offset + entry->next_idx].hash == read_proj_hash) {
+			entry->pos = ref.index.buckets_data[bucket_data_offset + entry->next_idx].pos;
+			entry->len = ref.index.buckets_data[bucket_data_offset + entry->next_idx].len;
+			entry->tid = t;
+			entry->next_idx++;
+			return 1;
+		}
+		entry->next_idx++;
+	}
+	return 0;
+}
+
+
 #define N_TABLES_MAX 1024
 // output matches (ordered by the number of projections matched)
 void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
@@ -435,15 +459,10 @@ void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_
 	int heap_size = 0;
 	// push the first entries in each sorted bucket onto the heap
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
-		if(r->ref_bucket_matches_by_table[t] == NULL) {
-			continue;
-		} else {
-			heap[heap_size].pos = (*r->ref_bucket_matches_by_table[t])[0].pos;
-			heap[heap_size].len = (*r->ref_bucket_matches_by_table[t])[0].len;
-			heap[heap_size].tid = t;
-			heap[heap_size].next_idx = 1;
+		heap[heap_size].next_idx = 0;
+		if(get_next_contig(ref, r, t, &heap[heap_size]) > 0) {
+			heap_size++;
 		}
-		heap_size++;
 	}
 	if(heap_size == 0) return; // all the matched buckets are empty
 	heap_sort(heap, heap_size); // build heap
@@ -478,26 +497,8 @@ void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_
 			occ.reset();
 			occ.set(e.tid);
 		}
-		/*if(heap_size > 1) {
-			seq_t next_min_pos_diff_bucket = heap[1].pos;
-			if(e_last_pos < next_min_pos_diff_bucket) {
-				while(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-					e_last_pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos + (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len - 1;
-					if(e_last_pos < next_min_pos_diff_bucket) {
-						e.next_idx++;
-					} else {
-						break;
-					}
-				}
-			}
-		} else {
-			break; // only this bucket is left => remaining entries cannot have more than 1 hit
-		}*/
 		// push the next match from this bucket
-		if(e.next_idx < (*r->ref_bucket_matches_by_table[e.tid]).size()) {
-			heap[0].pos = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].pos;
-			heap[0].len = (*r->ref_bucket_matches_by_table[e.tid])[e.next_idx].len;
-			heap[0].next_idx = e.next_idx+1;
+		if(get_next_contig(ref, r, e.tid, &heap[0]) > 0) {
 			heap_update(heap, heap_size);
 		} else { // no more entries in this bucket
 			heap[0] = heap[heap_size - 1];
@@ -553,16 +554,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->rid = i;
 
 			// 1. index the read sequence: generate and store all k2 kmers
-			/*r->kmers_f.resize((r->len - params->k2 + 1));
-			r->kmers_rc.resize((r->len - params->k2 + 1));
-			for(uint32 i = 0; i < (r->len - params->k2 + 1); i++) {
-				r->kmers_f[i] = std::make_pair(CityHash32(&r->seq[i], params->k2), i);
-				r->kmers_rc[i] = std::make_pair(CityHash32(&r->rc[i], params->k2), i);
-			}*/
-
 			generate_voting_kmers(r->seq.c_str(), 0, r->len, params, r->kmers_f);
 			generate_voting_kmers(r->rc.c_str(), 0, r->len, params, r->kmers_rc);
-
 			std::sort(r->kmers_f.begin(), r->kmers_f.end());
 			std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
 
@@ -571,34 +564,37 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->ref_bucket_matches_by_table.resize(params->n_tables);
 			if(r->valid_minhash) { // FORWARD
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-					minhash_t bucket_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
-					uint32 bucket_index = ref.hash_tables[t].bucket_indices[bucket_hash];
-					if(bucket_index == ref.hash_tables[t].n_buckets) continue;
-					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index].size());
-					if(ref.hash_tables[t].buckets_data_vectors[bucket_index].size() > 1000) {
+					minhash_t proj_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
+					minhash_t bucket_hash = params->sketch_proj_hash_func.bucket_hash(proj_hash);
+					uint64_t bid = t*params->n_buckets + bucket_hash;
+					uint32 bucket_size = ref.index.bucket_offsets[bid + 1] - ref.index.bucket_offsets[bid];
+					uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
+					if(bucket_size > 1000) {
 #if(SIM_EVAL)
-						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index].size(); z++) {
-							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].pos;
-							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index][z].len;
+						for(uint32 z = 0; z < bucket_size; z++) {
+							seq_t p = ref.index.buckets_data[bucket_data_offset].pos;
+							uint32 len = ref.index.buckets_data[bucket_data_offset].len;
 							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
 								r->collected_true_hit = true;
 							}
 						}
 #endif
+						r->ref_bucket_matches_by_table[t] = std::pair(ref.index.bucket_offsets.size(), 0);
 						continue;
 					}
 					r->any_bucket_hits = true;
-					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index];
+					r->ref_bucket_matches_by_table[t] = std::pair(bid, proj_hash);
 				}
 				collect_read_hits(ref, r, false, params);
 			}
 			if(r->valid_minhash_rc) { // RC
 				for(uint32 t = 0; t < params->n_tables; t++) { // search each hash table
-					minhash_t bucket_hash_rc = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
-					uint32 bucket_index_rc = ref.hash_tables[t].bucket_indices[bucket_hash_rc];
-					if(bucket_index_rc == ref.hash_tables[t].n_buckets) continue;
-					//printf("bucket size %u \n", ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size());
-					if(ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size() > 1000) {
+					minhash_t proj_hash = params->sketch_proj_hash_func.apply_vector(r->minhashes_rc, params->sketch_proj_indices, t*params->sketch_proj_len);
+					minhash_t bucket_hash = params->sketch_proj_hash_func.bucket_hash(proj_hash);
+					uint64_t bid = t*params->n_buckets + bucket_hash;
+					uint32 bucket_size = ref.index.bucket_offsets[bid + 1] - ref.index.bucket_offsets[bid];
+					uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
+					if(bucket_size > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
 							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
@@ -608,14 +604,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 							}
 						}
 #endif
+						r->ref_bucket_matches_by_table[t] = std::pair(ref.index.bucket_offsets.size(), 0);
 						continue;
 					}
 					r->any_bucket_hits = true;
-					r->ref_bucket_matches_by_table[t] = &ref.hash_tables[t].buckets_data_vectors[bucket_index_rc];
+					r->ref_bucket_matches_by_table[t] = std::pair(bid, proj_hash);
 				}
 				collect_read_hits(ref, r, true, params);
 			}
-			std::vector< VectorSeqPos* >().swap(r->ref_bucket_matches_by_table); //release memory
 
 			if(r->top_aln.inlier_votes > 0) {
 				avg_score_per_thread += r->top_aln.inlier_votes;
@@ -649,9 +645,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
 					if(r->top_aln.inlier_votes > params->votes_cutoff) {
-
 						r->top_aln.score = 250*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
-
 						// scale by the distance from theoretical best possible votes
 						if(avg_score_per_thread > 0 && params->enable_scale) {
 							r->top_aln.score *= (float) r->top_aln.inlier_votes/(float) avg_score_per_thread;
@@ -660,8 +654,8 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					}
 				}
 				if(r->top_aln.rc) {
-                                        r->top_aln.ref_start += r->len;
-                                }
+					r->top_aln.ref_start += r->len;
+				}
 			}
 
 #if(SIM_EVAL)

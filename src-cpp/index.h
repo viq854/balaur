@@ -20,6 +20,7 @@ typedef struct {
 	uint32 kmer_dist;				// shift between consecutive kmers
 	uint32 h; 						// number of hash functions for min-hash sketches
 	uint32 n_tables; 				// number of hash tables for the sketches
+	uint32 n_buckets;
 	uint32 sketch_proj_len;			// length of the sketch projection
 	VectorU32 sketch_proj_indices;	// indices into the sketch for the sparse projections
 	uint32 n_buckets_pow2;  		// n_buckets in a hash table = 2^n_buckets_pow2
@@ -129,28 +130,28 @@ typedef struct {
 } index_params_t;
 
 // **** Reference Index ****
-typedef std::vector<VectorSeqPos> VectorBuckets;
-typedef std::vector<std::vector<VectorSeqPos> > VectorPerThreadBuckets;
-typedef std::vector<VectorU32> VectorPerThreadIndices;
-typedef std::vector<VectorU32> VectorPerThreadSizes;
 typedef std::map<uint32, seq_t> MapKmerCounts;
 
 // min-hash signature index
 struct buckets_t {
-	uint32 n_buckets; // B
+	uint32 n_entries; // total number of entries across all buckets
+	std::vector<VectorSeqPos> buckets_data_vectors;
 
-	// global
-	uint32 next_free_bucket_index;
-	VectorU32 bucket_indices;
-	VectorBuckets buckets_data_vectors;
-
-	// per thread buckets
-	VectorU32 per_thread_next_free_bucket_index;
-	VectorPerThreadIndices per_thread_bucket_indices;
-	VectorPerThreadBuckets per_thread_buckets_data_vectors;
-	VectorPerThreadSizes per_thread_bucket_sizes;
+	// per thread local buckets
+	std::vector<std::vector<VectorSeqPos> > per_thread_buckets_data_vectors;
+	std::vector<VectorU32> per_thread_bucket_sizes;
 };
-typedef std::vector<buckets_t> VectorBucketTables;
+
+typedef struct {
+	std::vector<buckets_t> per_table_buckets; // buckets for T tables
+} mutable_index_t;
+
+typedef struct {
+	// stores the bucket entries across all the tables
+	std::vector<loc_t> buckets_data;
+	// stores offsets for each bucket id
+	std::vector<uint64> bucket_offsets;
+} static_index_t;
 
 // reference genome index
 typedef struct {
@@ -159,12 +160,14 @@ typedef struct {
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
-	MarisaTrie high_freq_kmer_trie;	// frequent reference kmers TRIE
+	MarisaTrie high_freq_kmer_trie;		// frequent reference kmers TRIE
 	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
 	VectorBool ignore_kmer_bitmask;
 	VectorBool ignore_window_bitmask;
-	VectorBucketTables hash_tables;		// LSH min-hash index, T
 	std::vector<minhash_t> precomputed_kmer2_hashes;
+
+	mutable_index_t mutable_index;
+	static_index_t index;
 } ref_t;
 
 // **** Read Set Index ****
@@ -206,7 +209,7 @@ struct read_t {
 
 	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
-	std::vector<VectorSeqPos * > ref_bucket_matches_by_table;
+	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table;
 	std::vector<VectorRefMatches> ref_matches;
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;

@@ -253,14 +253,18 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 	fname += std::string(".idx.");
 	fname += std::string("h");
 	fname += std::to_string(params->h);
-	fname += std::string("T");
+	fname += std::string("_T");
 	fname += std::to_string(params->n_tables);
-	fname += std::string("b");
+	fname += std::string("_b");
 	fname += std::to_string(params->sketch_proj_len);
-	fname += std::string("w");
+	fname += std::string("_w");
 	fname += std::to_string(params->ref_window_size);
-	fname += std::string("__p");
-        fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_p");
+    fname += std::to_string(params->n_buckets_pow2);
+    fname += std::string("_k");
+    fname += std::to_string(params->k);
+    fname += std::string("_H");
+    fname += std::to_string(params->max_count);
 
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
@@ -269,47 +273,45 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 		exit(1);
 	}
 
-	uint32 size = ref.hash_tables.size();
-	file.write(reinterpret_cast<char*>(&size), sizeof(size));
-	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
-		const buckets_t& buckets = ref.hash_tables[i];
-		// indices
-		file.write(reinterpret_cast<const char*>(&buckets.n_buckets), sizeof(buckets.n_buckets));
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			file.write(reinterpret_cast<const char*>(&buckets.bucket_indices[j]), sizeof(uint32));
-		}
-		// data
-		size = buckets.next_free_bucket_index;
-		file.write(reinterpret_cast<const char*>(&size), sizeof(size));
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			if(buckets.bucket_indices[j] == buckets.n_buckets) {
-				continue;
-			}
-			const VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
-			size = bucket.size();//buckets.bucket_sizes[buckets.bucket_indices[j]];
+	uint64 total_num_entries = 0;
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		total_num_entries += ref.mutable_index.per_table_buckets[i].n_entries;
+	}
+	file.write(reinterpret_cast<char*>(&total_num_entries), sizeof(total_num_entries));
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		const buckets_t& buckets = ref.mutable_index.per_table_buckets[i];
+		for(uint32 j = 0; j < params->n_buckets; j++) {
+			const VectorSeqPos& bucket = buckets.buckets_data_vectors[j];
+			uint32 size = bucket.size();
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
 				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(len_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].hash), sizeof(minhash_t));
 			}
 		}
 	}
 	file.close();
 }
 
+#define BUCKET_SIZE_THR_DEBUG 50000
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".idx.");
 	fname += std::string("h");
 	fname += std::to_string(params->h);
-	fname += std::string("T");
+	fname += std::string("_T");
 	fname += std::to_string(params->n_tables);
-	fname += std::string("b");
+	fname += std::string("_b");
 	fname += std::to_string(params->sketch_proj_len);
-	fname += std::string("w");
+	fname += std::string("_w");
 	fname += std::to_string(params->ref_window_size);
-	fname += std::string("__p");
-        fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_p");
+	fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_k");
+	fname += std::to_string(params->k);
+	fname += std::string("_H");
+	fname += std::to_string(params->max_count);
 	fname += std::string("__stats");
 
 	std::ofstream file;
@@ -319,29 +321,26 @@ void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_p
 		exit(1);
 	}
 
-	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
-		const buckets_t& buckets = ref.hash_tables[i];
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			if(buckets.bucket_indices[j] == buckets.n_buckets) {
-				// table id, bucket id, size, average contig len
-				file << i << "," << j << "," << "0" << "," << "0" << "\n";
-				continue;
-			}
-			const VectorSeqPos& bucket = buckets.buckets_data_vectors[buckets.bucket_indices[j]];
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		const buckets_t& buckets = ref.mutable_index.per_table_buckets[i];
+		for(uint32 j = 0; j < params->n_buckets; j++) {
+			const VectorSeqPos& bucket = buckets.buckets_data_vectors[j];
 			uint32 size = bucket.size();
 			uint32 len_avg = 0;
 			for(uint32 k = 0; k < size; k++) {
 				len_avg += bucket[k].len;
-				if(size > 30000) {
+#if(DEBUG)
+				if(size > BUCKET_SIZE_THR_DEBUG) {
 					printf("T %d b %d size %d pos %u \n", i, j, size, bucket[k].pos);
 					for(seq_t x = 0; x < params->ref_window_size; x++) {
 						printf("%c", iupacChar[(int) ref.seq[bucket[k].pos+x]]);
 					}
 					printf("\n");
 				}
+#endif
 			}
-			if(bucket.size() > 0) {
-				len_avg = len_avg/bucket.size();
+			if(size > 0) {
+				len_avg = len_avg/size;
 			}
 			// table id, bucket id, size, average contig len
 			file << i << "," << j << "," << size << "," << len_avg << "\n";
@@ -356,14 +355,18 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	fname += std::string(".idx.");
 	fname += std::string("h");
 	fname += std::to_string(params->h);
-	fname += std::string("T");
+	fname += std::string("_T");
 	fname += std::to_string(params->n_tables);
-	fname += std::string("b");
+	fname += std::string("_b");
 	fname += std::to_string(params->sketch_proj_len);
-	fname += std::string("w");
+	fname += std::string("_w");
 	fname += std::to_string(params->ref_window_size);
-        fname += std::string("__p");
+	fname += std::string("_p");
 	fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_k");
+	fname += std::to_string(params->k);
+	fname += std::string("_H");
+	fname += std::to_string(params->max_count);
 
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
@@ -373,34 +376,26 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 		exit(1);
 	}
 
-	file.read(reinterpret_cast<char*>(&params->n_tables), sizeof(params->n_tables));
-	ref.hash_tables.resize(params->n_tables);
+	uint64 total_num_bucket_entries;
+	file.read(reinterpret_cast<char*>(&total_num_bucket_entries), sizeof(total_num_bucket_entries));
+	ref.index.bucket_offsets.resize(params->n_tables*params->n_buckets+1);
+	ref.index.buckets_data.resize(total_num_bucket_entries);
+
+	uint64 bucket_idx = 0;
 	for(uint32 i = 0; i < params->n_tables; i++) {
-		buckets_t* buckets = &ref.hash_tables[i];
-		file.read(reinterpret_cast<char*>(&buckets->n_buckets), sizeof(buckets->n_buckets));
-		buckets->bucket_indices.resize(buckets->n_buckets);
-		for(uint32 j = 0; j < buckets->n_buckets; j++) {
-			file.read(reinterpret_cast<char*>(&buckets->bucket_indices[j]), sizeof(buckets->bucket_indices[j]));
-		}
-		// note: no need to initialize the locks
-		// data
-		file.read(reinterpret_cast<char*>(&buckets->next_free_bucket_index), sizeof(buckets->next_free_bucket_index));
-		buckets->buckets_data_vectors.resize(buckets->next_free_bucket_index);
-		for(uint32 j = 0; j < buckets->n_buckets; j++) {
-			if(buckets->bucket_indices[j] == buckets->n_buckets) {
-				continue;
-			}
-			VectorSeqPos& bucket = buckets->buckets_data_vectors[buckets->bucket_indices[j]];
+		for(uint32 j = 0; j < params->n_buckets; j++) {
+			ref.index.bucket_offsets[i*params->n_buckets + j] = bucket_idx;
 			uint32 size;
 			file.read(reinterpret_cast<char*>(&size), sizeof(size));
-			bucket.resize(size);
-			// note: bucket size can now be the length of the vector
 			for(uint32 k = 0; k < size; k++) {
-				file.read(reinterpret_cast<char*>(&bucket[k].pos), sizeof(seq_t));
-				file.read(reinterpret_cast<char*>(&bucket[k].len), sizeof(len_t));
+				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].pos), sizeof(seq_t));
+				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].len), sizeof(len_t));
+				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].hash), sizeof(minhash_t));
+				bucket_idx++;
 			}
 		}
 	}
+	ref.index.bucket_offsets[ref.index.bucket_offsets.size()-1] = bucket_idx;
 	file.close();
 }
 
@@ -420,21 +415,16 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 		exit(1);
 	}
 
-	for(uint32 i = 0; i < ref.hash_tables.size(); i++) {
-		buckets_t& buckets = ref.hash_tables[i];
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			file.write(reinterpret_cast<const char*>(&buckets.per_thread_bucket_indices[tid][j]), sizeof(buckets.per_thread_bucket_indices[tid][j]));
-		}
-		for(uint32 j = 0; j < buckets.n_buckets; j++) {
-			if(buckets.per_thread_bucket_indices[tid][j] == buckets.n_buckets) {
-				continue;
-			}
-			VectorSeqPos& bucket = buckets.per_thread_buckets_data_vectors[tid][buckets.per_thread_bucket_indices[tid][j]];
-			uint32 size = buckets.per_thread_bucket_sizes[tid][buckets.per_thread_bucket_indices[tid][j]];
+	for(uint32 i = 0; i < params->n_tables; i++) {
+		buckets_t& buckets = ref.mutable_index.per_table_buckets[i];
+		for(uint32 j = 0; j < params->n_buckets; j++) {
+			VectorSeqPos& bucket = buckets.per_thread_buckets_data_vectors[tid][j];
+			uint32 size = buckets.per_thread_bucket_sizes[tid][j];
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
 			for(uint32 k = 0; k < size; k++) {
 				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
 				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(len_t));
+				file.write(reinterpret_cast<const char*>(&bucket[k].hash), sizeof(minhash_t));
 			}
 			bucket.resize(0);
 			bucket.shrink_to_fit();
@@ -461,27 +451,16 @@ void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFna
 
 	for(int l = 0; l < nloads; l++) {
 		for(uint32 i = 0; i < params->n_tables; i++) {
-			buckets_t* buckets = &ref.hash_tables[i];
-			for(uint32 j = 0; j < buckets->n_buckets; j++) {
-				file.read(reinterpret_cast<char*>(&buckets->per_thread_bucket_indices[tid][j]), sizeof(buckets->per_thread_bucket_indices[tid][j]));
-			}
-			for(uint32 b = 0; b < buckets->n_buckets; b++) {
-				if(buckets->per_thread_bucket_indices[tid][b] == buckets->n_buckets) {
-					continue;
-				}
-				uint32 global_bucket_index = buckets->bucket_indices[b];
-				if(global_bucket_index == buckets->n_buckets) {
-					global_bucket_index = buckets->next_free_bucket_index;
-					buckets->next_free_bucket_index++;
-					buckets->bucket_indices[b] = global_bucket_index;
-				}
-				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[global_bucket_index];
+			buckets_t* buckets = &ref.mutable_index.per_table_buckets[i];
+			for(uint32 b = 0; b < params->n_buckets; b++) {
+				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[b];
 				uint32 size;
 				file.read(reinterpret_cast<char*>(&size), sizeof(size));
 				for(uint32 k = 0; k < size; k++) {
 					loc_t w;
 					file.read(reinterpret_cast<char*>(&w.pos), sizeof(seq_t));
 					file.read(reinterpret_cast<char*>(&w.len), sizeof(len_t));
+					file.read(reinterpret_cast<char*>(&w.hash), sizeof(minhash_t));
 					global_bucket.push_back(w);
 				}
 			}

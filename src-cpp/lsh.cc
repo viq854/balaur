@@ -47,7 +47,6 @@ bool minhash(const char* seq, const seq_t seq_len,
 			const MarisaTrie& ref_freq_kmer_trie,
 			const MarisaTrie& reads_hist,
 			const index_params_t* params,
-			CyclicHash* kmer_hasher,
 			VectorMinHash& min_hashes) {
 
 	/*kmer_hasher->hashvalue = 0; //----- rolling hash
@@ -113,7 +112,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t seq_len,
 					minhash_matrix_t& rolling_minhash_matrix,
 					const VectorBool& ref_freq_kmer_bitmask,
-					const index_params_t* params, CyclicHash* kmer_hasher,
+					const index_params_t* params,
 					VectorMinHash& min_hashes) {
 
 	// initialize the rolling matrix
@@ -153,7 +152,7 @@ bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t s
 bool minhash_rolling(const char* seq, const seq_t ref_offset, const seq_t seq_len,
 					minhash_matrix_t& rolling_minhash_matrix,
 					const VectorBool& ref_freq_kmer_bitmask,
-					const index_params_t* params, CyclicHash* kmer_hasher,
+					const index_params_t* params,
 					VectorMinHash& min_hashes) {
 
 	minhash_t new_kmer_hash = 0;

@@ -19,6 +19,7 @@ typedef uint32 len_t;
 struct loc_t {
 	seq_t pos;
 	len_t len;
+	uint32_t hash;
 };
 
 struct comp_loc

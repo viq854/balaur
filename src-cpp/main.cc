@@ -100,6 +100,7 @@ int main(int argc, char *argv[]) {
 
 	printf("**********TOTORO**************\n");
 	srand(1);
+	params.n_buckets = pow(2, params.n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
 		printf("Mode: Indexing \n");
 		params.alg = MINH; // only minhash enabled for now
@@ -107,7 +108,6 @@ int main(int argc, char *argv[]) {
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
 		params.generate_sparse_sketch_projections();
-
 		// index the reference and store
 		ref_t ref;
 		index_ref_lsh(argv[optind+1], &params, ref);

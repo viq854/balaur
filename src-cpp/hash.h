@@ -41,7 +41,12 @@ struct rand_hash_function_t {
 		for(uint32 i = 0; i < a_vec.size(); i++) {
 			s += a_vec[i]*x[indices[vec_offset + i]];
 		}
-		return (minhash_t) s >> (w - M);
+		return (minhash_t) s;
+		//return (minhash_t) s >> (w - M);
+	}
+
+	minhash_t bucket_hash(const minhash_t vector_prod) {
+		return (minhash_t) vector_prod >> (w - M);
 	}
 };
 typedef std::vector<rand_hash_function_t> VectorHashFunctions;
