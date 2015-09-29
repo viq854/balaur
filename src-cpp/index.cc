@@ -270,6 +270,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				VectorSeqPos& thread_bucket = buckets->per_thread_buckets_data_vectors[tid][b];
 				global_bucket.insert(global_bucket.end(), thread_bucket.begin(), thread_bucket.begin() + buckets->per_thread_bucket_sizes[tid][b]);
 				VectorSeqPos().swap(buckets->per_thread_buckets_data_vectors[tid][b]);
+				buckets->n_entries += buckets->per_thread_bucket_sizes[tid][b];
 			}
 		}
 		std::vector<VectorU32>().swap(buckets->per_thread_bucket_sizes);
