@@ -380,6 +380,7 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 	file.read(reinterpret_cast<char*>(&total_num_bucket_entries), sizeof(total_num_bucket_entries));
 	ref.index.bucket_offsets.resize(params->n_tables*params->n_buckets+1);
 	ref.index.buckets_data.resize(total_num_bucket_entries);
+	std::cout << "Total number of contig entries in the index: " << total_num_bucket_entries << "\n";
 
 	uint64 bucket_idx = 0;
 	for(uint32 i = 0; i < params->n_tables; i++) {
