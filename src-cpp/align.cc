@@ -572,18 +572,18 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					if(bucket_size > 1000) {
 #if(SIM_EVAL)
 						for(uint32 z = 0; z < bucket_size; z++) {
-							seq_t p = ref.index.buckets_data[bucket_data_offset].pos;
-							uint32 len = ref.index.buckets_data[bucket_data_offset].len;
+							seq_t p = ref.index.buckets_data[bucket_data_offset + z].pos;
+							uint32 len = ref.index.buckets_data[bucket_data_offset + z].len;
 							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
 								r->collected_true_hit = true;
 							}
 						}
 #endif
-						r->ref_bucket_matches_by_table[t] = std::pair(ref.index.bucket_offsets.size(), 0);
+						r->ref_bucket_matches_by_table[t] = std::pair<uint64, minhash_t>(ref.index.bucket_offsets.size(), 0);
 						continue;
 					}
 					r->any_bucket_hits = true;
-					r->ref_bucket_matches_by_table[t] = std::pair(bid, proj_hash);
+					r->ref_bucket_matches_by_table[t] = std::pair<uint64, minhash_t>(bid, proj_hash);
 				}
 				collect_read_hits(ref, r, false, params);
 			}
@@ -596,19 +596,19 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
 					if(bucket_size > 1000) {
 #if(SIM_EVAL)
-						for(uint32 z = 0; z < ref.hash_tables[t].buckets_data_vectors[bucket_index_rc].size(); z++) {
-							seq_t p = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].pos;
-							uint32 len = ref.hash_tables[t].buckets_data_vectors[bucket_index_rc][z].len;
+						for(uint32 z = 0; z < bucket_size; z++) {
+							seq_t p = ref.index.buckets_data[bucket_data_offset + z].pos;
+							uint32 len = ref.index.buckets_data[bucket_data_offset + z].len;
 							if(r->ref_pos_l >= p - len - params->ref_window_size && r->ref_pos_l <= p + params->ref_window_size) {
 								r->collected_true_hit = true;
 							}
 						}
 #endif
-						r->ref_bucket_matches_by_table[t] = std::pair(ref.index.bucket_offsets.size(), 0);
+						r->ref_bucket_matches_by_table[t] = std::pair<uint64, minhash_t>(ref.index.bucket_offsets.size(), 0);
 						continue;
 					}
 					r->any_bucket_hits = true;
-					r->ref_bucket_matches_by_table[t] = std::pair(bid, proj_hash);
+					r->ref_bucket_matches_by_table[t] = std::pair<uint64, minhash_t>(bid, proj_hash);
 				}
 				collect_read_hits(ref, r, true, params);
 			}

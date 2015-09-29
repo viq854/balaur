@@ -45,7 +45,7 @@ struct rand_hash_function_t {
 		//return (minhash_t) s >> (w - M);
 	}
 
-	minhash_t bucket_hash(const minhash_t vector_prod) {
+	minhash_t bucket_hash(const minhash_t vector_prod) const {
 		return (minhash_t) vector_prod >> (w - M);
 	}
 };
