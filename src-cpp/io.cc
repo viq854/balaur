@@ -388,12 +388,14 @@ void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
 			ref.index.bucket_offsets[i*params->n_buckets + j] = bucket_idx;
 			uint32 size;
 			file.read(reinterpret_cast<char*>(&size), sizeof(size));
-			for(uint32 k = 0; k < size; k++) {
+			file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx]), size*sizeof(loc_t));
+			/*for(uint32 k = 0; k < size; k++) {
 				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].pos), sizeof(seq_t));
 				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].len), sizeof(len_t));
 				file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx].hash), sizeof(minhash_t));
 				bucket_idx++;
-			}
+			}*/
+			bucket_idx += size;
 		}
 	}
 	ref.index.bucket_offsets[ref.index.bucket_offsets.size()-1] = bucket_idx;
