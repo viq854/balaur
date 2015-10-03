@@ -264,6 +264,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	double start_coll_sort = omp_get_wtime();
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each hash table
 		buckets_t* buckets = &ref.mutable_index.per_table_buckets[t];
+		buckets->n_entries = 0;
 		for(uint32 b = 0; b < params->n_buckets; b++) {
 			for(uint32 tid = 0; tid < params->n_threads; tid++) {
 				VectorSeqPos& global_bucket = buckets->buckets_data_vectors[b];
