@@ -52,6 +52,7 @@ void load_hash_pads(const char* permFname, VectorHash& perm);
 void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params);
 void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFname, ref_t& ref, index_params_t* params);
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
+void kmer_stats(const char* refFname);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits

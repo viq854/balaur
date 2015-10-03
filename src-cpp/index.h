@@ -283,5 +283,6 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx
 void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);
 void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& ridx);
+void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 
 #endif /*INDEX_H_*/

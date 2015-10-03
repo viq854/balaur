@@ -101,6 +101,37 @@ void store_kmer_hist(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
+void kmer_stats(const char* refFname) {
+	std::string fname(refFname);
+	fname += std::string(".kmer_hist");
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	std::string stats_fname(refFname);
+	stats_fname += std::string("__kmer_stats.csv");
+	std::ofstream stats_file;
+	stats_file.open(stats_fname.c_str(), std::ios::out);
+	if (!stats_file.is_open()) {
+		printf("store_ref_idx: Cannot open the KMER STATS file %s!\n", stats_fname.c_str());
+		exit(1);
+	}
+	uint32 kmer, count;
+	int map_size;
+	file.read(reinterpret_cast<char*>(&map_size), sizeof(map_size));
+	stats_file << "Count\n";
+	while(map_size >= 0) {
+		file.read(reinterpret_cast<char*>(&kmer), sizeof(kmer));
+		file.read(reinterpret_cast<char*>(&count), sizeof(count));
+		stats_file << count  << "\n";
+		map_size--;
+	}
+	file.close();
+}
+
 bool kmer_has_zero(uint32 kmer) {
 	uint32 mask = (3 << (BITS_IN_WORD - BITS_PER_CHAR));
 	for (int i = 0; i < 16; i++) {

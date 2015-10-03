@@ -133,11 +133,13 @@ int main(int argc, char *argv[]) {
 		align_reads_minhash(ref, reads, &params);
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
-
+	
 		// load the reference index
 		ref_t ref;
-		load_index_ref_lsh(argv[optind+1], &params, ref);
-		store_ref_index_stats(argv[optind+1], ref, &params);
+		ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
+		//load_index_ref_lsh(argv[optind+1], &params, ref);
+		//store_ref_index_stats(argv[optind+1], ref, &params);
+		kmer_stats(argv[optind+1]);
 	} else {
 		print_usage(&params);
 		exit(1);
