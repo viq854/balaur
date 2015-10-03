@@ -123,11 +123,12 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-void generate_voting_kmers(const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params, std::vector<std::pair<minhash_t, uint32>>& voting_kmers) {
+void generate_voting_kmers(const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params,
+		std::vector<std::pair<minhash_t, uint16_t>>& voting_kmers) {
 	uint32 num_kmers = (seq_len - params->k2 + 1); // + (seq_len - (params->k2+1) + 1) + (seq_len - (2*params->k2) + 1);
 	voting_kmers.resize(num_kmers);
-	for(uint32 j = 0; j < seq_len - params->k2 + 1; j++) {
-		voting_kmers[j] = std::make_pair(CityHash32(&seq[seq_offset + j], params->k2), seq_offset+j);
+	for(uint16_t j = 0; j < seq_len - params->k2 + 1; j++) {
+		voting_kmers[j] = std::make_pair(CityHash32(&seq[seq_offset + j], params->k2), j);
 		//std::make_pair(ref.precomputed_kmer2_hashes[padded_hit_offset + j], padded_hit_offset+j);
 	}
 	/*
@@ -152,81 +153,68 @@ void generate_voting_kmers(const char* seq, const seq_t seq_offset, const seq_t 
 	}*/
 }
 
-// compute number of votes for this contig and its interior alignment
-#define CONTIG_PADDING 100
-int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
-	// get read voting kmers
-	const std::vector<std::pair<minhash_t, uint32>>& kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
-	// generate ref voting kmers
-	std::vector<std::pair<minhash_t, uint32>> kmers_ref;
-	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-	generate_voting_kmers(ref.seq.c_str(), padded_hit_offset, search_len, params, kmers_ref);	
+inline bool pos_in_range(uint32 pos1, uint32 pos2, uint32 delta) {
+	uint32 delta1 = pos2 > delta ? delta : (delta - pos2);
+	return pos1 > pos2 - delta1 && pos1 < pos2 + delta;
+}
 
-	std::sort(kmers_ref.begin(), kmers_ref.end());
+inline bool pos_in_range_asym(uint32 pos1, uint32 pos2, uint32 delta1, uint32 delta2) {
+	uint32 delta11 = pos2 > delta1 ? delta1 : (delta1 - pos2);
+	return pos1 > pos2 - delta11 && pos1 < pos2 + delta2;
+}
 
-	// find how many kmers are in common
-	int UNIQUE1 = 0;
-	int UNIQUE2 = 1;
-	int RAND = 2;
-	uint32 sample_anchors[3][N_INIT_ANCHORS_MAX];
-	int kmer_inliers[3] = { 0 };
-	int total_kmer_matches = 0;
-	uint32 anchors_idx[3] = { 0 };
-	uint64 init_aln_pos[3] = { 0 };
-	uint64 aln_ref_pos[3] = { 0 };
+inline bool is_unique_kmer(const std::vector<std::pair<minhash_t, uint16_t>>& sorted_kmers, const uint32 idx) {
+	bool unique = true;
+	minhash_t hash = sorted_kmers[idx].first;
+	if(idx > 0 && sorted_kmers[idx-1].first == hash) {
+		unique = false;
+	} else if(idx < sorted_kmers.size()-1 && sorted_kmers[idx+1].first == hash) {
+		unique = false;
+	}
+	return unique;
+}
 
-	//xxx
-	std::vector<std::vector<uint8>> matched_mask(2, std::vector<uint8>(r->len));
+#define UNIQUE1 0
+#define UNIQUE2 1
+void ransac(const std::vector<std::pair<minhash_t, uint16_t>>& ref_kmers,
+		const std::vector<std::pair<minhash_t, uint16_t>>& read_kmers, const index_params_t* params,
+		uint32* n_inliers, uint32* pos, uint32* total_n_matches) {
+
+	uint32 anchors[2][N_INIT_ANCHORS_MAX];
+	uint32 n_anchors[2] = { 0 };
+	uint64 anchor_median_pos[2] = { 0 };
 
 	for(int p = 0; p < 3; p++) {
 		// start from the beginning in each pass
 		uint32 idx_q = 0;
 		uint32 idx_r = 0;
-		while(idx_q < kmers.size() && idx_r < kmers_ref.size()) {
-			uint32 kmer_hash_ref = kmers_ref[idx_r].first;
-			uint32 kmer_hash_q = kmers[idx_q].first;
-			if(kmer_hash_ref == kmer_hash_q) { // MATCH
-				uint32 match_aln_pos = kmers_ref[idx_r].second - kmers[idx_q].second;
-
-				// get the first (not necessarily unique) random matches
-				if(anchors_idx[RAND] < params->n_init_anchors) {
-					sample_anchors[RAND][anchors_idx[RAND]] = match_aln_pos;
-					anchors_idx[RAND]++;
-				}
-
+		while(idx_q < ref_kmers.size() && idx_r < read_kmers.size()) {
+			if(ref_kmers[idx_r].first == read_kmers[idx_q].first) { // MATCH
+				uint32 match_aln_pos = ref_kmers[idx_r].second - read_kmers[idx_q].second;
 				if(p == 0) { // -------- FIRST PASS: collect unique matches ---------
-					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
-							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0)) { //&&
-							//((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
-							//((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
-						if(anchors_idx[UNIQUE1] < params->n_init_anchors) {
-							sample_anchors[UNIQUE1][anchors_idx[UNIQUE1]] = match_aln_pos;
-							anchors_idx[UNIQUE1]++;
+					if(is_unique_kmer(ref_kmers, idx_r) && is_unique_kmer(read_kmers, idx_q)) {
+						if(n_anchors[UNIQUE1] < params->n_init_anchors) {
+							anchors[UNIQUE1][n_anchors[UNIQUE1]] = match_aln_pos;
+							n_anchors[UNIQUE1]++;
 						} else { // found all the anchors
 							break;
 						}
 					}
 					idx_q++;
 					idx_r++;
-				} else if(p == 1) { // --------- SECOND PASS: collect DIFF unique matches -------
-					if(anchors_idx[UNIQUE1] == 0) break; // no unique matches exist
-
+			} else if(p == 1) { // --------- SECOND PASS: collect DIFF unique matches -------
+					if(n_anchors[UNIQUE1] == 0) break; // no unique matches exist
 					// compute the median first pass position
-					if(init_aln_pos[UNIQUE1] == 0) {
-						std::sort(&sample_anchors[UNIQUE1][0], &sample_anchors[UNIQUE1][0] + anchors_idx[UNIQUE1]);
-						init_aln_pos[UNIQUE1] = sample_anchors[UNIQUE1][(anchors_idx[UNIQUE1]-1)/2];
+					if(anchor_median_pos[UNIQUE1] == 0) {
+						std::sort(&anchors[UNIQUE1][0], &anchors[UNIQUE1][0] + n_anchors[UNIQUE1]);
+						anchor_median_pos[UNIQUE1] = anchors[UNIQUE1][(n_anchors[UNIQUE1]-1)/2];
 					}
-					if(((idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first != kmer_hash_ref) || idx_r == kmers_ref.size()-1) &&
-							((idx_r > 0 && kmers_ref[idx_r -1].first != kmer_hash_ref) || idx_r == 0) &&
-							((idx_q < (kmers.size()-1) && kmers[idx_q + 1].first != kmer_hash_q) || idx_q == kmers.size()-1) &&
-							((idx_q > 0 && kmers[idx_q -1].first != kmer_hash_q) || idx_q == 0)) { // unique kmer
+					if(is_unique_kmer(ref_kmers, idx_r) && is_unique_kmer(read_kmers, idx_q)) {
 						// if this position is not close to the first pick
-						if(match_aln_pos < init_aln_pos[UNIQUE1] - params->delta_x*params->delta_inlier || match_aln_pos > init_aln_pos[UNIQUE1] + params->delta_x*params->delta_inlier) {
-							if(anchors_idx[UNIQUE2] < params->n_init_anchors) {
-								sample_anchors[UNIQUE2][anchors_idx[UNIQUE2]] = match_aln_pos;
-								anchors_idx[UNIQUE2]++;
+						if(!pos_in_range(match_aln_pos, anchor_median_pos[UNIQUE1], params->delta_x*params->delta_inlier)) {
+							if(n_anchors[UNIQUE2] < params->n_init_anchors) {
+								anchors[UNIQUE2][n_anchors[UNIQUE2]] = match_aln_pos;
+								n_anchors[UNIQUE2]++;
 							} else { // found all the anchors
 								break;
 							}
@@ -235,148 +223,183 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 					idx_q++;
 					idx_r++;
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
-					if(anchors_idx[UNIQUE1] == 0 && anchors_idx[RAND] == 0) break;
-
+					if(n_anchors[UNIQUE1] == 0) break;
 					// find the median alignment positions
-					if(anchors_idx[UNIQUE2] > 0 && init_aln_pos[UNIQUE2] == 0) {
-						std::sort(&sample_anchors[UNIQUE2][0], &sample_anchors[UNIQUE2][0] + anchors_idx[UNIQUE2]);
-						init_aln_pos[UNIQUE2] = sample_anchors[UNIQUE2][(anchors_idx[UNIQUE2]-1)/2];
-					}
-					if(init_aln_pos[RAND] == 0) {
-						std::sort(&sample_anchors[RAND][0], &sample_anchors[RAND][0] + anchors_idx[RAND]);
-						init_aln_pos[RAND] = sample_anchors[RAND][(anchors_idx[RAND]-1)/2];
+					if(n_anchors[UNIQUE2] > 0 && anchor_median_pos[UNIQUE2] == 0) {
+						std::sort(&anchors[UNIQUE2][0], &anchors[UNIQUE2][0] + n_anchors[UNIQUE2]);
+						anchor_median_pos[UNIQUE2] = anchors[UNIQUE2][(n_anchors[UNIQUE2]-1)/2];
 					}
 					// count inliers
-					for(int i = 0; i < 3; i++) {
-						if(anchors_idx[i] == 0) continue;
-						if(match_aln_pos > (init_aln_pos[i] - params->delta_inlier) && match_aln_pos < (init_aln_pos[i] + params->delta_inlier)) { // inliers (within delta)
-							kmer_inliers[i]++;
-							aln_ref_pos[i] += match_aln_pos;
-							 //xxx
-                                                	if(i < 2) {
-                                                        	matched_mask[i][kmers[idx_q].second] = 1;
-                                               		}
+					for(int i = 0; i < 2; i++) {
+						if(n_anchors[i] == 0) continue;
+						if(pos_in_range(anchor_median_pos[i], match_aln_pos, params->delta_inlier)) {
+							n_inliers[i]++;
+							pos[i] += match_aln_pos;
 						}
-
 					}
-
-					if(idx_r < (kmers_ref.size()-1) && kmers_ref[idx_r + 1].first == kmer_hash_ref) {
+					if(idx_r < (ref_kmers.size()-1) && ref_kmers[idx_r + 1].first == ref_kmers[idx_r].first) {
 						// if the next kmer is still a match in the reference, check it in next iteration as an inlier
 						idx_r++;
 					} else {
-						total_kmer_matches++;
+						*total_n_matches++;
 						idx_q++;
 						idx_r++;
 					}
 				}
-			} else if(kmers[idx_q].first < kmers_ref[idx_r].first) {
+			} else if(read_kmers[idx_q].first < ref_kmers[idx_r].first) {
 				idx_q++;
 			} else {
 				idx_r++;
 			}
-			/*int max_possible_votes = kmers.size() - idx_q + kmer_votes;
-			if(max_possible_votes < r->max_votes_second_best && max_possible_votes < r->max_votes_all) {
-				break;  // if all the remaining votes cannot exceed max
-			}*/
+		}
+	}
+	for(int i = 0; i < 2; i++) {
+		pos[i] = pos[i]/n_inliers[i];
+	}
+}
+
+
+#define MATCH 1
+#define ERROR 2
+#define UNKNOWN 0
+
+void propagate_matches(read_t* r, const uint16_t contig_pos,
+		const std::vector<std::pair<minhash_t, uint16_t>>& contig_kmers,
+		const std::vector<std::pair<minhash_t, uint16_t>>& read_kmers,
+		const uint8* kmer_mask, const uint16_t kmer_mask_len,
+		uint16_t* min_n_matches, uint16_t* min_n_errors,
+		const index_params_t* params) {
+
+	// find all the kmers in the read that have consistent matches
+	std::vector<uint8> kmer_matches(r->len);
+	uint16_t last_match_pos = contig_pos > params->delta_inlier ? contig_pos - params->delta_inlier : 0;
+	for(uint16_t i = 0; i < read_kmers.size(); i++) {
+		minhash_t kmer = read_kmers[i].first;
+		// find the match in the contig if exists
+		for(uint16_t j = last_match_pos; j < last_match_pos + 2*params->delta_inlier; j++) {
+			if(j == contig_kmers.size()) break;
+			if(contig_kmers[j].first == kmer) {
+				kmer_matches[i] = 1;
+				last_match_pos = j; // the next match must occur at a later position
+				break;
+			}
 		}
 	}
 
-	//xxx
-	int min_err[2] = { 0 };
-	int min_match[2] = { 0 };
-	int max_err[2] = { 0 };
-	int total_err[2] = { 0 };
-	for(int i = 0; i < 2; i++) {
-		if(kmer_inliers[i] == 0) continue;
-		int last_match_pos = -1;
-        	int last_err_pos = -1;
-		for(uint32 z = 0; z < r->len; z++) {	
-			//printf("z = %u match = %d \n", z, matched_mask[i][z]);
-			if(matched_mask[i][z] == 1) {
-				//std::cout << "z = " << z << "; inc match " << min_match[i] + 1 << "\n"; 
-				min_match[i]++;
-				last_match_pos = z;
-				// anything before must be error, k-1 after must be correct
-				if(z > 0 && matched_mask[i][z-1] == 0 && last_err_pos != (z-1)) {
-					min_err[i]++;
-					//std::cout << "z = " << z << "; inc min_err " << min_err[i] << "\n";
-				}
-				last_err_pos = -1;
-			} else {
-				total_err[i]++;
-				if(last_match_pos != -1 && z - last_match_pos < params->k2) {
-					//std::cout << "z = " << z << "; last match closer than k2 " << last_match_pos << " => inc match " << min_match[i] + 1 << "\n";
-					min_match[i]++;
-				}
-				if(last_match_pos != -1 && z - last_match_pos == params->k2) {
-					min_err[i]++;
-					last_err_pos = z;
-					//std::cout << "z = " << z << "; inc min_err (xx) " << min_err[i] << "\n";
-				} else if((z - last_err_pos) % params->k2 == 0) {
-					min_err[i]++;
-					last_err_pos = z;
-					//std::cout << "z = " << z << "; inc min_err (xxx) " << min_err[i] << "\n";
+
+	// mark positions in the read that correspond to kmer matches
+	std::vector<uint8> base_matches(r->len);
+	for(uint16_t i = 0; i < kmer_matches.size(); i++) {
+		if(!kmer_matches[i]) continue;
+		for(uint16_t j = 0; j < kmer_mask_len; j++) {
+			if(kmer_mask[j]) {
+				base_matches[i+j] = MATCH;
+				*min_n_matches++;
+			}
+		}
+	}
+
+	// propagate known positions to determine errors and known positions
+	for(uint16_t i = 0; i < kmer_matches.size(); i++) {
+		if(kmer_matches[i]) continue;
+		int n_kmer_bases = 0;
+		int n_matched_kmer_bases = 0;
+		uint16_t mismatch_pos = 0;
+		for(uint16_t j = 0; j < kmer_mask_len; j++) {
+			if(kmer_mask[j]) {
+				n_kmer_bases++;
+				if(base_matches[i+j] == MATCH) {
+					n_matched_kmer_bases++;
+				} else {
+					mismatch_pos = i + j;
 				}
 			}
 		}
-		//printf("\n");
+		// must be an error if only one unknown
+		if(n_matched_kmer_bases == n_kmer_bases - 1) {
+			base_matches[mismatch_pos] = ERROR;
+			*min_n_errors++;
+		}
 	}
-	//if(r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size) {
-		//printf("\n");
-	//}
+
 	//std::cout << " inliers[0] " << kmer_inliers[0] << " inliers[1] " << kmer_inliers[1] << " min_match[0] " << min_match[0] << " min_match[1] " << min_match[1] << "\n";
 
+}
+
+// compute number of votes for this contig and its interior alignment
+#define CONTIG_PADDING 100
+int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, const index_params_t* params) {
+	// get read voting kmers
+	const std::vector<std::pair<minhash_t, uint16_t>>& read_kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
+	// generate ref voting kmers
+	std::vector<std::pair<minhash_t, uint16_t>> ref_kmers;
+	seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
+	generate_voting_kmers(ref.seq.c_str(), padded_hit_offset, search_len, params, ref_kmers);	
+	std::sort(ref_kmers.begin(), ref_kmers.end());
+
+	uint32 pos[2];
+	uint32 n_inliers[2];
+	uint32 total_n_matches;
+	ransac(ref_kmers, read_kmers, params, n_inliers, pos, &total_n_matches);
+
+	uint8 kmer_mask[20] = {1};
 	for(int i = 0; i < 2; i++) {
-		// keep track of max inlier votes and its alignment position
-		//if(kmer_inliers[i] > r->top_aln.inlier_votes) {
+		uint16_t min_n_matches, min_n_errors;
+		if(n_inliers[i] == 0) continue;
+		propagate_matches(r, pos[i], ref_kmers, read_kmers, kmer_mask, params->k2, &min_n_matches, &min_n_errors, params);
+		pos[i] += padded_hit_offset;
+		n_inliers[i] = 3*min_n_matches;
+	}
+
+	// update votes and its alignment position
+	for(int i = 0; i < 2; i++) {
 		//if(min_err[i] > 10) continue;
-		
-		if(min_match[i]*3 > r->top_aln.inlier_votes) {
-			if(aln_ref_pos[i]/kmer_inliers[i] < r->top_aln.ref_start - 30 || aln_ref_pos[i]/kmer_inliers[i] > r->top_aln.ref_start + 30) {
+
+		if(n_inliers[i] > r->top_aln.inlier_votes) {
+			if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
 				r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
 				r->second_best_aln.total_votes = r->top_aln.total_votes;
 				r->second_best_aln.ref_start = r->top_aln.ref_start;
 			}
 			// update best alignment
-			r->top_aln.inlier_votes = min_match[i]*3; //kmer_inliers[i];
-			r->top_aln.total_votes = total_kmer_matches;
-			r->top_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
+			r->top_aln.inlier_votes = n_inliers[i];
+			r->top_aln.total_votes = total_n_matches;
+			r->top_aln.ref_start = pos[i];
 			r->top_aln.rc = ref_contig.rc;
-		} //else if(kmer_inliers[i] > r->second_best_aln.inlier_votes) {
-		else if(min_match[i]*3 > r->second_best_aln.inlier_votes) {
-			if(aln_ref_pos[i]/kmer_inliers[i] < r->top_aln.ref_start - 30 || aln_ref_pos[i]/kmer_inliers[i] > r->top_aln.ref_start + 30) {
-				r->second_best_aln.inlier_votes = min_match[i]*3; //kmer_inliers[i];
-				r->second_best_aln.total_votes = total_kmer_matches;
-				r->second_best_aln.ref_start = aln_ref_pos[i]/kmer_inliers[i];
+		} else if(n_inliers[i] > r->second_best_aln.inlier_votes) {
+			if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+				r->second_best_aln.inlier_votes = n_inliers[i];
+				r->second_best_aln.total_votes = total_n_matches;
+				r->second_best_aln.ref_start = pos[i];
 			}
 		}
 	}
-	if(anchors_idx[UNIQUE1] < params->n_init_anchors) {
+	//if(anchors_idx[UNIQUE1] < params->n_init_anchors) {
 		// too few unique hits
-		if(total_kmer_matches > r->max_total_votes_low_anchors) {
-			r->max_total_votes_low_anchors = total_kmer_matches;
-		}
-	}
+	//	if(total_n_matches > r->max_total_votes_low_anchors) {
+	//		r->max_total_votes_low_anchors = total_n_matches;
+	//	}
+	//}
 
 	// keep track of max total votes
-	if(total_kmer_matches > r->max_total_votes) {
-		r->max_total_votes = total_kmer_matches;
+	if(total_n_matches > r->max_total_votes) {
+		r->max_total_votes = total_n_matches;
 	}
 
 #if(SIM_EVAL)
 	// DEBUG -----
-	if((r->ref_pos_r >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_r <= ref_contig.pos + params->ref_window_size) || 
-               (r->ref_pos_l >= ref_contig.pos - ref_contig.len - params->ref_window_size && r->ref_pos_l <= ref_contig.pos + params->ref_window_size)) {	
-		r->comp_votes_hit = kmer_inliers[0] > kmer_inliers[1] ? kmer_inliers[0] : kmer_inliers[1];
+	if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size)) {
+		r->comp_votes_hit = n_inliers[0] > n_inliers[1] ? n_inliers[0] : n_inliers[1];
 		if(VERBOSE > 0) {
-			printf("RC %d contig pos %u len %u offset %u search_len %u \n", ref_contig.rc, ref_contig.pos, ref_contig.len, padded_hit_offset, search_len);
+			printf("------True Hit------\n");
 		}
-	//}
+	}
 	if(VERBOSE > 0) {
-		printf("aln pos %llu %llu %llu votes %u %u %u noransac votes %u avg pos %llu %llu %llu contig pos %u len %u \n",
-						aln_ref_pos[0], aln_ref_pos[1], aln_ref_pos[2],
-						kmer_inliers[0], kmer_inliers[1], kmer_inliers[2],
-						total_kmer_matches, init_aln_pos[0], init_aln_pos[1], init_aln_pos[2], ref_contig.pos, ref_contig.len);
+		printf("contig_rc = %d; contig_pos = %u; len = %u; aln_pos: %llu %llu; votes: %u %u; total matches: %u \n",
+				ref_contig.rc, ref_contig.pos, ref_contig.len, pos[0], pos[1], n_inliers[0], n_inliers[1], total_n_matches);
 	}}
 #endif
 	return 0;
@@ -384,8 +407,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 #if(SIM_EVAL)
-	 if((r->ref_pos_r >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_r <= contig_pos + params->ref_window_size) || 
-               (r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size))  {
+	 if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size))  {
 		r->collected_true_hit = true;
 		r->processed_true_hit = true;
 		r->true_n_bucket_hits = n_diff_table_hits;
@@ -418,8 +441,8 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	}*/
 
 #if(SIM_EVAL)
-	 if((r->ref_pos_r >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_r <= contig_pos + params->ref_window_size) ||
-                (r->ref_pos_l >= contig_pos - contig_len - params->ref_window_size && r->ref_pos_l <= contig_pos + params->ref_window_size))  {	
+	 if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size))  {
 		r->bucketed_true_hit = n_diff_table_hits;
 	}
 #endif
@@ -678,8 +701,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("\n");
 
 			}
-			if (VERBOSE == 0 && r->top_aln.score >= 10 && (!(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) && 
-					 (!(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30)))) {
+			if (VERBOSE == 0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
 				printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n", 
 						r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
@@ -692,13 +714,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 					}
 					printf("\n");
 					seq_t p = r->top_aln.ref_start;
-                                        if(r->top_aln.rc) {
-                                                p -= r->len;
-                                        }
-                                        printf("false \n");
-                                        for(uint32 x = p; x < p + r->len; x++) {
-                                                printf("%c", iupacChar[(int)ref.seq[x]]);
-                                        }
+					if(r->top_aln.rc) {
+						p -= r->len;
+					}
+					printf("false \n");
+					for(uint32 x = p; x < p + r->len; x++) {
+						printf("%c", iupacChar[(int)ref.seq[x]]);
+					}
 					printf("\n");
 				}
 			}
@@ -762,14 +784,14 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		confident++;
 
 		if(!r->top_aln.rc) {
-                       if(r->ref_pos_l >= r->top_aln.ref_start - 30 && r->ref_pos_l <= r->top_aln.ref_start + 30) {
-                               r->dp_hit_acc = 1;
-                       }
-                } else {
-                       if(r->ref_pos_r >= r->top_aln.ref_start - 30 && r->ref_pos_r <= r->top_aln.ref_start + 30) {
-                               r->dp_hit_acc = 1;
+			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+				r->dp_hit_acc = 1;
 			}
-                }
+		} else {
+			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30)) {
+				r->dp_hit_acc = 1;
+			}
+        }
 		acc += r->dp_hit_acc;
 		best_hits += r->best_n_bucket_hits;
 		score += r->top_aln.score;
@@ -793,9 +815,9 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(r->dp_hit_acc) {
 				q10acc++;
 			}
-			 if(r->bucketed_true_hit) {
-                                q10bucketed_true++;
-                        }
+			if(r->bucketed_true_hit) {
+				q10bucketed_true++;
+			}
 		}
 	}
 	float avg_true_pos_hits = (float) true_pos_hits/valid_hash;

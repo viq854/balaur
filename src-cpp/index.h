@@ -204,8 +204,8 @@ struct read_t {
 	char valid_minhash_rc;
 
 	// kmer k2 hashes
-	std::vector<std::pair<minhash_t, uint32>> kmers_f;
-	std::vector<std::pair<minhash_t, uint32>> kmers_rc;
+	std::vector<std::pair<minhash_t, uint16_t>> kmers_f;
+	std::vector<std::pair<minhash_t, uint16_t>> kmers_rc;
 
 	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
