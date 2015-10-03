@@ -398,9 +398,9 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		}
 	}
 	if(VERBOSE > 0) {
-		printf("contig_rc = %d; contig_pos = %u; len = %u; aln_pos: %llu %llu; votes: %u %u; total matches: %u \n",
+		printf("contig_rc = %d; contig_pos = %u; len = %u; aln_pos: %u %u; votes: %u %u; total matches: %u \n",
 				ref_contig.rc, ref_contig.pos, ref_contig.len, pos[0], pos[1], n_inliers[0], n_inliers[1], total_n_matches);
-	}}
+	}
 #endif
 	return 0;
 }
