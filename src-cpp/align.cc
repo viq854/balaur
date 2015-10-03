@@ -407,8 +407,8 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 
 void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 #if(SIM_EVAL)
-	 if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
-		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size))  {
+	 if(pos_in_range_asym(r->ref_pos_r, contig_pos, contig_len + params->ref_window_size, params->ref_window_size) ||
+		pos_in_range_asym(r->ref_pos_l, contig_pos, contig_len + params->ref_window_size, params->ref_window_size))  {
 		r->collected_true_hit = true;
 		r->processed_true_hit = true;
 		r->true_n_bucket_hits = n_diff_table_hits;
@@ -441,8 +441,8 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	}*/
 
 #if(SIM_EVAL)
-	 if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
-		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size))  {
+	 if(pos_in_range_asym(r->ref_pos_r, contig_pos, contig_len + params->ref_window_size, params->ref_window_size) ||
+		pos_in_range_asym(r->ref_pos_l, contig_pos, contig_len + params->ref_window_size, params->ref_window_size))  {
 		r->bucketed_true_hit = n_diff_table_hits;
 	}
 #endif
