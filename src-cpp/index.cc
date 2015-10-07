@@ -89,7 +89,7 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
                         //}
 			
 			std::sort(counts.begin(), counts.end());
-			for(int k = 0; k < counts.size(); k++) {
+			for(uint32 k = 0; k < counts.size(); k++) {
 				//if(counts[k] > 2) {
 				//	repk += 1;
 				//	break;
@@ -309,7 +309,9 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    seq_t chunk_end = ((ref.len - params->ref_window_size + 1) / n_threads)*(tid + 1);
 	    printf("Thread %d range: %u %u \n", tid, chunk_start, chunk_end);
 
+#if EXTERNAL_MEM_INDEX
 	    int sync_point = 1;
+#endif
 	    bool init_minhash = true;
 	    for (seq_t pos = chunk_start; pos != chunk_end; pos++) { // for each window of the thread's chunk
 	    	if((pos - chunk_start) % REPORT_WINDOW_PROC_GRANULARITY == 0 && (pos - chunk_start) != 0) {
@@ -348,6 +350,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    					rolling_minhash_matrix, ref.ignore_kmer_bitmask, params,
 							minhashes);
 	    	}
+
 	    	if(!valid_hash) {
 	    		continue;
 	    	}
@@ -357,7 +360,8 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	    		minhash_t proj_hash = params->sketch_proj_hash_func.apply_vector(
 	    				minhashes, params->sketch_proj_indices, t*params->sketch_proj_len);
 	    		minhash_t bucket_hash = params->sketch_proj_hash_func.bucket_hash(proj_hash);
-	    		buckets_t* buckets = &ref.mutable_index.per_table_buckets[t];
+	    		
+			buckets_t* buckets = &ref.mutable_index.per_table_buckets[t];
 	    		VectorSeqPos& bucket = buckets->per_thread_buckets_data_vectors[tid][bucket_hash];
 	    		if(bucket.size() == 0) { // first item in this thread bucket
 	    			bucket.resize(params->bucket_size);
@@ -370,7 +374,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 				bool store_pos = true;
 				if(curr_size > 0) {
 					loc_t* epos = &bucket[curr_size-1];
-					if((epos->pos + epos->len) == pos) {
+					if(epos->len < MAX_LOC_LEN && (epos->pos + epos->len) == pos) {
 						epos->len++;
 						store_pos = false;
 					} /*else if((epos->pos + epos->len) + params->bucket_entry_coverage >= pos) { // sampling
@@ -456,10 +460,10 @@ void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& r
 	// load/precompute k2 voting kmers
 	t = clock();
 	printf("Precomputing/loading k2 kmer hashes... \n");
-	if(params->precomp_k2 && !load_kmer2_hashes(fastaFname, ref, params)) {
+	/*if(params->precomp_k2 && !load_kmer2_hashes(fastaFname, ref, params)) {
 		omp_set_num_threads(params->n_threads);
 		compute_store_kmer2_hashes(fastaFname, ref, params);
-	}
+	}*/
 	printf("Reference k2 hash loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 }
 

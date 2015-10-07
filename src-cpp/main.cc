@@ -136,10 +136,10 @@ int main(int argc, char *argv[]) {
 	
 		// load the reference index
 		ref_t ref;
-		ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
+		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);
 		//store_ref_index_stats(argv[optind+1], ref, &params);
-		kmer_stats(argv[optind+1]);
+		//kmer_stats(argv[optind+1]);
 	} else {
 		print_usage(&params);
 		exit(1);

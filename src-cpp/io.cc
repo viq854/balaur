@@ -315,11 +315,7 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 			const VectorSeqPos& bucket = buckets.buckets_data_vectors[j];
 			uint32 size = bucket.size();
 			file.write(reinterpret_cast<const char*>(&size), sizeof(size));
-			for(uint32 k = 0; k < size; k++) {
-				file.write(reinterpret_cast<const char*>(&bucket[k].pos), sizeof(seq_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].len), sizeof(len_t));
-				file.write(reinterpret_cast<const char*>(&bucket[k].hash), sizeof(minhash_t));
-			}
+			file.write(reinterpret_cast<const char*>(&bucket[0]), size*sizeof(loc_t));
 		}
 	}
 	file.close();

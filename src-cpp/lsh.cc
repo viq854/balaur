@@ -80,6 +80,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 
 	bool any_valid_kmers = false;
 	uint32 n_valid_kmers = 0;
+	
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if this kmer should be discarded
 #if USE_MARISA
