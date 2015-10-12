@@ -75,7 +75,7 @@ typedef struct {
 		k2 = 32;
 		precomp_k2 = true;
 		min_n_hits = 2;
-		dist_best_hit = 15;
+		dist_best_hit = 25;
 		max_matched_contig_len = 100000;
 		n_init_anchors = 10;
 		delta_inlier = 10;
@@ -227,6 +227,7 @@ struct read_t {
 	bool processed_true_hit;
 	int bucketed_true_hit;
 	int comp_votes_hit;
+	int n_proc_contigs;
 
 	// original mapping information from simulations
 	int strand;
@@ -260,6 +261,7 @@ struct read_t {
 		processed_true_hit = false;
 		bucketed_true_hit = 0;
 		comp_votes_hit = 0;
+		n_proc_contigs = 0;
 		dp_hit_acc = 0;
 		top_hit_acc = 0;
 		strand = 0;

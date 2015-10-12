@@ -1,3 +1,4 @@
+#include <fstream>
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>
@@ -184,7 +185,9 @@ void votes_by_pos(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_kmers.size(); i++) {
+		if(!is_unique_kmer(read_kmers, i)) continue;
 		for(uint32 j = 0; j < ref_kmers.size(); j++) {
+			//if(!is_unique_kmer(ref_kmers, j)) continue;
 			// mark each repeat of the kmer
 			if(read_kmers[i].first == ref_kmers[j].first) {
 				int match_aln_pos = ref_kmers[j].second - read_kmers[i].second;
@@ -457,9 +460,9 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 		uint16_t min_n_matches = 0;
 		uint16_t min_n_errors = 0;
 		if(n_inliers[i] == 0) continue;
-		propagate_matches(r, pos_sig[i], ref_kmers, read_kmers, kmer_mask, KMER_MASK_LEN, &min_n_matches, &min_n_errors, params);
+		//propagate_matches(r, pos_sig[i], ref_kmers, read_kmers, kmer_mask, KMER_MASK_LEN, &min_n_matches, &min_n_errors, params);
 		pos[i] = pos_sig[i] + padded_hit_offset;
-		n_inliers[i] = 3*min_n_matches;
+		//n_inliers[i] = 3*min_n_matches;
 		//if(min_n_errors > 10) n_inliers[i] = 0;
 	}
 
@@ -527,7 +530,7 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	// filters
 	if(contig_len > params->max_matched_contig_len) return;
 	if(n_diff_table_hits < (int) params->min_n_hits) return;
-	//if(n_diff_table_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) return;
+	if(n_diff_table_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) return;
 
 	// passed filters
 	if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
@@ -535,6 +538,7 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	}
 	ref_match_t rm(contig_pos, contig_len, rc);
 	compute_ref_contig_votes(rm, ref, r, params);
+	r->n_proc_contigs++;
 
 	/* ---- split the ref contig
 	int contig_chunk_size = (r->len + 1000);
@@ -645,7 +649,7 @@ void collect_read_hits(ref_t& ref, read_t* r, const bool rc, const index_params_
 	}
 }
 
-#define MAX_BUCKET_SIZE 10000
+#define MAX_BUCKET_SIZE 5000
 
 void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* params) {
 	printf("**** SRX Alignment: MinHash ****\n");
@@ -781,7 +785,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 
 					// if sufficient votes were accumulated (lower thresholds for unique hit)
 					if(r->top_aln.inlier_votes > params->votes_cutoff) {
-						r->top_aln.score = 250*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
+						r->top_aln.score = 50*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
 						// scale by the distance from theoretical best possible votes
 						if(avg_score_per_thread > 0 && params->enable_scale) {
 							r->top_aln.score *= (float) r->top_aln.inlier_votes/(float) avg_score_per_thread;
@@ -859,6 +863,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int n_collected = 0;
+	int n_proc_contigs = 0;
 	int processed_true = 0;
 	int bucketed_true = 0;
 	int confident = 0;
@@ -880,6 +885,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		if(!r->valid_minhash && !r->valid_minhash_rc) continue;
 		valid_hash++;
 		
+		n_proc_contigs += r->n_proc_contigs;
 		true_pos_hits += r->true_n_bucket_hits;
 
 		if(r->collected_true_hit) {
@@ -905,7 +911,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30)) {
 				r->dp_hit_acc = 1;
 			}
-        }
+ 	        }
 		acc += r->dp_hit_acc;
 		best_hits += r->best_n_bucket_hits;
 		score += r->top_aln.score;
@@ -934,6 +940,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			}
 		}
 	}
+	float avg_n_proc_contigs = (float) n_proc_contigs/valid_hash;
 	float avg_true_pos_hits = (float) true_pos_hits/valid_hash;
 	double stddev_true_pos_hits = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
@@ -943,6 +950,35 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	}
 	stddev_true_pos_hits = sqrt((double)stddev_true_pos_hits/valid_hash);
 
+	/*std::string fname("process_contigs");
+	fname += std::string("_h");
+        fname += std::to_string(params->h);
+        fname += std::string("_T");
+        fname += std::to_string(params->n_tables);
+        fname += std::string("_b");
+        fname += std::to_string(params->sketch_proj_len);
+        fname += std::string("_w");
+        fname += std::to_string(params->ref_window_size);
+        fname += std::string("_p");
+    	fname += std::to_string(params->n_buckets_pow2);
+    	fname += std::string("_k");
+    	fname += std::to_string(params->k);
+    	fname += std::string("_H");
+    	fname += std::to_string(params->max_count);
+        std::ofstream stats_file;
+        stats_file.open(fname.c_str(), std::ios::out | std::ios::app);
+        if (!stats_file.is_open()) {
+                printf("store_ref_idx: Cannot open the CONTIG STATS file %s!\n", fname.c_str());
+                exit(1);
+        }
+	//stats_file << "length,count,m\n";
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+                read_t* r = &reads.reads[i];
+                if(!r->valid_minhash && !r->valid_minhash_rc) continue;
+		stats_file << r->len << "," << r->n_proc_contigs << "," << params->min_n_hits << "\n";
+	}
+        stats_file.close();
+	*/
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads COLLECTED true hit %u \n", n_collected);
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
@@ -959,6 +995,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 	printf("Avg score per read %.8f \n", (float) score/confident);
 	printf("Avg max inlier votes per read %.8f \n", (float) max_votes_inl/confident);
 	printf("Avg max all votes per read %.8f \n", (float) max_votes_all/confident);
+	printf("AVG N_PROC_CONTIGS %.8f \n", avg_n_proc_contigs);
 #endif
 	printf("Total search time: %f sec\n", end_time - start_time);
 }
