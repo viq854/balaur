@@ -147,6 +147,33 @@ void generate_voting_kmers(const char* seq, const seq_t seq_offset, const seq_t 
 	}
 }
 
+void generate_unique_voting_kmers_sorted(const char* seq, const seq_t seq_offset, const seq_t seq_len, const uint16_t kmer_len,
+		const index_params_t* params, std::vector<std::pair<minhash_t, uint16_t>>& voting_kmers) {
+
+	uint32 n_kmers = seq_len - kmer_len + 1;
+	voting_kmers.resize(n_kmers);
+	for(uint16_t j = 0; j < n_kmers; j++) {
+		voting_kmers[j] = std::make_pair(CityHash32(&seq[seq_offset+j], kmer_len), j);
+	}
+	std::sort(voting_kmers.begin(), voting_kmers.end());
+
+	std::vector<std::pair<minhash_t, uint16_t>> unique(voting_kmers);
+	uint32 i = 0;
+	uint32 n_unique = 0;
+	while(i < voting_kmers.size()) {
+		minhash_t hash = voting_kmers[i].first;
+		uint32 j = i+1;
+		while(j < voting_kmers.size() && hash == voting_kmers[j].first) {
+			j++;
+		}
+		if(j == i+1) {
+			unique[n_unique] = voting_kmers[i];
+			n_unique++;
+		}
+		i = j;
+	}
+}
+
 inline bool pos_in_range_sig(int pos1, int pos2, uint32 delta) {
         return abs(pos1 - pos2) <= delta;
 }
@@ -177,28 +204,23 @@ void votes_by_pos(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
                 std::vector<std::pair<minhash_t, uint16_t>> read_kmers, const index_params_t* params,
                 uint32* n_inliers, int* pos, uint32* total_n_matches) {
 
-	std::sort(ref_kmers.begin(), ref_kmers.end());
-        std::sort(read_kmers.begin(), read_kmers.end());
+	//std::sort(ref_kmers.begin(), ref_kmers.end());
+    //std::sort(read_kmers.begin(), read_kmers.end());
 
 	std::vector<int> votes(ref_kmers.size() + read_kmers.size());
 	int pos0 = read_kmers.size();
-
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_kmers.size(); i++) {
-		if(!is_unique_kmer(read_kmers, i)) continue;
-		for(uint32 j = 0; j < ref_kmers.size(); j++) {
+		//if(!is_unique_kmer(read_kmers, i)) continue;
+		for(uint32 j = skip; j < ref_kmers.size(); j++) {
 			//if(!is_unique_kmer(ref_kmers, j)) continue;
-			// mark each repeat of the kmer
 			if(read_kmers[i].first == ref_kmers[j].first) {
 				int match_aln_pos = ref_kmers[j].second - read_kmers[i].second;
-				//std::cout << pos0 + match_aln_pos << " " << pos0 << " " << match_aln_pos << " " << ref_kmers[i].second << " " << read_kmers[i].second << "\n"; 
 				votes[pos0 + match_aln_pos]++;
-			} //else if(ref_kmers[j].first > read_kmers[j].first) {
-				//if(i < read_kmers.size()-1 && read_kmers[i+1].first > read_kmers[i].first) {
-				//	skip = j;
-				//}
-			//	break;
-			//}
+			} else if(ref_kmers[j].first > read_kmers[i].first) {
+				skip = j;
+				break;
+			}
 		}
 
 	}
@@ -433,7 +455,7 @@ void propagate_matches(read_t* r, const int contig_pos,
 #define KMER_MASK_LEN 20
 //static const uint8 kmer_mask[KMER_MASK_LEN] = {1,0,1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1};
 //static const uint8 kmer_mask[KMER_MASK_LEN] =   {1,0,1,1,0,1,1,1,1,1,0,0,1,1,1,1,0,1,1,0,1,1,1,1,1,0,1,1};
-static const uint8 kmer_mask[KMER_MASK_LEN] =     {1, 1, 1, 1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+static const uint8 kmer_mask[KMER_MASK_LEN] =     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 
 // compute number of votes for this contig and its interior alignment
 #define CONTIG_PADDING 100
@@ -446,7 +468,7 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 	uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 	generate_voting_kmers(ref.seq.c_str(), padded_hit_offset, search_len, kmer_mask, KMER_MASK_LEN, params, ref_kmers);	
-	//std::sort(ref_kmers.begin(), ref_kmers.end());
+	std::sort(ref_kmers.begin(), ref_kmers.end());
 
 	uint32 pos[2] = { 0 };
 	int pos_sig[2] = { 0 };
@@ -455,7 +477,6 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 	//ransac(ref_kmers, read_kmers, params, n_inliers, pos_sig, &total_n_matches);
 	votes_by_pos(ref_kmers, read_kmers, params, n_inliers, pos_sig, &total_n_matches);
 
-	//uint8 kmer_mask[20] = {1};
 	for(int i = 0; i < 2; i++) {
 		uint16_t min_n_matches = 0;
 		uint16_t min_n_errors = 0;
@@ -488,12 +509,6 @@ int compute_ref_contig_votes(ref_match_t ref_contig, ref_t& ref, read_t* r, cons
 			}
 		}
 	}
-	//if(anchors_idx[UNIQUE1] < params->n_init_anchors) {
-		// too few unique hits
-	//	if(total_n_matches > r->max_total_votes_low_anchors) {
-	//		r->max_total_votes_low_anchors = total_n_matches;
-	//	}
-	//}
 
 	// keep track of max total votes
 	if(total_n_matches > r->max_total_votes) {
@@ -692,10 +707,13 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 			r->rid = i;
 
 			// 1. index the read sequence: generate and store all k2 kmers
-			generate_voting_kmers(r->seq.c_str(), 0, r->len, kmer_mask, KMER_MASK_LEN, params, r->kmers_f);
+			/*generate_voting_kmers(r->seq.c_str(), 0, r->len, kmer_mask, KMER_MASK_LEN, params, r->kmers_f);
 			generate_voting_kmers(r->rc.c_str(), 0, r->len, kmer_mask, KMER_MASK_LEN, params, r->kmers_rc);
-			//std::sort(r->kmers_f.begin(), r->kmers_f.end());
-			//std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
+			std::sort(r->kmers_f.begin(), r->kmers_f.end());
+			std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
+			*/
+			generate_unique_voting_kmers_sorted(r->seq.c_str(), 0, r->len, KMER_MASK_LEN, params, r->kmers_f);
+			generate_unique_voting_kmers_sorted(r->rc.c_str(), 0, r->len, KMER_MASK_LEN, params, r->kmers_rc);
 
 			// 2. index the read sequence using MinHash and collect the buckets
 			if(!r->valid_minhash && !r->valid_minhash_rc) continue;
