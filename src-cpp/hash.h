@@ -59,4 +59,17 @@ struct rand_range_generator_t {
 	}
 };
 
+struct kmer_hasher_t {
+
+	minhash_t encrypt_crypto_32bit(uint32 packed_kmer) const {
+		minhash_t cipher = 0;
+
+		return cipher;
+	}
+
+	minhash_t encrypt_base_seq(const char* seq, const seq_t seq_len) const {
+		return CityHash32(seq, seq_len);
+	}
+};
+
 #endif /*HASH_H_*/

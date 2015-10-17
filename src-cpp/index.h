@@ -27,7 +27,7 @@ typedef struct {
 	uint32 bucket_size;				// max number of entries to keep per bucket
 	rand_hash_function_t sketch_proj_hash_func; // hash function for sketch projection vector hashing
 	VectorHashFunctions minhash_functions;	// hash functions for min-hash
-	CyclicHash* kmer_hasher;		// function used to generate kmer hashes for the sequence set
+	kmer_hasher_t* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 bucket_entry_coverage;
 
@@ -46,6 +46,7 @@ typedef struct {
 	uint32 n_init_anchors;
 	int votes_cutoff;
 	bool enable_scale;
+	int mapq_scale_x;
 
 	// simhash mapping parameters
 	uint32 p; 					// number of permutation tables
@@ -82,13 +83,14 @@ typedef struct {
 		delta_x = 3;
 		votes_cutoff = 50;
 		enable_scale = true;
+		mapq_scale_x = 100;
 
 		n_threads = 1;
 	}
 
 	// set the initial kmer hash function (rolling hash)
 	void set_kmer_hash_function() {
-		//kmer_hasher = new CyclicHash(k, 32);
+		kmer_hasher = new kmer_hasher_t();
 	}
 
 	// generate random vector hash function sketch buckets
@@ -197,19 +199,24 @@ struct read_t {
 	std::string qual;				// quality scores
 	uint32 rid;
 
+	// kmer hashes (unique, shuffled)
+	std::vector<kmer_cipher_t> kmer_ciphers_phase1_f;
+	std::vector<kmer_cipher_t> kmer_ciphers_phase1_rc;
+
 	// LSH sketches
-	VectorMinHash minhashes;		// minhash vector
+	VectorMinHash minhashes_f;		// minhash vector
 	VectorMinHash minhashes_rc;		// minhash vector for the reverse complement
-	char valid_minhash;
+	char valid_minhash_f;
 	char valid_minhash_rc;
 
 	// kmer k2 hashes
-	std::vector<std::pair<minhash_t, uint16_t>> kmers_f;
-	std::vector<std::pair<minhash_t, uint16_t>> kmers_rc;
+	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_f;
+	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_rc;
 
 	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
-	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table;
+	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
+	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 	std::vector<VectorRefMatches> ref_matches;
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
@@ -239,7 +246,7 @@ struct read_t {
 		len = 0;
 		rid = 0;
 
-		valid_minhash = 0;
+		valid_minhash_f = 0;
 		valid_minhash_rc = 0;
 		best_n_bucket_hits = 0;
 		true_n_bucket_hits = 0;

@@ -16,6 +16,11 @@ typedef uint32 minhash_t;
 typedef uint32 seq_t;
 typedef uint16_t len_t;
 
+
+typedef minhash_t kmer_cipher_t;
+typedef seq_t pos_cipher_t;
+typedef seq_t pos_offset_cipher_t;
+
 #define MAX_LOC_LEN (1<<16)
 
 struct loc_t {

@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:")) >= 0) {
 		switch (c) {
 			case 'h': params.h = atoi(optarg); break;
 			case 'T': params.n_tables = atoi(optarg); break;
@@ -90,6 +90,7 @@ int main(int argc, char *argv[]) {
 			case 'n': params.n_init_anchors = atoi(optarg); break;
 			case 'd': params.delta_inlier = atoi(optarg); break;
 			case 'x': params.delta_x = atoi(optarg); break;
+			case 'f': params.mapq_scale_x = atoi(optarg); break;
 			case 'c': params.votes_cutoff = atoi(optarg); break;
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
@@ -127,10 +128,13 @@ int main(int argc, char *argv[]) {
 
 		// 2. index the reads
 		reads_t reads;
-		index_reads_lsh(argv[optind+2], ref, &params, reads);
+		//index_reads_lsh(argv[optind+2], ref, &params, reads);
+		fastq2reads(argv[optind+2], reads);
 
 		// 3. align
-		align_reads_minhash(ref, reads, &params);
+		//align_reads_minhash(ref, reads, &params);
+
+		balaur_main(ref, reads, params);
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
 	

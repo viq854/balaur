@@ -488,12 +488,12 @@ void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params,
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		r->minhashes.resize(params->h);
-		r->valid_minhash = minhash(r->seq.c_str(), r->len,
+		r->minhashes_f.resize(params->h);
+		r->valid_minhash_f = minhash(r->seq.c_str(), r->len,
 				ref.high_freq_kmer_bitmap,
 				ref.high_freq_kmer_trie,
 				MarisaTrie(), params,
-				r->minhashes);
+				r->minhashes_f);
 
 		r->minhashes_rc.resize(params->h);
 		r->valid_minhash_rc = minhash(r->rc.c_str(), r->len,

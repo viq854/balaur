@@ -49,35 +49,6 @@ bool minhash(const char* seq, const seq_t seq_len,
 			const index_params_t* params,
 			VectorMinHash& min_hashes) {
 
-	/*kmer_hasher->hashvalue = 0; //----- rolling hash
-	for(uint32 i = 0; i < params->k; i++) {
-		unsigned char c = seq[seq_offset + i];
-		kmer_hasher->eat(c);
-	}
-	bool any_valid_kmers = false;
-	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
-		// check if the kmer should be discarded
-		if(!get_kmer_weight(&seq[seq_offset + i], params->k, ref_freq_kmer_trie, reads_hist, params)) {
-			//minhash_t kmer_hash = kmer_hasher->hashvalue;
-			minhash_t kmer_hash = CityHash32(&seq[seq_offset + i], params->k);
-			for(uint32_t h = 0; h < params->h; h++) { // update the min values
-				const rand_hash_function_t* f = &params->minhash_functions[h];
-				minhash_t min = f->apply(kmer_hash);
-				if(min < min_hashes[h] || i == 0) {
-					min_hashes[h] = min;
-				}
-			}
-			//any_valid_kmers = true;
-		}
-		// roll the hash
-		if(i < seq_len - params->k) {
-			unsigned char c_out = seq[seq_offset + i];
-			unsigned char c_in = seq[seq_offset + i + params->k];
-			kmer_hasher->update(c_out, c_in);
-		}
-	}
-	return any_valid_kmers;-------*/
-
 	bool any_valid_kmers = false;
 	uint32 n_valid_kmers = 0;
 	
@@ -95,7 +66,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 		}
 #endif
 		n_valid_kmers++;
-		minhash_t kmer_hash = CityHash32(&seq[i], params->k);
+		minhash_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[i], params->k);
 		for(uint32_t h = 0; h < params->h; h++) { // update the min values
 			const rand_hash_function_t* f = &params->minhash_functions[h];
 			minhash_t min = f->apply(kmer_hash);
@@ -106,6 +77,19 @@ bool minhash(const char* seq, const seq_t seq_len,
 		any_valid_kmers = true;
 	}
 	return n_valid_kmers > 2*params->k;
+}
+
+void minhash_set(std::vector<minhash_t> encrypted_kmers, const index_params_t* params, VectorMinHash& min_hashes) {
+	for(uint32 i = 0; i < encrypted_kmers.size(); i++) {
+		minhash_t kmer_hash = encrypted_kmers[i];
+		for(uint32_t h = 0; h < params->h; h++) { // update the min values
+			const rand_hash_function_t* f = &params->minhash_functions[h];
+			minhash_t min = f->apply(kmer_hash);
+			if(min < min_hashes[h] || (i==0)) {
+				min_hashes[h] = min;
+			}
+		}
+	}
 }
 
 // avoid redundant computations
