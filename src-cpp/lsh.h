@@ -17,6 +17,8 @@ struct minhash_matrix_t {
 	uint32 oldest_col_index;
 };
 
+void minhash_set(std::vector<minhash_t> encrypted_kmers, const index_params_t* params, VectorMinHash& min_hashes);
+
 bool minhash(const char* seq, const seq_t seq_len,
 		const VectorBool& ref_freq_kmer_bitmask,
 		const MarisaTrie& ref_freq_kmer_trie,

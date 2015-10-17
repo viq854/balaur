@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
 		// 3. align
 		//align_reads_minhash(ref, reads, &params);
 
-		balaur_main(ref, reads, params);
+		balaur_main(ref, reads, &params);
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
 	

@@ -82,7 +82,7 @@ typedef struct {
 		delta_inlier = 10;
 		delta_x = 3;
 		votes_cutoff = 50;
-		enable_scale = true;
+		enable_scale = false;
 		mapq_scale_x = 100;
 
 		n_threads = 1;
@@ -217,7 +217,7 @@ struct read_t {
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
-	std::vector<VectorRefMatches> ref_matches;
+	std::vector<ref_match_t> ref_matches;
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
 	bool any_bucket_hits;
