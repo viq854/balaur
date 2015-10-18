@@ -206,7 +206,7 @@ void votes_by_pos(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> ref_kmers,
                 uint32* n_inliers, int* pos, uint32* total_n_matches) {
 
 	//std::sort(ref_kmers.begin(), ref_kmers.end());
-    //std::sort(read_kmers.begin(), read_kmers.end());
+     	//std::sort(read_kmers.begin(), read_kmers.end());
 
 	std::vector<int> votes(ref_kmers.size() + read_kmers.size());
 	int pos0 = read_kmers.size();
@@ -552,14 +552,16 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 	if(n_diff_table_hits > r->best_n_bucket_hits) { // if more hits than best so far
 		r->best_n_bucket_hits = n_diff_table_hits;
 	}
+
 	ref_match_t rm(contig_pos, contig_len, rc);
 	//compute_ref_contig_votes(rm, ref, r, params);
 
-	if(r->n_proc_contigs > r->ref_matches.size()-1) {
-		r->ref_matches.resize(2*r->n_proc_contigs);
-	}
-	r->ref_matches[r->n_proc_contigs] = rm;
-	
+	//if(r->n_proc_contigs == r->ref_matches.size()) {
+	//	r->ref_matches.resize(2*r->n_proc_contigs);
+	//}
+	//r->ref_matches[r->n_proc_contigs] = rm;
+	r->ref_matches.push_back(rm);	
+
 	r->n_proc_contigs++;
 
 
@@ -611,7 +613,7 @@ int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhas
 #define N_TABLES_MAX 1024
 // output matches (ordered by the number of projections matched)
 void collect_read_hits(const ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
-	r->ref_matches.resize(10);
+	r->ref_matches.reserve(10);
 
 	// priority heap of matched positions
 	heap_entry_t heap[params->n_tables];
@@ -845,7 +847,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 				printf("\n");
 
 			}
-			if (VERBOSE ==  0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+			if (VERBOSE >  0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
 				printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n", 
 						r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
@@ -911,7 +913,7 @@ void align_reads_minhash(ref_t& ref, reads_t& reads, const index_params_t* param
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
 		valid_hash++;
-		
+
 		n_proc_contigs += r->n_proc_contigs;
 		true_pos_hits += r->true_n_bucket_hits;
 
@@ -1186,7 +1188,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, params);
 
 		// matching contig kmers
-		for(uint32 j = 0; j < r->n_proc_contigs; j++) {
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
@@ -1286,6 +1288,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 						r->top_aln.score,
 						r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
 						r->ref_pos_l, r->ref_pos_r, r->top_aln.ref_start);
+				print_read(r);
 			}
 #endif
 	}
@@ -1459,15 +1462,11 @@ void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& re
 	std::vector<int> votes(contig_ciphers.size() + read_ciphers.size());
 	int pos0 = read_ciphers.size();
 	
-	//std::cout << "START " << contig_ciphers.size() << " " << read_ciphers.size() << "\n"; 
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_ciphers.size(); i++) {
 		for(uint32 j = skip; j < contig_ciphers.size(); j++) {
 			if(read_ciphers[i].first == contig_ciphers[j].first) {
 				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
-				if((pos0 + match_aln_pos >= votes.size()) || ((pos0 + match_aln_pos) < 0)) {
-				//	std::cout << "XXXXXXXXXMATCH: " << contig_ciphers.size() << " " << votes.size() << " " << pos0 << " " << match_aln_pos << " " << contig_ciphers[j].second << " " << read_ciphers[i].second << "\n";
-				}
 				votes[pos0 + match_aln_pos]++;
 			} else if(contig_ciphers[j].first > read_ciphers[i].first) {
 				skip = j;
@@ -1476,7 +1475,6 @@ void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& re
 		}
 
 	}
-	//std::cout << "DONE!!!!! \n";
 	
 	std::vector<int> votes_conv(contig_ciphers.size() + read_ciphers.size());
 	int max = 0;
