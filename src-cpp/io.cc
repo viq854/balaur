@@ -720,7 +720,7 @@ int pack_32(const char *seq, const int length, uint32_t *ret) {
 }
 
 
-int pack_64(const char *seq, const int length, uint64_t *ret) {
+int pack_64(const char *seq, const int length, uint64 *ret) {
 	uint64_t c = 0;
 	for (int k = 0; k < length; k++) {
 		if(seq[k] == BASE_IGNORE) {

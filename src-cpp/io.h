@@ -69,7 +69,7 @@ void pack_and_store_ref_kmers(const char* refFname, ref_t& ref, const index_para
 
 int pack_16(const char *seq, const int length, uint16_t *ret);
 int pack_32(const char *seq, const int length, uint32_t *ret); 
-int pack_64(const char *seq, const int length, uint64_t *ret);
+int pack_64(const char *seq, const int length, uint64 *ret);
 void unpack_32(uint32 w, unsigned char *seq, const uint32 length);
 
 #endif /*IO_H_*/
