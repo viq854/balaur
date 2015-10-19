@@ -1218,14 +1218,11 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			seq_t n_votes[2] = { 0 };
 			vote_cast_and_count(ref_contig, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
-			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-
 			for(int i = 0; i < 2; i++) {
 				uint16_t min_n_matches = 0;
 				uint16_t min_n_errors = 0;
 				if(n_votes[i] == 0) continue;
-				pos[i] = pos_sig[i] + padded_hit_offset;
+				pos[i] = pos_sig[i] + ref_contig.pos;
 			}
 			// update votes and its alignment position
 			for(int i = 0; i < 2; i++) {
