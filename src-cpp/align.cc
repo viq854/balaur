@@ -190,7 +190,7 @@ inline bool pos_in_range_asym(uint32 pos1, uint32 pos2, uint32 delta1, uint32 de
 	return pos1 > pos2 - delta11 && pos1 < pos2 + delta2;
 }
 
-inline bool is_unique_kmer(const std::vector<std::pair<minhash_t, uint32_t>>& sorted_kmers, const uint32 idx) {
+inline bool is_unique_kmer(const std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& sorted_kmers, const uint32 idx) {
 	bool unique = true;
 	minhash_t hash = sorted_kmers[idx].first;
 	if(idx > 0 && sorted_kmers[idx-1].first == hash) {
@@ -207,7 +207,7 @@ void votes_by_pos(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> ref_kmers,
                 uint32* n_inliers, int* pos, uint32* total_n_matches) {
 
 	//std::sort(ref_kmers.begin(), ref_kmers.end());
-     	//std::sort(read_kmers.begin(), read_kmers.end());
+    //std::sort(read_kmers.begin(), read_kmers.end());
 
 	std::vector<int> votes(ref_kmers.size() + read_kmers.size());
 	int pos0 = read_kmers.size();
@@ -1040,7 +1040,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params);
 
 bool generate_minhash_kmer_ciphers(std::vector<kmer_cipher_t>& ciphers, const char* seq, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
-void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params);
+void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
 void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
 
 void balaur_main(const ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -1060,6 +1060,10 @@ void balaur_main(const ref_t& ref, reads_t& reads, const index_params_t* params)
 	phase1_encryption(reads, ref, params);
 	phase1_minhash(reads, params);
 	phase1_merge(reads, ref, params);
+
+	// release LSH index
+	ref.index.release();
+
 	phase2_encryption(reads, ref, params);
 	phase2_voting(reads, ref, params);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);
@@ -1450,7 +1454,7 @@ bool generate_minhash_kmer_ciphers(
 
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
 		const char* seq, const seq_t seq_offset, const seq_t seq_len,
-		const index_params_t* params) {
+		const ref_t& ref, const index_params_t* params) {
 
 	//std::unordered_map<kmer_cipher_t, seq_t> cipher_map;
 	//cipher_map.reserve(seq_len - params->k2 + 1);
@@ -1461,7 +1465,8 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 	seq_t n_kmers = seq_len - params->k2 + 1;
 	ciphers.resize(n_kmers);
 	for(seq_t i = 0; i < n_kmers; i++) {
-		kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
+		//kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
+		kmer_cipher_t kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
 		pos_cipher_t pos_cipher = i;
 		//if(cipher_map.insert(std::make_pair(kmer_hash, i)).second == false) { // repeat
 		//	ciphers[cipher_map[kmer_hash]].first = 0; 

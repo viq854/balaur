@@ -153,6 +153,11 @@ typedef struct {
 	std::vector<loc_t> buckets_data;
 	// stores offsets for each bucket id
 	std::vector<uint64> bucket_offsets;
+	void release() {
+		std::vector<loc_t>().swap(buckets_data);
+		std::vector<uint64>().swap(bucket_offsets);
+	}
+
 } static_index_t;
 
 // reference genome index
@@ -166,10 +171,14 @@ typedef struct {
 	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
 	VectorBool ignore_kmer_bitmask;
 	VectorBool ignore_window_bitmask;
-	std::vector<minhash_t> precomputed_kmer2_hashes;
 
+	// lsh
 	mutable_index_t mutable_index;
 	static_index_t index;
+
+	// voting
+	std::vector<uint64> packed_32bp_kmers;
+	std::vector<minhash_t> precomputed_kmer2_hashes;
 } ref_t;
 
 // **** Read Set Index ****

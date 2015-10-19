@@ -278,6 +278,45 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	return true;
 }
 
+void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params) {
+	ref.packed_32bp_kmers.resize(ref.len - klen + 1);
+	#pragma omp parallel for
+	for (seq_t pos = 0; pos < ref.len - klen + 1; pos++) {
+		pack_64(&ref.seq[pos], klen, &ref.packed_32bp_kmers[pos]);
+	}
+	std::string fname(refFname);
+	fname += std::string(".pack");
+	fname += std::to_string(klen);
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+
+	if (!file.is_open()) {
+		printf("pack_and_store_ref_kmers: Cannot open the file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for (uint32 i = 0; i < ref.len - klen + 1; i++) {
+		file.write(reinterpret_cast<char*>(&ref.packed_32bp_kmers[i]), sizeof(ref.packed_32bp_kmers[i]));
+	}
+	file.close();
+}
+
+bool load_packed_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".pack.");
+	fname += std::to_string(klen);
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		return false;
+	}
+	ref.packed_32bp_kmers.resize(ref.len - klen + 1);
+	for(seq_t pos = 0; pos < ref.len - klen + 1; pos++) {
+		file.read(reinterpret_cast<char*>(&ref.packed_32bp_kmers[pos]), sizeof(ref.packed_32bp_kmers[pos]));
+	}
+	file.close();
+	return true;
+}
+
 // store the reference index
 void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
@@ -674,6 +713,19 @@ int pack_32(const char *seq, const int length, uint32_t *ret) {
 			return -1;
 		}
 		c = c | (seq[k] << (BITS_IN_WORD - (k+1) * BITS_PER_CHAR));
+	}
+	*ret = c;
+	return 0;
+}
+
+
+int pack_64(const char *seq, const int length, uint64_t *ret) {
+	uint64_t c = 0;
+	for (int k = 0; k < length; k++) {
+		if(seq[k] == BASE_IGNORE) {
+			return -1;
+		}
+		c = c | (seq[k] << (BITS_IN_LWORD - (k+1) * BITS_PER_CHAR));
 	}
 	*ret = c;
 	return 0;
