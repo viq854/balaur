@@ -1041,7 +1041,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 
 bool generate_minhash_kmer_ciphers(std::vector<minhash_t>& ciphers, const char* seq, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq,
-		const seq_t seq_offset, const seq_t seq_len, const bool is_ref, const ref_t& ref, const index_params_t* params);
+		const seq_t seq_offset, const seq_t seq_len, const uint64 sparse_mask, const bool is_ref, const ref_t& ref, const index_params_t* params);
 void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
 
 void balaur_main(ref_t& ref, reads_t& reads, const index_params_t* params) {
@@ -1176,8 +1176,59 @@ void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
+/* random integer from 0 to n-1 */
+int irand(int n) {
+	int r, rand_max = RAND_MAX - (RAND_MAX % n);
+	/* reroll until r falls in a range that can be evenly
+	 * distributed in n bins.  Unless n is comparable to
+	 * to RAND_MAX, it's not *that* important really. */
+	while ((r = rand()) >= rand_max);
+	return r / (rand_max / n);
+}
+
+// permutes a 64-bit integer (2bit shuffle)
+// perm is a random permutation of integers 0..32
+void perm64(uint64* n, int* perm) {
+	uint64_t p = 0;
+	for(int i = 0; i < 32; i++) {
+		int idx = perm[i];
+		p |= (((*n >> idx) & 1) << (2*i));
+		p |= (((*n >> (idx+1)) & 1) << (2*i+1));
+	}
+	*n = p;
+}
+void shuffle(int *perm) {
+	int tmp;
+	int len = 32;
+	while(len) {
+		int j = irand(len);
+		if (j != len - 1) {
+			tmp = perm[j];
+			perm[j] = perm[len-1];
+			perm[len-1] = tmp;
+		}
+		len--;
+	}
+}
+
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params) {
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
+
+	static int perm[32] = { 0 };
+	for(int i = 0; i < 32; i++) {
+		perm[i] = i;
+	}
+	uint64 init_mask = 0xFFFFFFFFFF000000; // 40 first bits set
+
+	// generate a random sparse kmer mask for each read
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		shuffle(perm);
+		perm64(&init_mask, perm);
+		r->sparse_kmer_mask = init_mask;
+	}
+
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
@@ -1186,8 +1237,8 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
 
 		// read kmers
-		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, false, ref, params);
-		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, r->sparse_kmer_mask, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, r->sparse_kmer_mask, false, ref, params);
 
 		// matching contig kmers
 		r->contig_kmer_ciphers.resize(r->ref_matches.size());
@@ -1196,7 +1247,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), padded_hit_offset, search_len, true, ref, params);
+			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), padded_hit_offset, search_len, r->sparse_kmer_mask, true, ref, params);
 			r->ref_matches[j].pos = padded_hit_offset;
 			r->ref_matches[j].len = search_len;
 		}
@@ -1454,7 +1505,7 @@ bool generate_minhash_kmer_ciphers(
 }
 
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
-		const char* seq, const seq_t seq_offset, const seq_t seq_len, const bool is_ref,
+		const char* seq, const seq_t seq_offset, const seq_t seq_len, const uint64 sparse_mask, const bool is_ref,
 		const ref_t& ref, const index_params_t* params) {
 
 	//std::unordered_map<kmer_cipher_t, seq_t> cipher_map;

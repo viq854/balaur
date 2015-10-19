@@ -230,7 +230,7 @@ struct read_t {
 	std::vector<ref_match_t> ref_matches;
 	std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>> contig_kmer_ciphers;
 
-
+	uint64 sparse_kmer_mask;
 
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
