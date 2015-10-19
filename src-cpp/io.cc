@@ -278,16 +278,16 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	return true;
 }
 
-void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params) {
-	ref.packed_32bp_kmers.resize(ref.len - klen + 1);
+void pack_and_store_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
+	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
 	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
-	for (seq_t pos = 0; pos < ref.len - klen + 1; pos++) {
-		pack_64(&ref.seq[pos], klen, &ref.packed_32bp_kmers[pos]);
+	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
+		pack_64(&ref.seq[pos], params->k2, &ref.packed_32bp_kmers[pos]);
 	}
 	std::string fname(refFname);
 	fname += std::string(".pack");
-	fname += std::to_string(klen);
+	fname += std::to_string(params->k2);
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
 
@@ -295,23 +295,23 @@ void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, 
 		printf("pack_and_store_ref_kmers: Cannot open the file %s!\n", fname.c_str());
 		exit(1);
 	}
-	for (uint32 i = 0; i < ref.len - klen + 1; i++) {
+	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
 		file.write(reinterpret_cast<char*>(&ref.packed_32bp_kmers[i]), sizeof(ref.packed_32bp_kmers[i]));
 	}
 	file.close();
 }
 
-bool load_packed_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params) {
+bool load_packed_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".pack.");
-	fname += std::to_string(klen);
+	fname += std::to_string(params->k2);
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		return false;
 	}
-	ref.packed_32bp_kmers.resize(ref.len - klen + 1);
-	for(seq_t pos = 0; pos < ref.len - klen + 1; pos++) {
+	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
+	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&ref.packed_32bp_kmers[pos]), sizeof(ref.packed_32bp_kmers[pos]));
 	}
 	file.close();

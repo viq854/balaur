@@ -132,8 +132,8 @@ int main(int argc, char *argv[]) {
 		fastq2reads(argv[optind+2], reads);
 
 		printf("Precomputing/loading packed kmers... \n");
-		if(!load_packed_ref_kmers(32, argv[optind+1], ref, &params)) {
-			pack_and_store_ref_kmers(32, argv[optind+1], ref, &params);
+		if(!load_packed_ref_kmers(argv[optind+1], ref, &params)) {
+			pack_and_store_ref_kmers(argv[optind+1], ref, &params);
 		}
 
 		// 3. align

@@ -53,8 +53,8 @@ void store_ref_idx_per_thread(const int tid, const bool first_entry, const char*
 void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFname, ref_t& ref, index_params_t* params);
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
 void kmer_stats(const char* refFname);
-bool load_packed_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params);
-void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params);
+bool load_packed_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params);
+void pack_and_store_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits
@@ -69,6 +69,7 @@ void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, 
 
 int pack_16(const char *seq, const int length, uint16_t *ret);
 int pack_32(const char *seq, const int length, uint32_t *ret); 
+int pack_64(const char *seq, const int length, uint64_t *ret);
 void unpack_32(uint32 w, unsigned char *seq, const uint32 length);
 
 #endif /*IO_H_*/

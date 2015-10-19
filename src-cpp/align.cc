@@ -1453,28 +1453,28 @@ bool generate_minhash_kmer_ciphers(
 }
 
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
-		const char* seq, const seq_t seq_offset, const seq_t seq_len,
+		const char* seq, const seq_t seq_offset, const seq_t seq_len, bool is_ref,
 		const ref_t& ref, const index_params_t* params) {
 
 	//std::unordered_map<kmer_cipher_t, seq_t> cipher_map;
 	//cipher_map.reserve(seq_len - params->k2 + 1);
 	//cipher_map.max_load_factor(100);
-	//std::unordered_set<kmer_cipher_t> cipher_set;
-	//bool any_repeats = false;
 
 	seq_t n_kmers = seq_len - params->k2 + 1;
 	ciphers.resize(n_kmers);
 	for(seq_t i = 0; i < n_kmers; i++) {
 		//kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
-		kmer_cipher_t kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
+		kmer_cipher_t kmer_hash;
+		if(is_ref) {
+			kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
+		} else {
+			pack_64(&ref.seq[seq_offset+i], params->k2, &kmer_hash);
+		}
 		pos_cipher_t pos_cipher = i;
 		//if(cipher_map.insert(std::make_pair(kmer_hash, i)).second == false) { // repeat
 		//	ciphers[cipher_map[kmer_hash]].first = 0; 
 	    	//} else {
 			ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
-		//}
-		//if(cipher_set.insert(kmer_hash).second == false) { // not present
-		//	any_repeats = true;
 		//}
 	}
 	//std::sort(ciphers.begin(), ciphers.end());
