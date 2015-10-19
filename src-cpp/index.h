@@ -209,8 +209,8 @@ struct read_t {
 	uint32 rid;
 
 	// kmer hashes (unique, shuffled)
-	std::vector<kmer_cipher_t> kmer_ciphers_phase1_f;
-	std::vector<kmer_cipher_t> kmer_ciphers_phase1_rc;
+	std::vector<minhash_t> kmer_ciphers_phase1_f;
+	std::vector<minhash_t> kmer_ciphers_phase1_rc;
 
 	// LSH sketches
 	VectorMinHash minhashes_f;		// minhash vector
