@@ -1062,7 +1062,7 @@ void balaur_main(const ref_t& ref, reads_t& reads, const index_params_t* params)
 	phase1_minhash(reads, params);
 	phase1_merge(reads, ref, params);
 	phase2_encryption(reads, ref, params);
-	
+	phase2_voting(reads, ref, params);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
@@ -1176,9 +1176,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
-	int sum_score = 0;
-	int n_nonzero_scores = 0;
-	#pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
+	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
@@ -1188,16 +1186,75 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, params);
 
 		// matching contig kmers
+		r->contig_kmer_ciphers.resize(r->ref_matches.size());
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> contig_kmers;
-			generate_voting_kmer_ciphers(contig_kmers, ref.seq.c_str(), padded_hit_offset, search_len, params);
+			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), padded_hit_offset, search_len, params);
 			phase2_voting(r, ref_contig, padded_hit_offset, contig_kmers, params);
 		}
+	}
+}
 
+void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params) {
+	printf("////////////// Phase 2: Voting //////////////\n");
+	double start_time = omp_get_wtime();
+	omp_set_num_threads(params->n_threads);
+	int sum_score = 0;
+	int n_nonzero_scores = 0;
+	#pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmer_ciphers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_kmer_ciphers = r->contig_kmer_ciphers[j];
+
+			int pos_sig[2] = { 0 };
+			seq_t pos[2] = { 0 };
+			seq_t n_votes[2] = { 0 };
+			vote_cast_and_count(read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
+
+			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+
+			for(int i = 0; i < 2; i++) {
+				uint16_t min_n_matches = 0;
+				uint16_t min_n_errors = 0;
+				if(n_votes[i] == 0) continue;
+				pos[i] = pos_sig[i] + padded_hit_offset;
+			}
+			// update votes and its alignment position
+			for(int i = 0; i < 2; i++) {
+				if(n_votes[i] > r->top_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+						r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
+						r->second_best_aln.total_votes = r->top_aln.total_votes;
+						r->second_best_aln.ref_start = r->top_aln.ref_start;
+					}
+					// update best alignment
+					r->top_aln.inlier_votes = n_votes[i];
+					r->top_aln.ref_start = pos[i];
+					r->top_aln.rc = ref_contig.rc;
+				} else if(n_votes[i] > r->second_best_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+						r->second_best_aln.inlier_votes = n_votes[i];
+						r->second_best_aln.ref_start = pos[i];
+					}
+				}
+			}
+
+#if(SIM_EVAL)
+			if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+					pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size)) {
+				r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
+			}
+#endif
+		}
 		if(r->top_aln.inlier_votes > 0) {
 			sum_score += r->top_aln.inlier_votes;
 			n_nonzero_scores++;
@@ -1211,52 +1268,6 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 
 	phase2_eval(reads, avg_score, ref, params);
-}
-
-void phase2_voting(read_t* r, const ref_match_t ref_contig, const pos_offset_cipher_t padded_hit_offset,
-		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_kmer_ciphers,
-		const index_params_t* params) {
-
-	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmer_ciphers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
-
-	int pos_sig[2] = { 0 };
-	seq_t pos[2] = { 0 };
-	seq_t n_votes[2] = { 0 };
-	vote_cast_and_count(read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
-
-	for(int i = 0; i < 2; i++) {
-		uint16_t min_n_matches = 0;
-		uint16_t min_n_errors = 0;
-		if(n_votes[i] == 0) continue;
-		pos[i] = pos_sig[i] + padded_hit_offset;
-	}
-
-	// update votes and its alignment position
-	for(int i = 0; i < 2; i++) {
-		if(n_votes[i] > r->top_aln.inlier_votes) {
-			if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
-				r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
-				r->second_best_aln.total_votes = r->top_aln.total_votes;
-				r->second_best_aln.ref_start = r->top_aln.ref_start;
-			}
-			// update best alignment
-			r->top_aln.inlier_votes = n_votes[i];
-			r->top_aln.ref_start = pos[i];
-			r->top_aln.rc = ref_contig.rc;
-		} else if(n_votes[i] > r->second_best_aln.inlier_votes) {
-			if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
-				r->second_best_aln.inlier_votes = n_votes[i];
-				r->second_best_aln.ref_start = pos[i];
-			}
-		}
-	}
-
-#if(SIM_EVAL)
-	if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
-		pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size)) {
-		r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
-	}
-#endif
 }
 
 void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {
@@ -1458,7 +1469,7 @@ void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& re
 		const index_params_t* params, seq_t* n_votes, int* pos) {
 
 	std::sort(contig_ciphers.begin(), contig_ciphers.end());
-        std::sort(read_ciphers.begin(), read_ciphers.end());
+    std::sort(read_ciphers.begin(), read_ciphers.end());
 	std::vector<int> votes(contig_ciphers.size() + read_ciphers.size());
 	int pos0 = read_ciphers.size();
 	

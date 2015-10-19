@@ -217,7 +217,12 @@ struct read_t {
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
+
 	std::vector<ref_match_t> ref_matches;
+	std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>> contig_kmer_ciphers;
+
+
+
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
 	bool any_bucket_hits;
