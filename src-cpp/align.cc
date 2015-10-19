@@ -1,3 +1,4 @@
+#include <tr1/unordered_map>
 #include <fstream>
 #include <stdlib.h>
 #include <unordered_set>
@@ -189,7 +190,7 @@ inline bool pos_in_range_asym(uint32 pos1, uint32 pos2, uint32 delta1, uint32 de
 	return pos1 > pos2 - delta11 && pos1 < pos2 + delta2;
 }
 
-inline bool is_unique_kmer(const std::vector<std::pair<minhash_t, uint16_t>>& sorted_kmers, const uint32 idx) {
+inline bool is_unique_kmer(const std::vector<std::pair<minhash_t, uint32_t>>& sorted_kmers, const uint32 idx) {
 	bool unique = true;
 	minhash_t hash = sorted_kmers[idx].first;
 	if(idx > 0 && sorted_kmers[idx-1].first == hash) {
@@ -212,9 +213,9 @@ void votes_by_pos(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> ref_kmers,
 	int pos0 = read_kmers.size();
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_kmers.size(); i++) {
-		//if(!is_unique_kmer(read_kmers, i)) continue;
+		if(!is_unique_kmer(read_kmers, i)) continue;
 		for(uint32 j = skip; j < ref_kmers.size(); j++) {
-			//if(!is_unique_kmer(ref_kmers, j)) continue;
+			if(!is_unique_kmer(ref_kmers, j)) continue;
 			if(read_kmers[i].first == ref_kmers[j].first) {
 				int match_aln_pos = ref_kmers[j].second - read_kmers[i].second;
 				votes[pos0 + match_aln_pos]++;
@@ -294,7 +295,7 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 			if(ref_kmers[idx_r].first == read_kmers[idx_q].first) { // MATCH
 				int match_aln_pos = ref_kmers[idx_r].second - read_kmers[idx_q].second;
 				if(p == 0) { // -------- FIRST PASS: collect unique matches ---------
-					if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
+					//if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
 						if(n_anchors[UNIQUE1] < params->n_init_anchors) {
 							anchors[UNIQUE1][n_anchors[UNIQUE1]] = match_aln_pos;
 							n_anchors[UNIQUE1]++;
@@ -302,7 +303,7 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 						} else { // found all the anchors
 							break;
 						}
-					}
+					//}
 					idx_q++;
 					idx_r++;
 			} else if(p == 1) { // --------- SECOND PASS: collect DIFF unique matches -------
@@ -312,7 +313,7 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 						//std::sort(&anchors[UNIQUE1][0], &anchors[UNIQUE1][0] + n_anchors[UNIQUE1]);
 						anchor_median_pos[UNIQUE1] = anchors[UNIQUE1][(n_anchors[UNIQUE1]-1)/2];
 					}
-					if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
+					//if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
 						// if this position is not close to the first pick
 						if(!pos_in_range_sig(match_aln_pos, anchor_median_pos[UNIQUE1], params->delta_x*params->delta_inlier)) {
 							if(n_anchors[UNIQUE2] < params->n_init_anchors) {
@@ -323,7 +324,7 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 								break;
 							}
 						}
-					}
+					//}
 					idx_q++;
 					idx_r++;
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
@@ -1040,7 +1041,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 
 bool generate_minhash_kmer_ciphers(std::vector<kmer_cipher_t>& ciphers, const char* seq, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params);
-void vote_cast_and_count(const ref_match_t ref_contig, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
+void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
 
 void balaur_main(const ref_t& ref, reads_t& reads, const index_params_t* params) {
 #if(SIM_EVAL)
@@ -1208,6 +1209,10 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		
+		std::sort(r->kmers_f.begin(), r->kmers_f.end());
+		std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
+
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmer_ciphers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
@@ -1216,7 +1221,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			int pos_sig[2] = { 0 };
 			seq_t pos[2] = { 0 };
 			seq_t n_votes[2] = { 0 };
-			vote_cast_and_count(ref_contig, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
+			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
 			for(int i = 0; i < 2; i++) {
 				uint16_t min_n_matches = 0;
@@ -1255,6 +1260,8 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			sum_score += r->top_aln.inlier_votes;
 			n_nonzero_scores++;
 		}
+
+		//std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>>().swap(r->contig_kmer_ciphers);
 	}
 
 	int avg_score = 0;
@@ -1445,35 +1452,48 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 		const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const index_params_t* params) {
 
-	std::unordered_set<kmer_cipher_t> cipher_set;
+	//std::unordered_map<kmer_cipher_t, seq_t> cipher_map;
+	//cipher_map.reserve(seq_len - params->k2 + 1);
+	//cipher_map.max_load_factor(100);
+	//std::unordered_set<kmer_cipher_t> cipher_set;
+	//bool any_repeats = false;
+
 	seq_t n_kmers = seq_len - params->k2 + 1;
 	ciphers.resize(n_kmers);
-	seq_t n_unique = 0;
 	for(seq_t i = 0; i < n_kmers; i++) {
 		kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
 		pos_cipher_t pos_cipher = i;
-		if(cipher_set.insert(kmer_hash).second == true) { // not present
-			ciphers[n_unique] = std::make_pair(kmer_hash, pos_cipher);
-			n_unique++;
-	    }
+		//if(cipher_map.insert(std::make_pair(kmer_hash, i)).second == false) { // repeat
+		//	ciphers[cipher_map[kmer_hash]].first = 0; 
+	    	//} else {
+			ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
+		//}
+		//if(cipher_set.insert(kmer_hash).second == false) { // not present
+		//	any_repeats = true;
+		//}
 	}
-	ciphers.resize(n_unique);
+	//std::sort(ciphers.begin(), ciphers.end());
 }
 
-void vote_cast_and_count(const ref_match_t ref_contig, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
+void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
 		const index_params_t* params, seq_t* n_votes, int* pos) {
 
 	std::sort(contig_ciphers.begin(), contig_ciphers.end());
-    std::sort(read_ciphers.begin(), read_ciphers.end());
-	std::vector<int> votes(ref_contig.len + read_ciphers.size());
-	int pos0 = read_ciphers.size();
+    	//std::sort(read_ciphers.begin(), read_ciphers.end());
+	std::vector<int> votes(ref_contig.len + rlen);
+	int pos0 = rlen;
 	
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_ciphers.size(); i++) {
+		if(read_ciphers[i].first == 0) continue;
+		if(!is_unique_kmer(read_ciphers, i)) continue;
 		for(uint32 j = skip; j < contig_ciphers.size(); j++) {
 			if(read_ciphers[i].first == contig_ciphers[j].first) {
 				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
+				//if(match_aln_pos + pos0 >= votes.size()) {
+				//	std::cout << votes.size() << " " << ref_contig.len << " " << read_ciphers.size() << " " << contig_ciphers[j].second << " " << read_ciphers[i].second << " " << match_aln_pos << "\n";
+				//}
 				votes[pos0 + match_aln_pos]++;
 			} else if(contig_ciphers[j].first > read_ciphers[i].first) {
 				skip = j;
@@ -1483,7 +1503,7 @@ void vote_cast_and_count(const ref_match_t ref_contig, std::vector<std::pair<kme
 
 	}
 	
-	std::vector<int> votes_conv(ref_contig.len + read_ciphers.size());
+	std::vector<int> votes_conv(ref_contig.len + rlen);
 	int max = 0;
 	uint32 max_idx = 0;
 	for(uint32 i = 0; i < votes.size(); i++) {
