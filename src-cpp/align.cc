@@ -1469,14 +1469,10 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 		if(is_ref) {
 			kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
 		} else {
-			pack_64(&ref.seq[seq_offset+i], params->k2, &kmer_hash);
+			pack_64(&seq[seq_offset+i], params->k2, &kmer_hash);
 		}
 		pos_cipher_t pos_cipher = i;
-		//if(cipher_map.insert(std::make_pair(kmer_hash, i)).second == false) { // repeat
-		//	ciphers[cipher_map[kmer_hash]].first = 0; 
-	    	//} else {
-			ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
-		//}
+		ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
 	}
 	//std::sort(ciphers.begin(), ciphers.end());
 }
@@ -1493,7 +1489,7 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::ve
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_ciphers.size(); i++) {
 		if(read_ciphers[i].first == 0) continue;
-		if(!is_unique_kmer(read_ciphers, i)) continue;
+		//if(!is_unique_kmer(read_ciphers, i)) continue;
 		for(uint32 j = skip; j < contig_ciphers.size(); j++) {
 			if(read_ciphers[i].first == contig_ciphers[j].first) {
 				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;

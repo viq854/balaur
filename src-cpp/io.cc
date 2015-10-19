@@ -726,7 +726,7 @@ int pack_64(const char *seq, const int length, uint64 *ret) {
 		if(seq[k] == BASE_IGNORE) {
 			return -1;
 		}
-		c = c | (seq[k] << (BITS_IN_LWORD - (k+1) * BITS_PER_CHAR));
+		c = c | ((seq[k] & 3ULL) << (BITS_IN_LWORD - (k+1) * BITS_PER_CHAR));
 	}
 	*ret = c;
 	return 0;
