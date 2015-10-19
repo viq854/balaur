@@ -133,7 +133,6 @@ int main(int argc, char *argv[]) {
 
 		printf("Precomputing/loading packed kmers... \n");
 		if(!load_packed_ref_kmers(32, argv[optind+1], ref, &params)) {
-			omp_set_num_threads(params.n_threads);
 			pack_and_store_ref_kmers(32, argv[optind+1], ref, &params);
 		}
 

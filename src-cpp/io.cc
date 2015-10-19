@@ -280,6 +280,7 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 
 void pack_and_store_ref_kmers(const int klen, const char* refFname, ref_t& ref, const index_params_t* params) {
 	ref.packed_32bp_kmers.resize(ref.len - klen + 1);
+	omp_set_num_threads(params->n_threads);
 	#pragma omp parallel for
 	for (seq_t pos = 0; pos < ref.len - klen + 1; pos++) {
 		pack_64(&ref.seq[pos], klen, &ref.packed_32bp_kmers[pos]);
