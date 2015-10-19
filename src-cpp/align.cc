@@ -1040,7 +1040,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 
 bool generate_minhash_kmer_ciphers(std::vector<kmer_cipher_t>& ciphers, const char* seq, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len, const index_params_t* params);
-void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
+void vote_cast_and_count(const ref_match_t ref_contig, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
 
 void balaur_main(const ref_t& ref, reads_t& reads, const index_params_t* params) {
 #if(SIM_EVAL)
@@ -1190,8 +1190,9 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
 			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> contig_kmers;
 			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), padded_hit_offset, search_len, params);
+			r->ref_matches[j].pos = padded_hit_offset;
+			r->ref_matches[j].len = search_len;
 		}
 	}
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
@@ -1215,7 +1216,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			int pos_sig[2] = { 0 };
 			seq_t pos[2] = { 0 };
 			seq_t n_votes[2] = { 0 };
-			vote_cast_and_count(read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
+			vote_cast_and_count(ref_contig, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
 			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
 			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
@@ -1447,28 +1448,28 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 		const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const index_params_t* params) {
 
-	//std::unordered_set<kmer_cipher_t> cipher_set;
+	std::unordered_set<kmer_cipher_t> cipher_set;
 	seq_t n_kmers = seq_len - params->k2 + 1;
 	ciphers.resize(n_kmers);
 	seq_t n_unique = 0;
 	for(seq_t i = 0; i < n_kmers; i++) {
 		kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
 		pos_cipher_t pos_cipher = i;
-		//if(cipher_set.insert(kmer_hash).second == true) { // not present
+		if(cipher_set.insert(kmer_hash).second == true) { // not present
 			ciphers[n_unique] = std::make_pair(kmer_hash, pos_cipher);
 			n_unique++;
-	    	//}
+	    }
 	}
-	//ciphers.resize(n_unique);
+	ciphers.resize(n_unique);
 }
 
-void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
+void vote_cast_and_count(const ref_match_t ref_contig, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
 		const index_params_t* params, seq_t* n_votes, int* pos) {
 
 	std::sort(contig_ciphers.begin(), contig_ciphers.end());
     std::sort(read_ciphers.begin(), read_ciphers.end());
-	std::vector<int> votes(contig_ciphers.size() + read_ciphers.size());
+	std::vector<int> votes(ref_contig.len + read_ciphers.size());
 	int pos0 = read_ciphers.size();
 	
 	uint32 skip = 0;
@@ -1485,7 +1486,7 @@ void vote_cast_and_count(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& re
 
 	}
 	
-	std::vector<int> votes_conv(contig_ciphers.size() + read_ciphers.size());
+	std::vector<int> votes_conv(ref_contig.len + read_ciphers.size());
 	int max = 0;
 	uint32 max_idx = 0;
 	for(uint32 i = 0; i < votes.size(); i++) {
