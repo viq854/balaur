@@ -303,11 +303,12 @@ void pack_and_store_ref_kmers(const char* refFname, ref_t& ref, const index_para
 
 bool load_packed_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".pack.");
+	fname += std::string(".pack");
 	fname += std::to_string(params->k2);
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
+		printf("pack_and_store_ref_kmers: Cannot open the file %s!\n", fname.c_str());
 		return false;
 	}
 	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
