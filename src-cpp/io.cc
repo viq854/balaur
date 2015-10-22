@@ -672,6 +672,21 @@ void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned in
     *ref_pos_r = atoi(refr.c_str());
 }
 
+void get_sim_read_info(const ref_t& ref, reads_t& reads) {
+#if(SIM_EVAL)
+	#pragma omp parallel for
+	for (uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		parse_read_mapping(r->name.c_str(), &r->seq_id, &r->ref_pos_l, &r->ref_pos_r, &r->strand);
+		r->seq_id = r->seq_id - 1;
+		if(ref.subsequence_offsets.size() > 1) {
+			r->ref_pos_l += ref.subsequence_offsets[r->seq_id]; // convert to global id
+			r->ref_pos_r += ref.subsequence_offsets[r->seq_id];
+		}
+	}
+#endif
+}
+
 void print_read(read_t* read) {
 	printf("%s \n", read->name.c_str());
 	for(uint32 i = 0; i < read->len; i++) {

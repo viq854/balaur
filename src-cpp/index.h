@@ -82,7 +82,7 @@ typedef struct {
 		delta_inlier = 10;
 		delta_x = 3;
 		votes_cutoff = 50;
-		enable_scale = false;
+		enable_scale = true;
 		mapq_scale_x = 100;
 
 		n_threads = 1;
@@ -187,8 +187,9 @@ struct ref_match_t {
 	uint32_t pos;
 	uint32 len;
 	bool rc;
-	ref_match_t() : pos(0), len(0), rc(0) {};
-	ref_match_t(seq_t _pos, uint32 _len, bool _rc) : pos(_pos), len(_len), rc(_rc) {}
+	int n_diff_bucket_hits;
+	ref_match_t() : pos(0), len(0), rc(0), n_diff_bucket_hits(0) {};
+	ref_match_t(seq_t _pos, uint32 _len, bool _rc, int _buckets) : pos(_pos), len(_len), rc(_rc), n_diff_bucket_hits(_buckets) {}
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
 

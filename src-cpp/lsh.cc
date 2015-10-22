@@ -1,3 +1,6 @@
+#include <iostream>
+#include <stdlib.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,7 +54,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 
 	bool any_valid_kmers = false;
 	uint32 n_valid_kmers = 0;
-	
+
 	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
 		// check if this kmer should be discarded
 #if USE_MARISA
@@ -76,6 +79,7 @@ bool minhash(const char* seq, const seq_t seq_len,
 		}
 		any_valid_kmers = true;
 	}
+
 	return n_valid_kmers > 2*params->k;
 }
 
