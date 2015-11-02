@@ -461,7 +461,7 @@ void propagate_matches(read_t* r, const int contig_pos,
 static const uint8 kmer_mask[KMER_MASK_LEN] =     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 
 // compute number of votes for this contig and its interior alignment
-#define CONTIG_PADDING 100
+#define CONTIG_PADDING 50
 int compute_ref_contig_votes(ref_match_t ref_contig, const ref_t& ref, read_t* r, const index_params_t* params) {
 	// get read voting kmers
 	const std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
@@ -1041,16 +1041,15 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 
 bool generate_minhash_kmer_ciphers(std::vector<minhash_t>& ciphers, const char* seq, const seq_t seq_len, const ref_t& ref, const index_params_t* params);
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers, const char* seq,
-		const seq_t seq_offset, const seq_t seq_len, const uint64 sparse_mask, const bool is_ref, const ref_t& ref, const index_params_t* params);
+		const seq_t seq_offset, const seq_t seq_len, const int* perm, const uint64 sparse_mask, const bool is_ref, const ref_t& ref, const index_params_t* params);
 void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers, const index_params_t* params, seq_t* n_votes, int* pos);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_params_t* params) {
 	fasta2ref(fastaName, ref);
+        load_freq_kmers(fastaName, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
 	get_sim_read_info(ref, reads);
 
 	// --- phase 1 ---
-	load_freq_kmers(fastaName, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
-
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads, params);
 	//phase1_merge(reads, ref, params);
@@ -1058,7 +1057,7 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_
 
 	// --- phase 2 ---
 	
-	//load_packed_ref_kmers(fastaName, ref, params);
+	load_encrypt_ref_kmers(fastaName, ref, params);
 	phase2_encryption(reads, ref, params);
 	phase2_voting(reads, ref, params);
 
@@ -1139,7 +1138,7 @@ void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params
 }
 
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params) {
-	std::string fname("GRCH37.read_ref_matches.N200T78");
+	std::string fname("GRCH37.read_ref_matches.U01");
 	//std::ofstream file;
     	//file.open(fname.c_str(), std::ios::out | std::ios::binary);
     	std::ifstream file;
@@ -1150,9 +1149,9 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	}
 
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
-	omp_set_num_threads(params->n_threads);
-	double start_time = omp_get_wtime();
+	//omp_set_num_threads(params->n_threads);
 	
+	// store/load precomputed contigs
         for(uint32 i = 0; i < reads.reads.size(); i++) {
                 read_t* r = &reads.reads[i];
                 if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
@@ -1164,34 +1163,70 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
                 file.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
                 r->ref_matches.resize(ref_size);
                 file.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
-		
 		r->n_proc_contigs = ref_size;
-	}
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+                        if(ref_contig.n_diff_bucket_hits > r->best_n_bucket_hits) {
+                                r->best_n_bucket_hits = ref_contig.n_diff_bucket_hits;
+                        }
+		}
 
+	}
+	//double start_time = omp_get_wtime();
+	int n_to_batch = 0;
+	// allocate temp storage for the seeds
+	//#pragma omp parallel for
+        for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+                if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		
+		r->kmers_f.resize(r->len - params->k2 + 1);
+		r->kmers_rc.resize(r->len - params->k2 + 1);
+
+		uint32 n_proc_contigs_reduced = 0;
+		r->contig_kmer_ciphers.resize(r->ref_matches.size());
+                for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+                        if(r->n_proc_contigs > 20 && ref_contig.n_diff_bucket_hits < params->min_n_hits) continue;
+                        if(ref_contig.n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
+                        //if(ref_contig.n_diff_bucket_hits < params->min_n_hits) continue;
+			n_proc_contigs_reduced++;
+
+                        seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
+                        seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+                        uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
+                        r->contig_kmer_ciphers[j].resize(search_len - params->k2 + 1);
+                        r->ref_matches[j].pos = padded_hit_offset;
+                        r->ref_matches[j].len = search_len;
+		}
+		r->n_proc_contigs = n_proc_contigs_reduced;
+		r->sparse_kmer_mask = genrand64_int64();
+		//shuffle(perm);
+		if(r->n_proc_contigs > 100) {
+			n_to_batch++;
+		}
+	}
+	std::cout << n_to_batch << "\n";
+	int* perm;
+
+	// generate the read and contig kmers
+	double start_time = omp_get_wtime();
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
 
+		//shuffle(perm);		
+
 		// read kmers
-		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, r->sparse_kmer_mask, false, ref, params);
-		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, r->sparse_kmer_mask, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
 	
-		uint32 n_proc_contigs_reduced = 0;
-		// matching contig kmers
-		r->contig_kmer_ciphers.resize(r->ref_matches.size());
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
-			if(r->n_proc_contigs > 20 & ref_contig.n_diff_bucket_hits < 2) continue;
-			n_proc_contigs_reduced++;
-			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), padded_hit_offset, search_len, r->sparse_kmer_mask, true, ref, params);
-			r->ref_matches[j].pos = padded_hit_offset;
-			r->ref_matches[j].len = search_len;
+			if(r->contig_kmer_ciphers[j].size() == 0) continue;			
+			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, perm, r->sparse_kmer_mask, true, ref, params);
 		}
-		r->n_proc_contigs = n_proc_contigs_reduced;
 	}
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 	
@@ -1201,15 +1236,15 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
         uint32 total_contigs = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
                 read_t* r = &reads.reads[i];
-                /*if(r->valid_minhash_f) {
-                        total_size += r->kmers_f.size()*sizeof(std::pair<kmer_cipher_t, pos_cipher_t>);
+                if(r->valid_minhash_f) {
+                        total_size += r->kmers_f.size()*(sizeof(kmer_cipher_t) + sizeof(pos_cipher_t));
 		}
                 if(r->valid_minhash_rc) {
-                        total_size += r->kmers_rc.size()*sizeof(std::pair<kmer_cipher_t, pos_cipher_t>);
-                }*/
+                        total_size += r->kmers_rc.size()*(sizeof(kmer_cipher_t) + sizeof(pos_cipher_t));
+                }
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
-			if(r->n_proc_contigs > 20 & r->ref_matches[j].n_diff_bucket_hits < 2) continue;
-			total_size += r->contig_kmer_ciphers[j].size()*sizeof(std::pair<kmer_cipher_t, pos_cipher_t>);
+			if(r->contig_kmer_ciphers[j].size() == 0) continue;
+			total_size += r->contig_kmer_ciphers[j].size()*(sizeof(kmer_cipher_t) + sizeof(pos_cipher_t));	
 			total_count += r->contig_kmer_ciphers[j].size();
 		}
 		total_contigs += r->n_proc_contigs;
@@ -1217,8 +1252,6 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("Total contigs: %u \n", total_contigs);
 	printf("Total count: %u contig kmers \n", total_count);
         printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
-
-
 }
 
 void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params) {
@@ -1293,6 +1326,17 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 	}
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 
+
+	uint64 total_size = 0;
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+        	read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		total_size += 2*sizeof(r->top_aln.inlier_votes);
+		total_size += sizeof(r->top_aln.rc);
+		total_size += sizeof(r->top_aln.ref_start);
+	} 
+	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
+
 	phase2_eval(reads, avg_score, ref, params);
 }
 
@@ -1320,7 +1364,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 		}
 
 #if(SIM_EVAL)
-		if (VERBOSE ==  0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+		if (VERBOSE >  0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
 			printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n",
 					r->top_aln.score,
 					r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
@@ -1376,11 +1420,11 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 		}
 		confident++;
 		if(!r->top_aln.rc) {
-			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 20)) {
 				r->dp_hit_acc = 1;
 			}
 		} else {
-			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30)) {
+			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 20)) {
 				r->dp_hit_acc = 1;
 			}
 		}
@@ -1426,7 +1470,7 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
 	printf("Number of mapped reads BUCK true hit %u \n", bucketed_true);
 	printf("Number of confidently mapped reads > 0 %u / accurate %u (%f pct)\n", confident, acc, (float)acc/(float)confident);
-	printf("Number of confidently mapped reads Q10 %u / accurate %u (%f pct)\n", q10, q10acc, (float)q10acc/(float)q10);
+	printf("Number of confidently mapped reads Q10 %u / accurate %u (%f pct)\n", q10, q10acc, 100 - 100 * (float)q10acc/(float)q10);
 	printf("Number of confidently mapped reads Q30 %u / accurate %u (%f pct)\n", q30, q30acc, (float)q30acc/(float)q30);
 	printf("Number of confidently mapped reads Q30 PROCESSED true %u \n", q30processed_true);
 	printf("Number of confidently mapped reads Q30 BUCKET true %u \n", q30bucketed_true);
@@ -1439,6 +1483,18 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 	printf("Avg max all votes per read %.8f \n", (float) max_votes_all/confident);
 	printf("AVG N_PROC_CONTIGS %.8f \n", avg_n_proc_contigs);
 #endif
+
+	/*int q10 = 0;
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		if(r->top_aln.score >= 10) {
+                        q10++;
+		}
+	}
+	
+	printf("Number of confidently mapped reads Q10 %u\n", q10);
+	*/
 	printf("Total search time: %f sec\n", end_time - start_time);
 }
 
@@ -1467,27 +1523,41 @@ bool generate_minhash_kmer_ciphers(
 	return true;
 }
 
+
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
-		const char* seq, const seq_t seq_offset, const seq_t seq_len, const uint64 sparse_mask, const bool is_ref,
+		const char* seq, const seq_t seq_offset, const seq_t seq_len, const int* perm, const uint64 sparse_mask, const bool is_ref,
 		const ref_t& ref, const index_params_t* params) {
 
 	seq_t n_kmers = seq_len - params->k2 + 1;
-	ciphers.resize(n_kmers);
+	//ciphers.resize(n_kmers);
 	for(seq_t i = 0; i < n_kmers; i++) {
-		kmer_cipher_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
+		kmer_cipher_t kmer_hash = 0;
+		uint32_t hash[5];
+		if(!is_ref) {
+			sha1_hash(reinterpret_cast<const uint8_t*>(&seq[seq_offset+i]), params->k2, hash);
+			kmer_hash = ((uint64) hash[0] << 32 | hash[1]);
+		} else {
+			kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
+		}
+		//kmer_cipher_t kmer_hash = CityHash64(&seq[seq_offset+i], params->k2); //params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
 		//kmer_cipher_t kmer_hash;
 		//if(is_ref) {
 		//	kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
 		//} else {
-		//pack_64(&seq[seq_offset+i], params->k2, &kmer_hash);
+		//if(pack_64(&seq[seq_offset+i], params->k2, &kmer_hash)) {
+		//	kmer_hash = ULONG_MAX;
+		//}	
 		//}
 		
 		//std::cout << std::hex << kmer_hash << "\n";
-		//kmer_hash = (kmer_hash & sparse_mask);
+		kmer_hash = (kmer_hash ^ sparse_mask);
+		kmer_hash *= sparse_mask; 
+		//perm64(&kmer_hash, perm);
 		pos_cipher_t pos_cipher = i;
 		ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
 	}
 }
+
 
 void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
@@ -1500,7 +1570,7 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::ve
 		if(read_ciphers[i].first == 0) continue;
 		if(!is_unique_kmer(read_ciphers, i)) continue;
 		for(uint32 j = skip; j < contig_ciphers.size(); j++) {
-			//if(!is_unique_kmer(contig_ciphers, j)) continue;
+			if(!is_unique_kmer(contig_ciphers, j)) continue;
 			if(read_ciphers[i].first == contig_ciphers[j].first) {
 				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
 				votes[pos0 + match_aln_pos]++;

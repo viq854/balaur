@@ -24,10 +24,10 @@ void store_alns_sam(reads_t& reads, const ref_t& ref, const index_params_t* para
 void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 	int flag = 0; // FLAG
 	if(r->top_aln.ref_start != 0) {
-		seq_t aln_pos = r->top_aln.ref_start;
-		if(ref.subsequence_offsets.size() > 1) {
-			aln_pos -= ref.subsequence_offsets[r->seq_id];
-		}
+		//seq_t aln_pos = r->top_aln.ref_start;
+		//if(ref.subsequence_offsets.size() > 1) {
+		//	aln_pos -= ref.subsequence_offsets[r->seq_id];
+		//}
 
 		r->seq_id = ref.subsequence_offsets.size()-1;
 		for(uint32 i = 0; i < ref.subsequence_offsets.size()-1; i++) {
@@ -36,6 +36,11 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 				break;
 			}
 		}
+
+		seq_t aln_pos = r->top_aln.ref_start;
+                if(ref.subsequence_offsets.size() > 1) {
+                        aln_pos -= ref.subsequence_offsets[r->seq_id];
+                }
 
 		if (r->top_aln.rc) flag |= SAM_FSR;
 

@@ -146,6 +146,9 @@ int main(int argc, char *argv[]) {
 	
 		// load the reference index
 		ref_t ref;
+		fasta2ref(argv[optind+1], ref);
+		encrypt_ref_kmers(argv[optind+1], ref, &params);
+
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);
 		//store_ref_index_stats(argv[optind+1], ref, &params);

@@ -17,7 +17,7 @@ typedef uint32 seq_t;
 typedef uint16_t len_t;
 
 
-typedef uint32 kmer_cipher_t;
+typedef uint64 kmer_cipher_t;
 typedef uint16_t pos_cipher_t;
 typedef seq_t pos_offset_cipher_t;
 
