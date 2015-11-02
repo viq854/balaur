@@ -47,7 +47,7 @@ bool load_encrypt_ref_kmers(const char* refFname, ref_t& ref, const index_params
 
 // index io
 void store_ref_idx(const char* idxFname, const ref_t& ref, const index_params_t* params);
-void load_ref_idx(const char* idxFname, ref_t& ref, index_params_t* params);
+void load_ref_idx(const char* idxFname, ref_t& ref, const index_params_t* params);
 void store_perm(const char* permFname, const VectorU32& perm);
 void load_perm(const char* permFname, VectorU32& perm);
 void store_hash_pads(const char* permFname, const VectorHash& perm);

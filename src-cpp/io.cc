@@ -461,7 +461,7 @@ void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_p
 }
 
 // load the reference index buckets
-void load_ref_idx(const char* refFname, ref_t& ref, index_params_t* params) {
+void load_ref_idx(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".idx.");
 	fname += std::string("h");
