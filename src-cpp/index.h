@@ -226,6 +226,9 @@ struct read_t {
 	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_f;
 	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_rc;
 
+	uint64 key1_xor_pad;
+	uint64 key2_mult_pad;
+
 	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
@@ -233,8 +236,6 @@ struct read_t {
 
 	std::vector<ref_match_t> ref_matches;
 	std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>> contig_kmer_ciphers;
-
-	uint64 sparse_kmer_mask;
 
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
@@ -269,6 +270,8 @@ struct read_t {
 		best_n_bucket_hits = 0;
 		true_n_bucket_hits = 0;
 		any_bucket_hits = false;
+		key1_xor_pad = 0;
+		key2_mult_pad = 0;
 
 		// alignment info
 		top_aln.score = 0;

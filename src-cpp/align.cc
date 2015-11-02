@@ -450,7 +450,7 @@ void propagate_matches(read_t* r, const int contig_pos,
 }
 
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
-		const char* seq, const seq_t seq_offset, const seq_t seq_len, const int* perm, const uint64 sparse_mask, const bool is_ref,
+		const char* seq, const seq_t seq_offset, const seq_t seq_len, const uint64 key1, const uint64 key2, const bool is_ref,
 		const ref_t& ref, const index_params_t* params) {
 
 	seq_t n_kmers = seq_len - params->k2 + 1;
@@ -474,10 +474,8 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 		//}
 		//}
 
-		//std::cout << std::hex << kmer_hash << "\n";
-		kmer_hash = (kmer_hash ^ sparse_mask);
-		kmer_hash *= sparse_mask;
-		//perm64(&kmer_hash, perm);
+		kmer_hash = (kmer_hash ^ key1);
+		kmer_hash *= key2;
 		pos_cipher_t pos_cipher = i;
 		ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
 	}
@@ -703,7 +701,6 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	omp_set_num_threads(params->n_threads);
 
 	// allocate temp storage for the seeds
-	int n_to_batch = 0;
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
@@ -715,21 +712,16 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 		r->contig_kmer_ciphers.resize(r->ref_matches.size());
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
-			if(r->n_proc_contigs > 20 && ref_contig.n_diff_bucket_hits < params->min_n_hits) continue;
+			if(r->n_proc_contigs > 20 && ref_contig.n_diff_bucket_hits < 2) continue;
 			if(ref_contig.n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
 			//if(ref_contig.n_diff_bucket_hits < params->min_n_hits) continue;
 			n_proc_contigs_reduced++;
 			r->contig_kmer_ciphers[j].resize(r->ref_matches[j].len - params->k2 + 1);
 		}
 		r->n_proc_contigs = n_proc_contigs_reduced;
-		r->sparse_kmer_mask = genrand64_int64();
-
-		if(r->n_proc_contigs > 100) {
-			n_to_batch++;
-		}
+		r->key1_xor_pad = genrand64_int64();
+		r->key2_mult_pad = genrand64_int64();
 	}
-	std::cout << n_to_batch << "\n";
-	int* perm;
 
 	// generate the read and contig kmer hashes
 	double start_time = omp_get_wtime();
@@ -737,13 +729,13 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
-		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, r->key1_xor_pad, r->key2_mult_pad, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, r->key1_xor_pad, r->key2_mult_pad, false, ref, params);
 
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
 			if(r->contig_kmer_ciphers[j].size() == 0) continue;			
-			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, perm, r->sparse_kmer_mask, true, ref, params);
+			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, r->key1_xor_pad, r->key2_mult_pad, true, ref, params);
 		}
 	}
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
