@@ -124,23 +124,15 @@ int main(int argc, char *argv[]) {
 
 		// 1. load the reference index
 		ref_t ref;
-		//load_index_ref_lsh(argv[optind+1], &params, ref);
-		//fasta2ref(argv[optind+1], ref);
-	
-		// 2. index the reads
+		load_index_ref_lsh(argv[optind+1], &params, true, ref);
+
+		// 2. load the reads
 		reads_t reads;
-		//index_reads_lsh(argv[optind+2], ref, &params, reads);
 		fastq2reads(argv[optind+2], reads);
 
-		//printf("Precomputing/loading packed kmers... \n");
-		//if(!load_packed_ref_kmers(argv[optind+1], ref, &params)) {
-		//	pack_and_store_ref_kmers(argv[optind+1], ref, &params);
-		//}
-
 		// 3. align
-		//align_reads_minhash(ref, reads, &params);
-
 		balaur_main(argv[optind+1], ref, reads, &params);
+
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
 	

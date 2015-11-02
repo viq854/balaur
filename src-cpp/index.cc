@@ -445,26 +445,23 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total hashing time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
-void load_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
+void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, const bool load_MHI, ref_t& ref) {
 	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();
 	fasta2ref(fastaFname, ref);
-	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	printf("Loading reference index for reference file %s... \n", fastaFname);
+	printf("Loading frequent kmers... \n");
 	t = clock();
-	load_ref_idx(fastaFname, ref, params);
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
-	printf("Reference index loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	// load/precompute k2 voting kmers
-	t = clock();
-	printf("Precomputing/loading k2 kmer hashes... \n");
-	/*if(params->precomp_k2 && !load_kmer2_hashes(fastaFname, ref, params)) {
-		omp_set_num_threads(params->n_threads);
-		compute_store_kmer2_hashes(fastaFname, ref, params);
-	}*/
-	printf("Reference k2 hash loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	if(load_MHI) {
+		printf("Loading reference MinHash index... \n");
+		t = clock();
+		load_ref_idx(fastaFname, ref, params);
+		printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+	}
 }
 
 void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
