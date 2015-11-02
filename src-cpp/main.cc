@@ -1,5 +1,5 @@
 /*
- * Program TOTORO
+ * Program BALAUR
  * Victoria Popic (viq@stanford.edu) 2013-2015
  *
  * MIT License
@@ -37,7 +37,7 @@
 #include "align.h"
 
 void print_usage(index_params_t* params) {
-	printf("Usage: ./totoro [options] <index|align> <ref.fa> <reads.fq> \n");
+	printf("Usage: ./balaur [options] <index|align> <ref.fa> <reads.fq> \n");
 	printf("Hashing options:\n\n");
 	printf("       -h        number of hash functions for MinHash fingerprint construction (i.e. fingerprint length) [%d]\n", params->h);
 	printf("       -T        number of hash tables [%d]\n", params->n_tables);
@@ -53,7 +53,7 @@ void print_usage(index_params_t* params) {
 	printf("       -v        length k2 of kmers counted during voting [%d]\n", params->k2);
 	printf("       -P        disable the pre-computation of k2 hash values for the reference kmers (executed once per k2 length) [ON]\n");
 	printf("       -n        number of initial inlier anchors to consider [%d]\n", params->n_init_anchors);
-	printf("       -d        delta distance from the inlier anchor median considered close enough [%d]\n", params->delta_inlier);
+	printf("       -d        RANSAC delta distance from the inlier anchor median considered close enough [%d]\n", params->delta_inlier);
 	printf("       -x        delta multiplier for the second RANSAC pass (i.e. number of deltas away the second position must be from the first pass median) [%d]\n", params->delta_x);
 	printf("       -c        cutoff minimum number of inlier votes [dynamic]\n");
 	printf("       -S        disable votes scaling [ON]\n");
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:")) >= 0) {
 		switch (c) {
 			case 'h': params.h = atoi(optarg); break;
 			case 'T': params.n_tables = atoi(optarg); break;
@@ -95,11 +95,12 @@ int main(int argc, char *argv[]) {
 			case 'i': params.in_index_fname = std::string(optarg); break;
 			case 'o': params.out_index_fname = std::string(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
+			case 'z': params.precomp_contig_file_name = std::string(optarg); break;
 			default: return 0;
 		}
 	}
 
-	printf("**********TOTORO**************\n");
+	printf("**********BALAUR**************\n");
 	srand(1);
 	params.n_buckets = pow(2, params.n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
@@ -121,10 +122,11 @@ int main(int argc, char *argv[]) {
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
 		params.generate_sparse_sketch_projections();
+		params.load_mhi = false;
 
 		// 1. load the reference index
 		ref_t ref;
-		load_index_ref_lsh(argv[optind+1], &params, true, ref);
+		load_index_ref_lsh(argv[optind+1], &params, ref);
 
 		// 2. load the reads
 		reads_t reads;

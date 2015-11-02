@@ -60,6 +60,9 @@ typedef struct {
 	std::string in_index_fname;
 	std::string out_index_fname;
 
+	bool load_mhi;
+	std::string precomp_contig_file_name;
+
 	void set_default_index_params() {
 		kmer_type = OVERLAP;
 		h = 64;
@@ -304,7 +307,7 @@ typedef struct {
 } reads_t;
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx);
-void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, const bool load_MHI, ref_t& ref);
+void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, ref_t& ref);
 void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);
 void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& ridx);
 void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, ref_t& ref);

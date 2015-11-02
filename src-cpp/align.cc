@@ -158,6 +158,7 @@ int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhas
 	return 0;
 }
 
+#define CONTIG_PADDING 50
 void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table_hits, const ref_t& ref, read_t* r, const bool rc, const index_params_t* params) {
 #if(SIM_EVAL)
 	 if(pos_in_range_asym(r->ref_pos_r, contig_pos, contig_len + params->ref_window_size, params->ref_window_size) ||
@@ -178,7 +179,10 @@ void process_merged_contig(seq_t contig_pos, uint32 contig_len, int n_diff_table
 		r->best_n_bucket_hits = n_diff_table_hits;
 	}
 
-	ref_match_t rm(contig_pos, contig_len, rc, n_diff_table_hits);
+	seq_t hit_offset = contig_pos - contig_len + 1;
+	seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
+	uint32 search_len = contig_len + 2*CONTIG_PADDING + r->len;
+	ref_match_t rm(padded_hit_offset, search_len, rc, n_diff_table_hits);
 	r->ref_matches.push_back(rm);
 	r->n_proc_contigs++;
 
@@ -542,8 +546,48 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::ve
 	}
 }
 
+void store_precomp_contigs(const char* fileName, reads_t& reads) {
+	std::string fname(fileName);
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_or_load_contigs: Cannot open file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		uint32 ref_size = r->ref_matches.size();
+		file.write(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+		file.write(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+	}
+}
+void load_precomp_contigs(const char* fileName, reads_t& reads) {
+	std::string fname(fileName);
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_or_load_contigs: Cannot open file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		uint32 ref_size;
+		file.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+		r->ref_matches.resize(ref_size);
+		file.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+		r->n_proc_contigs = ref_size;
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+			if(ref_contig.n_diff_bucket_hits > r->best_n_bucket_hits) {
+				r->best_n_bucket_hits = ref_contig.n_diff_bucket_hits;
+			}
+		}
+	}
+}
+
 #define MAX_BUCKET_SIZE 1000
-#define CONTIG_PADDING 50
 #define KMER_MASK_LEN 20
 static const uint8 kmer_mask[KMER_MASK_LEN] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
@@ -562,8 +606,15 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_
 	// --- phase 1 ---
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads, params);
-	phase1_merge(reads, ref, params);
-	ref.index.release();
+	if(params->load_mhi) {
+		phase1_merge(reads, ref, params);
+		ref.index.release();
+		if(params->precomp_contig_file_name.size() != 0) {
+			store_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
+		}
+	} else {
+		load_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
+	}
 
 	// --- phase 2 ---
 	load_encrypt_ref_kmers(fastaName, ref, params);
@@ -589,6 +640,8 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
                                 ref.high_freq_kmer_trie, MarisaTrie(), params, r->minhashes_rc);
 	}
 	printf("Runtime (fingerprints): %.2f sec\n", omp_get_wtime() - start_time);
+
+	if(!params->load_mhi) return;
 
 	///// ---- projections ----
 	#pragma omp parallel for
@@ -646,47 +699,15 @@ void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params
 }
 
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params) {
-	//std::string fname("GRCH37.read_ref_matches.U01");
-	//std::ofstream file;
-    //file.open(fname.c_str(), std::ios::out | std::ios::binary);
-    //std::ifstream file;
-	//file.open(fname.c_str(), std::ios::in | std::ios::binary);
-	//if (!file.is_open()) {
-	//	printf("phase2_enc: Cannot open the hist file %s!\n", fname.c_str());
-	//	exit(1);
-	//}
-
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
 	omp_set_num_threads(params->n_threads);
-	
-	// store/load precomputed contigs
-	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		read_t* r = &reads.reads[i];
-		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-		
-		//uint32 ref_size = r->ref_matches.size();      
-		//file.write(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
-		//file.write(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
-		//uint32 ref_size;
-		//file.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
-		//r->ref_matches.resize(ref_size);
-		//file.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
-		//r->n_proc_contigs = ref_size;
-		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
-			ref_match_t ref_contig = r->ref_matches[j];
-			if(ref_contig.n_diff_bucket_hits > r->best_n_bucket_hits) {
-				r->best_n_bucket_hits = ref_contig.n_diff_bucket_hits;
-			}
-		}
-	}
-	//double start_time = omp_get_wtime();
-	int n_to_batch = 0;
+
 	// allocate temp storage for the seeds
+	int n_to_batch = 0;
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-
 		r->kmers_f.resize(r->len - params->k2 + 1);
 		r->kmers_rc.resize(r->len - params->k2 + 1);
 
@@ -698,17 +719,11 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 			if(ref_contig.n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
 			//if(ref_contig.n_diff_bucket_hits < params->min_n_hits) continue;
 			n_proc_contigs_reduced++;
-
-			seq_t hit_offset = ref_contig.pos - ref_contig.len + 1;
-			seq_t padded_hit_offset = (hit_offset >= CONTIG_PADDING) ? hit_offset - CONTIG_PADDING : 0;
-			uint32 search_len = ref_contig.len + 2*CONTIG_PADDING + r->len;
-			r->contig_kmer_ciphers[j].resize(search_len - params->k2 + 1);
-			r->ref_matches[j].pos = padded_hit_offset;
-			r->ref_matches[j].len = search_len;
+			r->contig_kmer_ciphers[j].resize(r->ref_matches[j].len - params->k2 + 1);
 		}
 		r->n_proc_contigs = n_proc_contigs_reduced;
 		r->sparse_kmer_mask = genrand64_int64();
-		//shuffle(perm);
+
 		if(r->n_proc_contigs > 100) {
 			n_to_batch++;
 		}
@@ -716,16 +731,15 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	std::cout << n_to_batch << "\n";
 	int* perm;
 
-	// generate the read and contig kmers
+	// generate the read and contig kmer hashes
 	double start_time = omp_get_wtime();
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-
-		// read kmers
 		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
 		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, perm, r->sparse_kmer_mask, false, ref, params);
+
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
 			if(r->contig_kmer_ciphers[j].size() == 0) continue;			

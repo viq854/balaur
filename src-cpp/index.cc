@@ -445,7 +445,7 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Total hashing time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
-void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, const bool load_MHI, ref_t& ref) {
+void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, ref_t& ref) {
 	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();
 	fasta2ref(fastaFname, ref);
@@ -456,7 +456,7 @@ void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, co
 	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
 	printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
-	if(load_MHI) {
+	if(params->load_mhi) {
 		printf("Loading reference MinHash index... \n");
 		t = clock();
 		load_ref_idx(fastaFname, ref, params);
