@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <set>
 
 typedef unsigned int uint32;
 typedef unsigned long long int uint64;

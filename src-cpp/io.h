@@ -32,28 +32,28 @@ void fasta2ref(const char *fastaFname, ref_t& ref);
 void fastq2reads(const char *readsFname, reads_t& reads);
 void print_read(read_t* read);
 void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand);
-void load_kmer_hist(const char* refFname, MapKmerCounts& hist, const uint32 max_count);
-void store_kmer_hist(const char* refFname, const MapKmerCounts& hist);
-void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
-void store_freq_kmers(const MapKmerCounts& hist);
-void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
+void get_sim_read_info(const ref_t& ref, reads_t& reads);
 void store_valid_window_mask(const char* refFname, const ref_t& ref, const index_params_t* params);
 bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params);
-void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
-bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
-void get_sim_read_info(const ref_t& ref, reads_t& reads);
 
 // index io
 void store_ref_idx(const char* idxFname, const ref_t& ref, const index_params_t* params);
 void load_ref_idx(const char* idxFname, ref_t& ref, const index_params_t* params);
-void store_perm(const char* permFname, const VectorU32& perm);
-void load_perm(const char* permFname, VectorU32& perm);
-void store_hash_pads(const char* permFname, const VectorHash& perm);
-void load_hash_pads(const char* permFname, VectorHash& perm);
 void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params);
 void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFname, ref_t& ref, index_params_t* params);
-void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
+void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
+bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
+void mark_windows_to_discard(ref_t& ref, const index_params_t* params);
+void mark_freq_kmers(ref_t& ref, const index_params_t* params);
+
+// stats
+void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);
+void compute_and_store_kmer_hist16(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);
+void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
+void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params);
+void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
 void kmer_stats(const char* refFname);
+void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits

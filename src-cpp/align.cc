@@ -1,5 +1,4 @@
 #include <iomanip>
-#include <tr1/unordered_map>
 #include <fstream>
 #include <stdlib.h>
 #include <unordered_set>
@@ -135,7 +134,7 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhash_t>>& ref_bucket_matches_by_table, uint32 t, heap_entry_t* entry) {
+int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhash_t> >& ref_bucket_matches_by_table, uint32 t, heap_entry_t* entry) {
 	uint64 bid = ref_bucket_matches_by_table[t].first;
 	if(bid == ref.index.bucket_offsets.size()) { // table ignored
 		return 0;
@@ -272,6 +271,17 @@ void collect_read_hits(const ref_t& ref, read_t* r, const bool rc, const index_p
 	}
 }
 
+inline bool is_unique_kmer(const std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& sorted_kmers, const uint32 idx) {
+	bool unique = true;
+	minhash_t hash = sorted_kmers[idx].first;
+	if(idx > 0 && sorted_kmers[idx-1].first == hash) {
+		unique = false;
+	} else if(idx < sorted_kmers.size()-1 && sorted_kmers[idx+1].first == hash) {
+		unique = false;
+	}
+	return unique;
+}
+
 static const int N_INIT_ANCHORS_MAX = (getenv("N_INIT_ANCHORS_MAX") ? atoi(getenv("N_INIT_ANCHORS_MAX")) : 20);
 #define UNIQUE1 0
 #define UNIQUE2 1
@@ -379,7 +389,7 @@ void propagate_matches(read_t* r, const int contig_pos,
 
 	// find all the kmers in the read that have consistent matches
 	std::vector<uint8> kmer_matches(read_kmers.size());
-	uint16_t last_match_pos = contig_pos > (int) params->delta_inlier ? contig_pos - params->delta_inlier : 0;
+	//uint16_t last_match_pos = contig_pos > (int) params->delta_inlier ? contig_pos - params->delta_inlier : 0;
 	int found = 0;
 	for(uint16_t i = 0; i < read_kmers.size(); i++) {
 		minhash_t kmer = read_kmers[i].first;
@@ -466,9 +476,6 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 					pack_64(&seq[seq_offset+i], params->k2, &kmer_hash);
 					break;
 			}
-			uint32_t hash[5];
-			sha1_hash(reinterpret_cast<const uint8_t*>(&seq[seq_offset+i]), params->k2, hash);
-			kmer_hash = ((uint64) hash[0] << 32 | hash[1]);
 		} else {
 			kmer_hash = ref.precomputed_kmer2_hashes[seq_offset+i];
 		}
@@ -477,17 +484,6 @@ void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_ciphe
 		pos_cipher_t pos_cipher = i;
 		ciphers[i] = std::make_pair(kmer_hash, pos_cipher);
 	}
-}
-
-inline bool is_unique_kmer(const std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& sorted_kmers, const uint32 idx) {
-	bool unique = true;
-	minhash_t hash = sorted_kmers[idx].first;
-	if(idx > 0 && sorted_kmers[idx-1].first == hash) {
-		unique = false;
-	} else if(idx < sorted_kmers.size()-1 && sorted_kmers[idx+1].first == hash) {
-		unique = false;
-	}
-	return unique;
 }
 
 void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
@@ -521,7 +517,7 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 		uint32 start = i > params->delta_inlier ? i - params->delta_inlier : 0;
 		uint32 end = i + params->delta_inlier;
 		if(end >= votes.size()) end = votes.size()-1;
-		for(int j = start; j < end; j++) {
+		for(uint32 j = start; j < end; j++) {
 			votes_conv[i] += votes[j];
 		}
 		if(votes_conv[i] > max) {
@@ -585,8 +581,8 @@ void load_precomp_contigs(const char* fileName, reads_t& reads) {
 }
 
 #define MAX_BUCKET_SIZE 1000
-#define KMER_MASK_LEN 20
-static const uint8 kmer_mask[KMER_MASK_LEN] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+//#define KMER_MASK_LEN 20
+//static const uint8 kmer_mask[KMER_MASK_LEN] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 
 //////////// PRIVACY-PRESERVING READ ALIGNMENT ////////////
@@ -596,7 +592,7 @@ void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params);
 void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score);
 void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params);
-void eval(const reads_t& reads, const ref_t& ref, const index_params_t* params);
+void eval(reads_t& reads, const ref_t& ref, const index_params_t* params);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_params_t* params) {
 	get_sim_read_info(ref, reads);
@@ -736,7 +732,6 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, r->key1_xor_pad, r->key2_mult_pad, false, ref, params);
 
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
-			ref_match_t ref_contig = r->ref_matches[j];
 			if(r->contig_kmer_ciphers[j].size() == 0) continue;			
 			generate_voting_kmer_ciphers(r->contig_kmer_ciphers[j], ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, r->key1_xor_pad, r->key2_mult_pad, true, ref, params);
 		}
@@ -794,8 +789,6 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
 			for(int i = 0; i < 2; i++) {
-				uint16_t min_n_matches = 0;
-				uint16_t min_n_errors = 0;
 				if(n_votes[i] == 0) continue;
 				pos[i] = pos_sig[i] + ref_contig.pos;
 			}
@@ -853,7 +846,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 
 void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {
 	printf("////////////// Finalize Mappings //////////////\n");
-	double start_time = omp_get_wtime();
+	//double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
 	// ---- mapq score -----
 	#pragma omp parallel for
@@ -878,7 +871,7 @@ void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const in
 	//store_alns_sam(reads, ref, params);
 }
 
-void eval(const reads_t& reads, const ref_t& ref, const index_params_t* params) {
+void eval(reads_t& reads, const ref_t& ref, const index_params_t* params) {
 	printf("////////////// Evaluation //////////////\n");
 	// ---- debug -----
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
