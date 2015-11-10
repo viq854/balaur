@@ -123,7 +123,8 @@ int main(int argc, char *argv[]) {
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
 		params.generate_sparse_sketch_projections();
-		params.load_mhi = false;
+		params.load_mhi = true;
+		params.monolith = true;
 
 		// 1. load the reference index
 		ref_t ref;

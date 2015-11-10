@@ -591,6 +591,7 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
 void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params);
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params);
 void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score);
+void phase2_monolith(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score);
 void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params);
 void eval(reads_t& reads, const ref_t& ref, const index_params_t* params);
 
@@ -611,13 +612,16 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_
 	}
 
 	// --- phase 2 ---
-	load_kmer2_hashes(fastaName, ref, params);
-	phase2_encryption(reads, ref, params);
 	int avg_score;
-	phase2_voting(reads, ref, params, &avg_score);
+	if(!params->monolith) {
+		load_kmer2_hashes(fastaName, ref, params);
+		phase2_encryption(reads, ref, params);
+		phase2_voting(reads, ref, params, &avg_score);
+	} else {
+		phase2_monolith(reads, ref, params, &avg_score);
+	}
 	finalize(reads, avg_score, ref, params);
 	eval(reads, ref, params);
-
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
 }
 
@@ -842,6 +846,78 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 		total_size += sizeof(r->top_aln.ref_start);
 	} 
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
+}
+
+void phase2_monolith(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score) {
+	printf("////////////// Phase 2: MONOLITH //////////////\n");
+	omp_set_num_threads(params->n_threads);
+	int sum_score = 0;
+	int n_nonzero_scores = 0;
+	double start_time = omp_get_wtime();
+	#pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		r->key1_xor_pad = genrand64_int64();
+		r->key2_mult_pad = genrand64_int64();
+		r->kmers_f.resize(r->len - params->k2 + 1);
+		r->kmers_rc.resize(r->len - params->k2 + 1);
+		generate_voting_kmer_ciphers(r->kmers_f, r->seq.c_str(), 0, r->len, r->key1_xor_pad, r->key2_mult_pad, false, ref, params);
+		generate_voting_kmer_ciphers(r->kmers_rc, r->rc.c_str(), 0, r->len, r->key1_xor_pad, r->key2_mult_pad, false, ref, params);
+		std::sort(r->kmers_f.begin(), r->kmers_f.end());
+		std::sort(r->kmers_rc.begin(), r->kmers_rc.end());
+
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+			if(r->n_proc_contigs > 20 && ref_contig.n_diff_bucket_hits < 2) continue;
+			if(ref_contig.n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmer_ciphers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> contig_kmer_ciphers(ref_contig.len - params->k2 + 1);
+			std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
+
+			int pos_sig[2] = { 0 };
+			seq_t pos[2] = { 0 };
+			seq_t n_votes[2] = { 0 };
+			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
+			for(int i = 0; i < 2; i++) {
+				if(n_votes[i] == 0) continue;
+				pos[i] = pos_sig[i] + ref_contig.pos;
+			}
+			// update votes and its alignment position
+			for(int i = 0; i < 2; i++) {
+				if(n_votes[i] > r->top_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+						r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
+						r->second_best_aln.total_votes = r->top_aln.total_votes;
+						r->second_best_aln.ref_start = r->top_aln.ref_start;
+					}
+					// update best alignment
+					r->top_aln.inlier_votes = n_votes[i];
+					r->top_aln.ref_start = pos[i];
+					r->top_aln.rc = ref_contig.rc;
+				} else if(n_votes[i] > r->second_best_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+						r->second_best_aln.inlier_votes = n_votes[i];
+						r->second_best_aln.ref_start = pos[i];
+					}
+				}
+			}
+#if(SIM_EVAL)
+			if(pos_in_range_asym(r->ref_pos_r, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+					pos_in_range_asym(r->ref_pos_l, ref_contig.pos, ref_contig.len + params->ref_window_size, params->ref_window_size)) {
+				r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
+			}
+#endif
+		}
+		if(r->top_aln.inlier_votes > 0) {
+			sum_score += r->top_aln.inlier_votes;
+			n_nonzero_scores++;
+		}
+	}
+	if(n_nonzero_scores > 0) {
+		*avg_score = sum_score/n_nonzero_scores;
+	}
+	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
 void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {

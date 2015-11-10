@@ -64,6 +64,7 @@ typedef struct {
 
 	bool load_mhi;
 	std::string precomp_contig_file_name;
+	bool monolith;
 
 	void set_default_index_params() {
 		kmer_type = OVERLAP;
