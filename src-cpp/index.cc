@@ -33,8 +33,8 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
 
 	std::vector<std::string> freq_fingerprints(ref.len - params->ref_window_size + 1);
 	uint32 n_kmers = (params->ref_window_size - params->k2 + 1);
-	
-	uint32 unique = 0; 
+
+	uint32 unique = 0;
 	uint32 repk = 0;
 	#pragma omp parallel for reduction(+:unique, repk)
 	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
@@ -70,7 +70,7 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
 				} else {
 					if(counter > 1) {
 						counts.push_back(counter);
-						//if(counter > 2) break;	
+						//if(counter > 2) break;
 						//for(int k = 0; k < counter; k++) {
 						//	window += kmers[j-1-k].second;
 						//	window += ",";
@@ -87,7 +87,7 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
 			//for(uint32 x = 0; x < params->ref_window_size; x++) {
                         //         printf("%c", iupacChar[(int)ref.seq[pos + x]]);
                         //}
-			
+
 			std::sort(counts.begin(), counts.end());
 			for(uint32 k = 0; k < counts.size(); k++) {
 				//if(counts[k] > 2) {
@@ -96,7 +96,7 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
 				//}
 				window += std::to_string(counts[k]);
 				window += " ";
-			} 
+			}
 			//std::cout << "\n";
 			//std::cout<<window;
 		} else {
@@ -109,7 +109,7 @@ void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, 
 		//}
 	}
 
-	
+
 	std::cout << "Computed fingerprints, unique " << unique << " repeats > 2 " << repk << "\n";
 
 	std::string stats_fname(fastaFname);

@@ -243,16 +243,29 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	#pragma omp parallel for
 	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-		ref.precomputed_kmer2_hashes[pos] = CityHash32(&ref.seq[pos], params->k2);
+		switch(params->kmer_hashing_alg) {
+			case SHA1:
+				uint32_t hash[5];
+				sha1_hash(reinterpret_cast<const uint8_t*>(&ref.seq[pos]), params->k2, hash);
+				ref.precomputed_kmer2_hashes[pos] = ((uint64) hash[0] << 32 | hash[1]);
+				break;
+			case CITY_HASH64:
+				ref.precomputed_kmer2_hashes[pos] = CityHash64(&ref.seq[pos], params->k2);
+				break;
+			case PACK64:
+				pack_64(&ref.seq[pos], params->k2, &ref.precomputed_kmer2_hashes[pos]);
+				break;
+		}
 	}
 	std::string fname(refFname);
-	fname += std::string(".k2hash.");
+	fname += std::string(".hash.");
 	fname += std::to_string(params->k2);
+	fname += std::string(".alg.");
+	fname += std::to_string(params->kmer_hashing_alg);
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);
-
 	if (!file.is_open()) {
-		printf("compute_store_kmer2_hashes: Cannot open the file %s!\n", fname.c_str());
+		printf("compute_store_k2_hashes: Cannot open the file %s!\n", fname.c_str());
 		exit(1);
 	}
 	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
@@ -263,8 +276,10 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
-	fname += std::string(".k2hash.");
+	fname += std::string(".hash.");
 	fname += std::to_string(params->k2);
+	fname += std::string(".alg.");
+	fname += std::to_string(params->kmer_hashing_alg);
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
@@ -273,90 +288,6 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
 		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos]), sizeof(ref.precomputed_kmer2_hashes[pos]));
-	}
-	file.close();
-	return true;
-}
-
-void encrypt_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
-	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
-        omp_set_num_threads(params->n_threads);
-        #pragma omp parallel for
-        for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-                uint32_t hash[5];
-                sha1_hash(reinterpret_cast<const uint8_t*>(&ref.seq[pos]), params->k2, hash);
-                ref.packed_32bp_kmers[pos] = ((uint64) hash[0] << 32 | hash[1]);
-	}
-        std::string fname(refFname);
-        fname += std::string(".hash");
-        fname += std::to_string(params->k2);
-        std::ofstream file;
-        file.open(fname.c_str(), std::ios::out | std::ios::binary);
-
-        if (!file.is_open()) {
-                printf("encrypt_ref_kmers: Cannot open the file %s!\n", fname.c_str());
-                exit(1);
-        }
-        for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
-                file.write(reinterpret_cast<char*>(&ref.packed_32bp_kmers[i]), sizeof(ref.packed_32bp_kmers[i]));
-        }
-        file.close();
-}
-
-bool load_encrypt_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
-        std::string fname(refFname);
-        fname += std::string(".hash");
-        fname += std::to_string(params->k2);
-        std::ifstream file;
-        file.open(fname.c_str(), std::ios::in | std::ios::binary);
-        if (!file.is_open()) {
-                printf("load_encrypt_ref_kmers: Cannot open the file %s!\n", fname.c_str());
-                return false;
-        }
-        ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
-        for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-                file.read(reinterpret_cast<char*>(&ref.packed_32bp_kmers[pos]), sizeof(ref.packed_32bp_kmers[pos]));
-        }
-        file.close();
-        return true;
-}
-
-void pack_and_store_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
-	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
-	omp_set_num_threads(params->n_threads);
-	#pragma omp parallel for
-	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-		pack_64(&ref.seq[pos], params->k2, &ref.packed_32bp_kmers[pos]);
-	}
-	std::string fname(refFname);
-	fname += std::string(".pack");
-	fname += std::to_string(params->k2);
-	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::binary);
-
-	if (!file.is_open()) {
-		printf("pack_and_store_ref_kmers: Cannot open the file %s!\n", fname.c_str());
-		exit(1);
-	}
-	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
-		file.write(reinterpret_cast<char*>(&ref.packed_32bp_kmers[i]), sizeof(ref.packed_32bp_kmers[i]));
-	}
-	file.close();
-}
-
-bool load_packed_ref_kmers(const char* refFname, ref_t& ref, const index_params_t* params) {
-	std::string fname(refFname);
-	fname += std::string(".pack");
-	fname += std::to_string(params->k2);
-	std::ifstream file;
-	file.open(fname.c_str(), std::ios::in | std::ios::binary);
-	if (!file.is_open()) {
-		printf("pack_and_store_ref_kmers: Cannot open the file %s!\n", fname.c_str());
-		return false;
-	}
-	ref.packed_32bp_kmers.resize(ref.len - params->k2 + 1);
-	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-		file.read(reinterpret_cast<char*>(&ref.packed_32bp_kmers[pos]), sizeof(ref.packed_32bp_kmers[pos]));
 	}
 	file.close();
 	return true;

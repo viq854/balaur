@@ -5,6 +5,7 @@
 
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
 typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
+typedef enum {SHA1 = 0, CITY_HASH64 = 1, PACK64 = 2} kmer_hash_alg;
 
 #include "hash.h"
 
@@ -13,6 +14,7 @@ typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
 // program parameters
 typedef struct {	
 	algorithm alg; 					// LSH scheme to use
+	kmer_hash_alg kmer_hashing_alg;
 
 	// LSH parameters
 	kmer_selection kmer_type; 		// scheme for extracting the kmer features
@@ -65,6 +67,7 @@ typedef struct {
 
 	void set_default_index_params() {
 		kmer_type = OVERLAP;
+		kmer_hashing_alg = SHA1;
 		h = 64;
 		n_tables = 32;
 		sketch_proj_len = 2;
@@ -181,7 +184,7 @@ typedef struct {
 
 	// voting
 	std::vector<uint64> packed_32bp_kmers;
-	std::vector<minhash_t> precomputed_kmer2_hashes;
+	std::vector<kmer_cipher_t> precomputed_kmer2_hashes;
 } ref_t;
 
 // **** Read Set Index ****

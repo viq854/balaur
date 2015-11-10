@@ -275,11 +275,10 @@ void collect_read_hits(const ref_t& ref, read_t* r, const bool rc, const index_p
 static const int N_INIT_ANCHORS_MAX = (getenv("N_INIT_ANCHORS_MAX") ? atoi(getenv("N_INIT_ANCHORS_MAX")) : 20);
 #define UNIQUE1 0
 #define UNIQUE2 1
-void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
-		std::vector<std::pair<minhash_t, uint16_t>> read_kmers, const index_params_t* params,
-		uint32* n_inliers, int* pos, uint32* total_n_matches) {
-	std::sort(ref_kmers.begin(), ref_kmers.end());
-	std::sort(read_kmers.begin(), read_kmers.end());
+void ransac(const ref_match_t ref_contig, const seq_t rlen,
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
+			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
+			const index_params_t* params, seq_t* n_votes, int* pos) {
 
 	int anchors[2][N_INIT_ANCHORS_MAX];
 	uint32 n_anchors[2] = { 0 };
@@ -289,68 +288,64 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 		// start from the beginning in each pass
 		uint32 idx_q = 0;
 		uint32 idx_r = 0;
-		while(idx_q < ref_kmers.size() && idx_r < read_kmers.size()) {
-			if(ref_kmers[idx_r].first == read_kmers[idx_q].first) { // MATCH
-				int match_aln_pos = ref_kmers[idx_r].second - read_kmers[idx_q].second;
+		while(idx_q < read_ciphers.size() && idx_r < contig_ciphers.size()) {
+			if(contig_ciphers[idx_r].first == read_ciphers[idx_q].first) { // MATCH
+				int match_aln_pos = contig_ciphers[idx_r].second - read_ciphers[idx_q].second;
 				if(p == 0) { // -------- FIRST PASS: collect unique matches ---------
-					//if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
+					if(is_unique_kmer(read_ciphers, idx_q)) {
 						if(n_anchors[UNIQUE1] < params->n_init_anchors) {
 							anchors[UNIQUE1][n_anchors[UNIQUE1]] = match_aln_pos;
 							n_anchors[UNIQUE1]++;
-							//std::cout << " (1) " << ref_kmers[idx_r].second << " " << read_kmers[idx_q].second << "\n"; 
 						} else { // found all the anchors
 							break;
 						}
-					//}
+					}
 					idx_q++;
 					idx_r++;
 			} else if(p == 1) { // --------- SECOND PASS: collect DIFF unique matches -------
 					if(n_anchors[UNIQUE1] == 0) break; // no unique matches exist
 					// compute the median first pass position
 					if(anchor_median_pos[UNIQUE1] == 0) {
-						//std::sort(&anchors[UNIQUE1][0], &anchors[UNIQUE1][0] + n_anchors[UNIQUE1]);
+						std::sort(&anchors[UNIQUE1][0], &anchors[UNIQUE1][0] + n_anchors[UNIQUE1]);
 						anchor_median_pos[UNIQUE1] = anchors[UNIQUE1][(n_anchors[UNIQUE1]-1)/2];
 					}
-					//if(is_unique_kmer(read_kmers, idx_r) && is_unique_kmer(ref_kmers, idx_q)) {
+					if(is_unique_kmer(read_ciphers, idx_q)) {
 						// if this position is not close to the first pick
 						if(!pos_in_range_sig(match_aln_pos, anchor_median_pos[UNIQUE1], params->delta_x*params->delta_inlier)) {
 							if(n_anchors[UNIQUE2] < params->n_init_anchors) {
 								anchors[UNIQUE2][n_anchors[UNIQUE2]] = match_aln_pos;
 								n_anchors[UNIQUE2]++;
-								//std::cout << " (2) " << ref_kmers[idx_r].second << " " << read_kmers[idx_q].second << "\n";
 							} else { // found all the anchors
 								break;
 							}
 						}
-					//}
+					}
 					idx_q++;
 					idx_r++;
 				} else { // --------- THIRD PASS: count inliers to each candidate position -------
 					if(n_anchors[UNIQUE1] == 0) break;
 					// find the median alignment positions
 					if(n_anchors[UNIQUE2] > 0 && anchor_median_pos[UNIQUE2] == 0) {
-						//std::sort(&anchors[UNIQUE2][0], &anchors[UNIQUE2][0] + n_anchors[UNIQUE2]);
+						std::sort(&anchors[UNIQUE2][0], &anchors[UNIQUE2][0] + n_anchors[UNIQUE2]);
 						anchor_median_pos[UNIQUE2] = anchors[UNIQUE2][(n_anchors[UNIQUE2]-1)/2];
 					}
 					// count inliers
 					for(int i = 0; i < 2; i++) {
 						if(n_anchors[i] == 0) continue;
 						if(pos_in_range_sig(anchor_median_pos[i], match_aln_pos, params->delta_inlier)) {
-							n_inliers[i]++;
+							n_votes[i]++;
 							pos[i] += match_aln_pos;
-							//std::cout << " pos[" << i << "]=" << pos[i] << " match pos " << match_aln_pos << " " << ref_kmers[idx_r].second << " " <<  read_kmers[idx_q].second << "\n"; 
 						}
 					}
-					if(idx_r < (ref_kmers.size()-1) && ref_kmers[idx_r + 1].first == ref_kmers[idx_r].first) {
+					if(idx_r < (contig_ciphers.size()-1) && contig_ciphers[idx_r + 1].first == contig_ciphers[idx_r].first) {
 						// if the next kmer is still a match in the reference, check it in next iteration as an inlier
 						idx_r++;
 					} else {
-						(*total_n_matches)++;
 						idx_q++;
 						idx_r++;
 					}
 				}
-			} else if(read_kmers[idx_q].first < ref_kmers[idx_r].first) {
+			} else if(read_ciphers[idx_q].first < contig_ciphers[idx_r].first) {
 				idx_q++;
 			} else {
 				idx_r++;
@@ -358,15 +353,15 @@ void ransac(std::vector<std::pair<minhash_t, uint16_t>> ref_kmers,
 		}
 	}
 	for(int i = 0; i < 2; i++) {
-		if(n_inliers[i] > 0) {
-			pos[i] = pos[i]/(int)n_inliers[i];
+		if(n_votes[i] > 0) {
+			pos[i] = pos[i]/(int)n_votes[i];
 			//std::cout << " final pos " << pos[i] << " n_inliners " << n_inliers[i] << "\n";
 		}
 	}
 
 	if(n_anchors[UNIQUE1] < 5) {
-		n_inliers[0] = 0;
-		n_inliers[1] = 0;
+		n_votes[0] = 0;
+		n_votes[1] = 0;
 		//votes_by_pos(ref_kmers, read_kmers, params, n_inliers, pos, total_n_matches);
 	}
 }
@@ -450,30 +445,33 @@ void propagate_matches(read_t* r, const int contig_pos,
 }
 
 void generate_voting_kmer_ciphers(std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& ciphers,
-		const char* seq, const seq_t seq_offset, const seq_t seq_len, const uint64 key1, const uint64 key2, const bool is_ref,
+		const char* seq, const seq_t seq_offset, const seq_t seq_len,
+		const uint64 key1, const uint64 key2, const bool is_ref,
 		const ref_t& ref, const index_params_t* params) {
 
 	seq_t n_kmers = seq_len - params->k2 + 1;
-	//ciphers.resize(n_kmers);
 	for(seq_t i = 0; i < n_kmers; i++) {
 		kmer_cipher_t kmer_hash = 0;
-		uint32_t hash[5];
 		if(!is_ref) {
+			switch(params->kmer_hashing_alg) {
+				case SHA1:
+					uint32_t hash[5];
+					sha1_hash(reinterpret_cast<const uint8_t*>(&seq[seq_offset+i]), params->k2, hash);
+					kmer_hash = ((uint64) hash[0] << 32 | hash[1]);
+					break;
+				case CITY_HASH64:
+					kmer_hash = CityHash64(&seq[seq_offset+i], params->k2);
+					break;
+				case PACK64:
+					pack_64(&seq[seq_offset+i], params->k2, &kmer_hash);
+					break;
+			}
+			uint32_t hash[5];
 			sha1_hash(reinterpret_cast<const uint8_t*>(&seq[seq_offset+i]), params->k2, hash);
 			kmer_hash = ((uint64) hash[0] << 32 | hash[1]);
 		} else {
-			kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
+			kmer_hash = ref.precomputed_kmer2_hashes[seq_offset+i];
 		}
-		//kmer_cipher_t kmer_hash = CityHash64(&seq[seq_offset+i], params->k2); //params->kmer_hasher->encrypt_base_seq(&seq[seq_offset+i], params->k2);
-		//kmer_cipher_t kmer_hash;
-		//if(is_ref) {
-		//	kmer_hash = ref.packed_32bp_kmers[seq_offset+i];
-		//} else {
-		//if(pack_64(&seq[seq_offset+i], params->k2, &kmer_hash)) {
-		//	kmer_hash = ULONG_MAX;
-		//}
-		//}
-
 		kmer_hash = (kmer_hash ^ key1);
 		kmer_hash *= key2;
 		pos_cipher_t pos_cipher = i;
@@ -492,7 +490,8 @@ inline bool is_unique_kmer(const std::vector<std::pair<kmer_cipher_t, pos_cipher
 	return unique;
 }
 
-void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen, std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
+void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
+		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
 		const index_params_t* params, seq_t* n_votes, int* pos) {
 
@@ -595,8 +594,9 @@ static const int VERBOSE = (getenv("VERBOSE") ? atoi(getenv("VERBOSE")) : 0);
 void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* params);
 void phase1_merge(reads_t& reads, const ref_t& ref, const index_params_t* params);
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params);
-void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params);
-void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params);
+void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score);
+void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params);
+void eval(const reads_t& reads, const ref_t& ref, const index_params_t* params);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_params_t* params) {
 	get_sim_read_info(ref, reads);
@@ -615,9 +615,12 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_
 	}
 
 	// --- phase 2 ---
-	load_encrypt_ref_kmers(fastaName, ref, params);
+	load_kmer2_hashes(fastaName, ref, params);
 	phase2_encryption(reads, ref, params);
-	phase2_voting(reads, ref, params);
+	int avg_score;
+	phase2_voting(reads, ref, params, &avg_score);
+	finalize(reads, avg_score, ref, params);
+	eval(reads, ref, params);
 
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
 }
@@ -700,7 +703,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
 	omp_set_num_threads(params->n_threads);
 
-	// allocate temp storage for the seeds
+	// allocate temp storage for the seeds, initiate keys
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
@@ -764,7 +767,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
 }
 
-void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params) {
+void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* params, int* avg_score) {
 	printf("////////////// Phase 2: Voting //////////////\n");
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
@@ -780,6 +783,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
 			ref_match_t ref_contig = r->ref_matches[j];
+			if(r->contig_kmer_ciphers[j].size() == 0) continue;
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_kmer_ciphers = (ref_contig.rc) ? r->kmers_rc : r->kmers_f;
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_kmer_ciphers = r->contig_kmer_ciphers[j];
 			std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
@@ -827,33 +831,31 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			sum_score += r->top_aln.inlier_votes;
 			n_nonzero_scores++;
 		}
-		//std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>>().swap(r->contig_kmer_ciphers);
+		std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>>().swap(r->contig_kmer_ciphers);
 	}
 
-	int avg_score = 0;
 	if(n_nonzero_scores > 0) {
-		avg_score = sum_score/n_nonzero_scores;
+		*avg_score = sum_score/n_nonzero_scores;
 	}
 	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 
-
+	// ---- determine the total communication size ----
 	uint64 total_size = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
-        	read_t* r = &reads.reads[i];
+        read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
 		total_size += 2*sizeof(r->top_aln.inlier_votes);
 		total_size += sizeof(r->top_aln.rc);
 		total_size += sizeof(r->top_aln.ref_start);
 	} 
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
-
-	phase2_eval(reads, avg_score, ref, params);
 }
 
-void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {
-	printf("////////////// Phase 2: Evaluation //////////////\n");
+void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {
+	printf("////////////// Finalize Mappings //////////////\n");
 	double start_time = omp_get_wtime();
 	omp_set_num_threads(params->n_threads);
+	// ---- mapq score -----
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
@@ -872,24 +874,39 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 				r->top_aln.ref_start += r->len;
 			}
 		}
+	}
+	//store_alns_sam(reads, ref, params);
+}
 
-#if(SIM_EVAL)
-		if (VERBOSE >  0 && r->top_aln.score >= 10 && !pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) && !pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+void eval(const reads_t& reads, const ref_t& ref, const index_params_t* params) {
+	printf("////////////// Evaluation //////////////\n");
+	// ---- debug -----
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if (VERBOSE > 0 && r->top_aln.score >= 10 &&
+				!pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) &&
+				!pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
 			printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n",
 					r->top_aln.score,
 					r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,
 					r->ref_pos_l, r->ref_pos_r, r->top_aln.ref_start);
 			//print_read(r);
 		}
-#endif
 	}
 
-	// write the results to file
-	//store_alns_sam(reads, ref, params);
-	double end_time = omp_get_wtime();
+#if(!SIM_EVAL)
+	int q10 = 0;
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		if(r->top_aln.score >= 10) {
+			q10++;
+		}
+	}
+	printf("Number of confidently mapped reads Q10 %u\n", q10);
+	return;
+#endif
 
-#if(SIM_EVAL)
-	printf("Evaluating read hits... \n");
 	int valid_hash = 0;
 	int n_collected = 0;
 	int n_proc_contigs = 0;
@@ -976,37 +993,6 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 	}
 	stddev_true_pos_hits = sqrt((double)stddev_true_pos_hits/valid_hash);
 
-	/*std::string fname("process_contigs");
-		fname += std::string("_h");
-	        fname += std::to_string(params->h);
-	        fname += std::string("_T");
-	        fname += std::to_string(params->n_tables);
-	        fname += std::string("_b");
-	        fname += std::to_string(params->sketch_proj_len);
-	        fname += std::string("_w");
-	        fname += std::to_string(params->ref_window_size);
-	        fname += std::string("_p");
-	    	fname += std::to_string(params->n_buckets_pow2);
-	    	fname += std::string("_k");
-	    	fname += std::to_string(params->k);
-	    	fname += std::string("_H");
-	    	fname += std::to_string(params->max_count);
-	        std::ofstream stats_file;
-	        stats_file.open(fname.c_str(), std::ios::out | std::ios::app);
-	        if (!stats_file.is_open()) {
-	                printf("store_ref_idx: Cannot open the CONTIG STATS file %s!\n", fname.c_str());
-	                exit(1);
-	        }
-		//stats_file << "length,count,m\n";
-		for(uint32 i = 0; i < reads.reads.size(); i++) {
-	                read_t* r = &reads.reads[i];
-	                if(!r->valid_minhash && !r->valid_minhash_rc) continue;
-			stats_file << r->len << "," << r->n_proc_contigs << "," << params->min_n_hits << "\n";
-		}
-	        stats_file.close();
-		*/
-
-
 	printf("Number of reads with valid F or RC hash %u \n", valid_hash);
 	printf("Number of mapped reads COLLECTED true hit %u \n", n_collected);
 	printf("Number of mapped reads PROC true hit %u \n", processed_true);
@@ -1024,18 +1010,34 @@ void phase2_eval(reads_t& reads, const uint32 avg_score, const ref_t& ref, const
 	printf("Avg max inlier votes per read %.8f \n", (float) max_votes_inl/confident);
 	printf("Avg max all votes per read %.8f \n", (float) max_votes_all/confident);
 	printf("AVG N_PROC_CONTIGS %.8f \n", avg_n_proc_contigs);
-#endif
 
-	/*int q10 = 0;
-	for(uint32 i = 0; i < reads.reads.size(); i++) {
-		read_t* r = &reads.reads[i];
-		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-		if(r->top_aln.score >= 10) {
-                        q10++;
-		}
+	/*std::string fname("process_contigs");
+	fname += std::string("_h");
+	fname += std::to_string(params->h);
+	fname += std::string("_T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("_b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("_w");
+	fname += std::to_string(params->ref_window_size);
+	fname += std::string("_p");
+	fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_k");
+	fname += std::to_string(params->k);
+	fname += std::string("_H");
+	fname += std::to_string(params->max_count);
+	std::ofstream stats_file;
+	stats_file.open(fname.c_str(), std::ios::out | std::ios::app);
+	if (!stats_file.is_open()) {
+		printf("store_ref_idx: Cannot open the CONTIG STATS file %s!\n", fname.c_str());
+		exit(1);
 	}
-	
-	printf("Number of confidently mapped reads Q10 %u\n", q10);
+	//stats_file << "length,count,m\n";
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+				read_t* r = &reads.reads[i];
+				if(!r->valid_minhash && !r->valid_minhash_rc) continue;
+		stats_file << r->len << "," << r->n_proc_contigs << "," << params->min_n_hits << "\n";
+	}
+		stats_file.close();
 	*/
-	printf("Total search time: %f sec\n", end_time - start_time);
 }

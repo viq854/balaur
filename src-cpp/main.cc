@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:")) >= 0) {
 		switch (c) {
 			case 'h': params.h = atoi(optarg); break;
 			case 'T': params.n_tables = atoi(optarg); break;
@@ -96,6 +96,7 @@ int main(int argc, char *argv[]) {
 			case 'o': params.out_index_fname = std::string(optarg); break;
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'z': params.precomp_contig_file_name = std::string(optarg); break;
+			case 'e': params.kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
 			default: return 0;
 		}
 	}
@@ -141,7 +142,7 @@ int main(int argc, char *argv[]) {
 		// load the reference index
 		ref_t ref;
 		fasta2ref(argv[optind+1], ref);
-		encrypt_ref_kmers(argv[optind+1], ref, &params);
+		compute_store_kmer2_hashes(argv[optind+1], ref, &params);
 
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);
