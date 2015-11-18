@@ -13,6 +13,37 @@
 #include "hash.h"
 
 
+void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]) {
+        hash[0] = UINT32_C(0x67452301);
+        hash[1] = UINT32_C(0xEFCDAB89);
+        hash[2] = UINT32_C(0x98BADCFE);
+        hash[3] = UINT32_C(0x10325476);
+        hash[4] = UINT32_C(0xC3D2E1F0);
+
+        uint32_t i;
+        for (i = 0; len - i >= 64; i += 64)
+                sha1_compress(hash, message + i);
+
+        uint8_t block[64];
+        uint32_t rem = len - i;
+        memcpy(block, message + i, rem);
+
+        block[rem] = 0x80;
+        rem++;
+        if (64 - rem >= 8)
+                memset(block + rem, 0, 56 - rem);
+        else {
+                memset(block + rem, 0, 64 - rem);
+                sha1_compress(hash, block);
+                memset(block, 0, 56);
+        }
+
+        uint64_t longLen = ((uint64_t)len) << 3;
+        for (i = 0; i < 8; i++)
+                block[64 - 1 - i] = (uint8_t)(longLen >> (i * 8));
+        sha1_compress(hash, block);
+}
+
 // returns the hamming distance between two 64-bit fingerprints
 int hamming_dist(hash_t h1, hash_t h2) {
 	return __builtin_popcountll(h1 ^ h2);

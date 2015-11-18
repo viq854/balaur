@@ -34,8 +34,8 @@
 
 #define UINT32_C(c) c ## UL
 
-void sha1_compress(uint32_t state[5], const uint8_t block[64]);
-void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]) {
+//void sha1_compress(uint32_t state[5], const uint8_t block[64]);
+/*void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]) {
         hash[0] = UINT32_C(0x67452301);
         hash[1] = UINT32_C(0xEFCDAB89);
         hash[2] = UINT32_C(0x98BADCFE);
@@ -64,7 +64,7 @@ void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]) {
         for (i = 0; i < 8; i++)
                 block[64 - 1 - i] = (uint8_t)(longLen >> (i * 8));
         sha1_compress(hash, block);
-}
+}*/
 
 void sha1_compress(uint32_t state[5], const uint8_t block[64]) {
 	#define SCHEDULE(i)  \

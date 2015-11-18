@@ -5,7 +5,7 @@
 
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
 typedef enum {OVERLAP, NON_OVERLAP, SPARSE} kmer_selection;
-typedef enum {SHA1 = 0, CITY_HASH64 = 1, PACK64 = 2} kmer_hash_alg;
+typedef enum {SHA1_E = 0, CITY_HASH64 = 1, PACK64 = 2} kmer_hash_alg;
 
 #include "hash.h"
 
@@ -68,7 +68,7 @@ typedef struct {
 
 	void set_default_index_params() {
 		kmer_type = OVERLAP;
-		kmer_hashing_alg = SHA1;
+		kmer_hashing_alg = SHA1_E;
 		h = 64;
 		n_tables = 32;
 		sketch_proj_len = 2;
@@ -227,8 +227,8 @@ struct read_t {
 	char valid_minhash_rc;
 
 	// kmer k2 hashes
-	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_f;
-	std::vector<std::pair<kmer_cipher_t, pos_cipher_t>> kmers_rc;
+	kmer_cipher_t* kmers_f;
+	kmer_cipher_t* kmers_rc;
 
 	uint64 key1_xor_pad;
 	uint64 key2_mult_pad;
@@ -239,7 +239,7 @@ struct read_t {
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 
 	std::vector<ref_match_t> ref_matches;
-	std::vector<std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>> contig_kmer_ciphers;
+	std::vector<kmer_cipher_t*> contig_kmer_ciphers;
 
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;

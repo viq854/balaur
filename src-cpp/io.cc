@@ -105,7 +105,7 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 	#pragma omp parallel for
 	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
 		switch(params->kmer_hashing_alg) {
-			case SHA1:
+			case SHA1_E:
 				uint32_t hash[5];
 				sha1_hash(reinterpret_cast<const uint8_t*>(&ref.seq[pos]), params->k2, hash);
 				ref.precomputed_kmer2_hashes[pos] = ((uint64) hash[0] << 32 | hash[1]);
