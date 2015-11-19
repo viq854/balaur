@@ -238,6 +238,10 @@ struct read_t {
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 
+	// local csr buckets
+	std::vector<loc_t> buckets;
+	std::vector<int> bucket_offsets;
+
 	std::vector<ref_match_t> ref_matches;
 	std::vector<kmer_cipher_t*> contig_kmer_ciphers;
 
