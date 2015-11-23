@@ -147,11 +147,76 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 		return false;
 	}
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
-	for(seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
-		file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[pos]), sizeof(ref.precomputed_kmer2_hashes[pos]));
-	}
+	file.read(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[0]), (ref.len - params->k2 + 1)*sizeof(ref.precomputed_kmer2_hashes[0]));
 	file.close();
 	return true;
+}
+
+void store_ref_idx_flat(const char* refFname, const ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".idx_flat.");
+	fname += std::string("h");
+	fname += std::to_string(params->h);
+	fname += std::string("_T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("_b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("_w");
+	fname += std::to_string(params->ref_window_size);
+	fname += std::string("_p");
+    fname += std::to_string(params->n_buckets_pow2);
+    fname += std::string("_k");
+    fname += std::to_string(params->k);
+    fname += std::string("_H");
+    fname += std::to_string(params->max_count);
+
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		exit(1);
+	}
+
+	uint64 total_num_entries = ref.index.buckets_data.size();
+	file.write(reinterpret_cast<char*>(&total_num_entries), sizeof(total_num_entries));
+	file.write(reinterpret_cast<const char*>(&ref.index.buckets_data[0]), total_num_entries*sizeof(loc_t));
+	file.write(reinterpret_cast<const char*>(&ref.index.bucket_offsets[0]), (params->n_tables*params->n_buckets+1)*sizeof(uint64));
+	file.close();
+}
+
+void load_ref_idx_flat(const char* refFname, ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".idx_flat.");
+	fname += std::string("h");
+	fname += std::to_string(params->h);
+	fname += std::string("_T");
+	fname += std::to_string(params->n_tables);
+	fname += std::string("_b");
+	fname += std::to_string(params->sketch_proj_len);
+	fname += std::string("_w");
+	fname += std::to_string(params->ref_window_size);
+	fname += std::string("_p");
+	fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_k");
+	fname += std::to_string(params->k);
+	fname += std::string("_H");
+	fname += std::to_string(params->max_count);
+
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("load_ref_idx: Cannot open the IDX file %s!\n", fname.c_str());
+		std::cerr << "Error: " << strerror(errno);
+		exit(1);
+	}
+
+	uint64 total_num_bucket_entries;
+	file.read(reinterpret_cast<char*>(&total_num_bucket_entries), sizeof(total_num_bucket_entries));
+	ref.index.bucket_offsets.resize(params->n_tables*params->n_buckets+1);
+	ref.index.buckets_data.resize(total_num_bucket_entries);
+	file.read(reinterpret_cast<char*>(&ref.index.buckets_data[0]), total_num_bucket_entries*sizeof(loc_t));
+	file.read(reinterpret_cast<char*>(&ref.index.bucket_offsets[0]), (params->n_tables*params->n_buckets+1)*sizeof(uint64));
+	file.close();
 }
 
 // store the reference index
@@ -237,6 +302,7 @@ void load_ref_idx(const char* refFname, ref_t& ref, const index_params_t* params
 			uint32 size;
 			file.read(reinterpret_cast<char*>(&size), sizeof(size));
 			file.read(reinterpret_cast<char*>(&ref.index.buckets_data[bucket_idx]), size*sizeof(loc_t));
+			std::sort(ref.index.buckets_data.begin() + bucket_idx, ref.index.buckets_data.begin() + bucket_idx + size, comp_loc());
 			bucket_idx += size;
 		}
 	}

@@ -37,6 +37,8 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params);
 
 // index io
+void store_ref_idx_flat(const char* refFname, const ref_t& ref, const index_params_t* params);
+void load_ref_idx_flat(const char* refFname, ref_t& ref, const index_params_t* params);  
 void store_ref_idx(const char* idxFname, const ref_t& ref, const index_params_t* params);
 void load_ref_idx(const char* idxFname, ref_t& ref, const index_params_t* params);
 void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params);

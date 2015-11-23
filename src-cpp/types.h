@@ -33,7 +33,7 @@ struct loc_t {
 struct comp_loc
 {
     bool operator()(const loc_t& a, const loc_t& b) const {
-    	return a.pos < b.pos;
+	return a.hash < b.hash || (a.hash == b.hash &&  a.pos < b.pos);
     }
 };
 

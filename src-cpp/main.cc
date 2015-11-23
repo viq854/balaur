@@ -139,7 +139,11 @@ int main(int argc, char *argv[]) {
 
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
-	
+		
+		//ref_t ref;
+		//load_ref_idx(argv[optind+1], ref, &params);
+		//store_ref_idx_flat(argv[optind+1], ref, &params);
+
 		// load the reference index
 		ref_t ref;
 		fasta2ref(argv[optind+1], ref);

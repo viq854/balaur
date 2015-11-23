@@ -137,29 +137,41 @@ inline void heap_update_memmove(heap_entry_t* heap, uint32 n) {
 	}
 }
 
-int get_next_contig(const read_t* r, const std::vector<std::pair<uint64, minhash_t> >& ref_bucket_matches_by_table, uint32 t, heap_entry_t* entry) {
+int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhash_t> >& ref_bucket_matches_by_table, uint32 t, heap_entry_t* entry) {
 	const minhash_t read_proj_hash = ref_bucket_matches_by_table[t].second;
-	//const uint64 bid = ref_bucket_matches_by_table[t].first;
-	//if(bid == ref.index.bucket_offsets.size()) { // table ignored
-	//	return 0;
-	//}
-	//const uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
-	//const uint64 bucket_data_size = ref.index.bucket_offsets[bid+1] - bucket_data_offset;
+	const uint64 bid = ref_bucket_matches_by_table[t].first;
+	if(bid == ref.index.bucket_offsets.size()) { // table ignored
+		return 0;
+	}
+	const uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
+	const uint64 bucket_data_size = ref.index.bucket_offsets[bid+1] - bucket_data_offset;
 
-	const uint64 bucket_data_offset = r->bucket_offsets[t];
-	const uint64 bucket_data_size = r->bucket_offsets[t+1] - bucket_data_offset;
+	//const uint64 bucket_data_offset = r->bucket_offsets[t];
+	//const uint64 bucket_data_size = r->bucket_offsets[t+1] - bucket_data_offset;
 
 	// get the next entry in the bucket that matches the read projection hash value
-	while(entry->next_idx < bucket_data_size) {
-		if(r->buckets[bucket_data_offset + entry->next_idx].hash == read_proj_hash) {
-			entry->pos = r->buckets[bucket_data_offset + entry->next_idx].pos;
-			entry->len = r->buckets[bucket_data_offset + entry->next_idx].len;
+	bool first = entry->next_idx == 0;
+	if(first) {
+		loc_t l;
+		l.hash = read_proj_hash;
+		l.pos = 0;
+		l.len = 0;
+		std::vector<loc_t>::const_iterator range_start = std::lower_bound(ref.index.buckets_data.begin() + bucket_data_offset, ref.index.buckets_data.begin() + bucket_data_offset + bucket_data_size, l, comp_loc()); 	
+		entry->next_idx = std::distance(ref.index.buckets_data.begin() + bucket_data_offset, range_start);
+	}
+	//while(entry->next_idx < bucket_data_size) {
+		if(ref.index.buckets_data[bucket_data_offset + entry->next_idx].hash == read_proj_hash) {
+			entry->pos = ref.index.buckets_data[bucket_data_offset + entry->next_idx].pos;
+			entry->len = ref.index.buckets_data[bucket_data_offset + entry->next_idx].len;
 			entry->tid = t;
 			entry->next_idx++;
 			return 1;
 		}
-		entry->next_idx++;
-	}
+		//if(!first) {
+		//	return 0;
+		//}
+		//entry->next_idx++;
+	//}
 	return 0;
 }
 
@@ -222,7 +234,7 @@ void collect_read_hits(const ref_t& ref, read_t* r, const bool rc, const index_p
 	// push the first entries in each sorted bucket onto the heap
 	for(uint32 t = 0; t < params->n_tables; t++) { // for each table
 		heap[heap_size].next_idx = 0;
-		if(get_next_contig(r, (rc ? r->ref_bucket_matches_by_table_rc : r->ref_bucket_matches_by_table_f), t, &heap[heap_size]) > 0) {
+		if(get_next_contig(ref, (rc ? r->ref_bucket_matches_by_table_rc : r->ref_bucket_matches_by_table_f), t, &heap[heap_size]) > 0) {
 			heap_size++;
 		}
 	}
@@ -260,7 +272,7 @@ void collect_read_hits(const ref_t& ref, read_t* r, const bool rc, const index_p
 			occ.set(e.tid);
 		}
 		// push the next match from this bucket
-		if(get_next_contig(r, (rc ? r->ref_bucket_matches_by_table_rc : r->ref_bucket_matches_by_table_f), e.tid, &heap[0]) > 0) {
+		if(get_next_contig(ref, (rc ? r->ref_bucket_matches_by_table_rc : r->ref_bucket_matches_by_table_f), e.tid, &heap[0]) > 0) {
 			heap_update(heap, heap_size);
 		} else { // no more entries in this bucket
 			heap[0] = heap[heap_size - 1];
@@ -458,7 +470,7 @@ void propagate_matches(read_t* r, const int contig_pos,
 
 void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const uint64 key1, const uint64 key2, const index_params_t* params) {
 	const int n_kmers = seq_len - params->k2 + 1;
-    uint32_t hash[5];
+    	uint32_t hash[5];
 	for(int i = 0; i < n_kmers; i++) {
 #if(VANILLA)
 		ciphers[i] = CityHash64(&seq[i], params->k2);
@@ -479,7 +491,7 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 	memcpy(&ciphers[0], &ref.precomputed_kmer2_hashes[seq_offset], n_kmers*sizeof(kmer_cipher_t));
 	for(int i = 0; i < n_kmers; i++) {
 		ciphers[i] ^= key1;
-        ciphers[i] *= key2;
+        	ciphers[i] *= key2;
 	}
 	//__m128i* c = (__m128i*)ciphers;
 	//__m128i xor_pad = _mm_set1_epi64((__m64)key1);
@@ -728,8 +740,6 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
 	#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		r->bucket_offsets.resize(params->n_tables+1);
-		r->buckets.resize(params->n_tables*MAX_BUCKET_SIZE);
 		if(r->valid_minhash_f) {
 			r->ref_bucket_matches_by_table_f.resize(params->n_tables);
 			for(uint32 t = 0; t < params->n_tables; t++) {
@@ -738,13 +748,10 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
 				const uint32 bucket_size = ref.index.bucket_offsets[bid + 1] - ref.index.bucket_offsets[bid];
 				if(bucket_size > MAX_BUCKET_SIZE) {
 					r->ref_bucket_matches_by_table_f[t] = std::pair<uint64, minhash_t>(ref.index.bucket_offsets.size(), 0);
-					r->bucket_offsets[t+1] = r->bucket_offsets[t];
 					continue;
 				}
-				r->any_bucket_hits = true;
 				r->ref_bucket_matches_by_table_f[t] = std::pair<uint64, minhash_t>(bid, proj_hash);
-				r->bucket_offsets[t+1] = r->bucket_offsets[t] + bucket_size;
-				memcpy(&r->buckets[t], &ref.index.buckets_data[ref.index.bucket_offsets[bid]], bucket_size*sizeof(loc_t));
+				//_mm_prefetch((const void *)&ref.index.buckets_data[ref.index.bucket_offsets[bid]],_MM_HINT_T0);
 			}
 			collect_read_hits(ref, r, false, params);
 		}
@@ -756,17 +763,14 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
 				uint32 bucket_size = ref.index.bucket_offsets[bid + 1] - ref.index.bucket_offsets[bid];
 				if(bucket_size > MAX_BUCKET_SIZE) {
 					r->ref_bucket_matches_by_table_rc[t] = std::pair<uint64, minhash_t>(ref.index.bucket_offsets.size(), 0);
-					r->bucket_offsets[t+1] = r->bucket_offsets[t];
 					continue;
 				}
 				r->any_bucket_hits = true;
 				r->ref_bucket_matches_by_table_rc[t] = std::pair<uint64, minhash_t>(bid, proj_hash);
-				r->bucket_offsets[t+1] = r->bucket_offsets[t] + bucket_size;
-				memcpy(&r->buckets[t], &ref.index.buckets_data[ref.index.bucket_offsets[bid]], bucket_size*sizeof(loc_t));
+				//_mm_prefetch((const char *)&ref.index.buckets_data[ref.index.bucket_offsets[bid]],_MM_HINT_T0);
 			}
 			collect_read_hits(ref, r, true, params);
 		}
-		std::vector<loc_t>().swap(r->buckets);
 	}
 	printf("Runtime time (total): %.2f sec\n", omp_get_wtime() - start_time);
 }

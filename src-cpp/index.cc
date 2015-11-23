@@ -242,9 +242,10 @@ void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, re
 
 	if(params->load_mhi) {
 		printf("Loading reference MinHash index... \n");
-		t = clock();
+		//t = clock();
+		double start_time = omp_get_wtime();
 		load_ref_idx(fastaFname, ref, params);
-		printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+		printf("Time: %.2f sec\n", (float)(omp_get_wtime() - start_time));
 	}
 }
 
