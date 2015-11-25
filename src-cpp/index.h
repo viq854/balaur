@@ -186,6 +186,7 @@ typedef struct {
 	// voting
 	std::vector<uint64> packed_32bp_kmers;
 	std::vector<kmer_cipher_t> precomputed_kmer2_hashes;
+	std::vector<uint16_t> precomputed_neighbor_repeats;
 } ref_t;
 
 // **** Read Set Index ****
@@ -237,6 +238,7 @@ struct read_t {
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
+	char ref_strand;
 
 	// local csr buckets
 	std::vector<loc_t> buckets;
@@ -290,6 +292,7 @@ struct read_t {
 		second_best_aln.total_votes = 0;
 		max_total_votes = 0;
 		max_total_votes_low_anchors = 0;
+		ref_strand = 0;
 
 		// simulation alignment info/stats
 		acc = 0;

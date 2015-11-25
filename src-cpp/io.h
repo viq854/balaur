@@ -44,6 +44,8 @@ void load_ref_idx(const char* idxFname, ref_t& ref, const index_params_t* params
 void store_ref_idx_per_thread(const int tid, const bool first_entry, const char* refFname, ref_t& ref, const index_params_t* params);
 void load_ref_idx_per_thread(const int tid, const int nloads, const char* refFname, ref_t& ref, index_params_t* params);
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
+bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* params);
+void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_params_t* params);
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params);
 void mark_freq_kmers(ref_t& ref, const index_params_t* params);

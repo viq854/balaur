@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
 		params.set_minhash_hash_function();
 		params.set_minhash_sketch_hash_function();
 		params.generate_sparse_sketch_projections();
-		params.load_mhi = true;
+		params.load_mhi = false;
 		params.monolith = false;
 
 		// 1. load the reference index
@@ -146,8 +146,11 @@ int main(int argc, char *argv[]) {
 
 		// load the reference index
 		ref_t ref;
-		fasta2ref(argv[optind+1], ref);
-		compute_store_kmer2_hashes(argv[optind+1], ref, &params);
+		//fasta2ref(argv[optind+1], ref);
+		load_kmer2_hashes(argv[optind+1], ref, &params);
+		compute_store_repeat_info(argv[optind+1], ref, &params);
+		
+		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
 
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);

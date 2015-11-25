@@ -100,6 +100,22 @@ bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	return true;
 }
 
+bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* params) {
+	std::string fname(refFname);
+	fname += std::string(".rep.");
+	fname += std::to_string(params->k2);
+	fname += std::to_string(params->kmer_hashing_alg);
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		return false;
+	}
+	ref.precomputed_neighbor_repeats.resize(ref.len - params->k2 + 1);
+	file.read(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[0]), (ref.len - params->k2 + 1)*sizeof(ref.precomputed_neighbor_repeats[0]));
+	file.close();
+	return true;
+}
+
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	#pragma omp parallel for
@@ -131,6 +147,34 @@ void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_pa
 	}
 	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
 		file.write(reinterpret_cast<char*>(&ref.precomputed_kmer2_hashes[i]), sizeof(ref.precomputed_kmer2_hashes[i]));
+	}
+	file.close();
+}
+
+void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_params_t* params) {
+	ref.precomputed_neighbor_repeats.resize(ref.len - params->k2 + 1);
+	#pragma omp parallel for
+	for (seq_t i = 0; i < ref.len - params->k2 + 1; i++) {
+		uint64 k = ref.precomputed_kmer2_hashes[i];
+		for(seq_t j = 1; j < MAX_LOC_LEN; j++) {
+			if((i+j) == ref.precomputed_kmer2_hashes.size()) break;
+			if(k == ref.precomputed_kmer2_hashes[i + j]) {
+				ref.precomputed_neighbor_repeats[j];
+			}
+		}
+	}
+	std::string fname(refFname);
+	fname += std::string(".rep.");
+	fname += std::to_string(params->k2);
+	fname += std::to_string(params->kmer_hashing_alg);
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open()) {
+		printf("compute_store_repeat_info: Cannot open the file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
+		file.write(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[i]), sizeof(ref.precomputed_neighbor_repeats[i]));
 	}
 	file.close();
 }
