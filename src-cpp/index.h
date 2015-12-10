@@ -49,6 +49,7 @@ typedef struct {
 	int votes_cutoff;
 	bool enable_scale;
 	int mapq_scale_x;
+	int sampling_intv;
 
 	// simhash mapping parameters
 	uint32 p; 					// number of permutation tables
@@ -91,7 +92,7 @@ typedef struct {
 		votes_cutoff = 50;
 		enable_scale = true;
 		mapq_scale_x = 100;
-
+		sampling_intv = 1;
 		n_threads = 1;
 	}
 

@@ -159,7 +159,8 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 		for(seq_t j = 1; j < MAX_LOC_LEN; j++) {
 			if((i+j) == ref.precomputed_kmer2_hashes.size()) break;
 			if(k == ref.precomputed_kmer2_hashes[i + j]) {
-				ref.precomputed_neighbor_repeats[j];
+				ref.precomputed_neighbor_repeats[i] = j;
+				break;
 			}
 		}
 	}

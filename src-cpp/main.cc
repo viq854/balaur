@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:I:")) >= 0) {
 		switch (c) {
 			case 'h': params.h = atoi(optarg); break;
 			case 'T': params.n_tables = atoi(optarg); break;
@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
 			case 't': params.n_threads = atoi(optarg); break;
 			case 'z': params.precomp_contig_file_name = std::string(optarg); break;
 			case 'e': params.kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
+			case 'I': params.sampling_intv = atoi(optarg); break;
 			default: return 0;
 		}
 	}
@@ -125,6 +126,11 @@ int main(int argc, char *argv[]) {
 		params.generate_sparse_sketch_projections();
 		params.load_mhi = false;
 		params.monolith = false;
+
+#if(VANILLA)
+                params.load_mhi = true;
+                params.monolith = true;
+#endif
 
 		// 1. load the reference index
 		ref_t ref;
