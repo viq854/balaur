@@ -1,7 +1,13 @@
+#include <float.h>
+
+#if(SEQAN_LIB)
+#include <seqan/seeds.h>
 #include <seqan/graph_algorithms.h>
 #include <seqan/basic.h>
 #include <seqan/sequence.h>
 #include <seqan/stream.h>
+#endif
+
 #include <openssl/sha.h>
 #include <emmintrin.h>
 #include <smmintrin.h>
@@ -29,6 +35,20 @@
 #include "sam.h"
 #include "lsh.h"
 
+#if(CLASP_LIB)
+extern "C" {
+#include "clasp_v1_1/libs/sltypes.h"
+#include "clasp_v1_1/libs/slchain.h"
+#include "clasp_v1_1/libs/container.h"
+#include "clasp_v1_1/libs/debug.h"
+#include "clasp_v1_1/libs/mathematics.h"
+#include "clasp_v1_1/libs/sort.h"
+#include "clasp_v1_1/libs/vqueue.h"
+#include "clasp_v1_1/libs/vebtree.h"
+#include "clasp_v1_1/libs/bintree.h"
+#include "clasp_v1_1/libs/rangetree.h"
+}
+#endif
 
 inline bool pos_in_range_sig(int pos1, int pos2, uint32 delta) {
         return abs(pos1 - pos2) <= delta;
@@ -309,7 +329,7 @@ static const int N_INIT_ANCHORS_MAX = (getenv("N_INIT_ANCHORS_MAX") ? atoi(geten
 void ransac(const ref_match_t ref_contig, const seq_t rlen,
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 			std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
-			const index_params_t* params, seq_t* n_votes, int* pos) {
+			const index_params_t* params, int* n_votes, int* pos) {
 
 	int anchors[2][N_INIT_ANCHORS_MAX];
 	uint32 n_anchors[2] = { 0 };
@@ -500,7 +520,7 @@ void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, 
                 ciphers[i] *= key2;
         }
 
-	/*std::unordered_map<kmer_cipher_t, int> s;
+	std::unordered_map<kmer_cipher_t, int> s;
 	std::pair<std::unordered_map<kmer_cipher_t, int>::iterator, bool> r;
 	for(int i = 0; i < n_kmers; i++) {
 		r = s.insert(std::make_pair(ciphers[i], i));
@@ -508,7 +528,7 @@ void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, 
 			ciphers[(r.first)->second] = genrand64_int64();
 			ciphers[i] = genrand64_int64();
 		}
-	}*/
+	}
 #endif
 }
 
@@ -531,13 +551,13 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 		ciphers[i] *= key2;
 	}
 
-	/*for(int i = 0; i < n_kmers; i++) {
+	for(int i = 0; i < n_kmers; i++) {
 		uint16_t r = ref.precomputed_neighbor_repeats[seq_offset + i];
 		if(r != 0 && r < (n_kmers-i)) {
 			ciphers[i] = genrand64_int64();
                         ciphers[i+r] = genrand64_int64();
 		}
-	}*/
+	}
 
 	for(int i = 0; i < n_kmers; i+= params->sampling_intv) {
 		ciphers[i/params->sampling_intv] = ciphers[i];
@@ -546,14 +566,248 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 #endif
 }
 
-void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
+#define CHAIN_VOTES 1
+
+#include "lemon/list_graph.h"
+#include <lemon/connectivity.h>
+#include <lemon/concepts/graph.h>
+#include <lemon/concepts/graph_components.h>
+
+using namespace lemon;
+
+
+struct node_comp
+{
+	ListDigraph::NodeMap<int>* order;
+	
+	node_comp(ListDigraph::NodeMap<int>* _order) {
+		 order = _order;
+	}
+
+    	bool operator()( const ListDigraph::Node& x, const ListDigraph::Node& y ) const {
+    		return (*order)[x] < (*order)[y];
+    	}
+};
+
+void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights, std::vector<int>& best_chain) {
+	int n_frags = fragments.size();	
+	
+	// initialize DAG
+	ListDigraph g;
+	ListDigraph::NodeMap<int> frag_weights(g, 0); 
+	ListDigraph::ArcMap<double> gap_weights(g, 0);
+	ListDigraph::NodeMap<int> frag_ids(g);
+
+	std::map<int, ListDigraph::Node> fragId_to_node;
+
+	// add source node
+	ListDigraph::Node source = g.addNode();
+	ListDigraph::Node sink = g.addNode();
+	frag_weights.set(source, 0);
+	frag_weights.set(sink, 0);
+
+	// each fragment is a node
+	for(int i = 0; i < n_frags; i++) {
+		// create new node with weight
+		ListDigraph::Node u = g.addNode();
+		frag_weights.set(u, 5*fragment_weights[i]);
+		// link to source and sink with gap penalty 0
+		ListDigraph::Arc a = g.addArc(source, u);
+		ListDigraph::Arc b = g.addArc(u, sink);
+		gap_weights.set(a, 0);
+		gap_weights.set(b, 0);
+		frag_ids.set(u, i);
+		fragId_to_node.insert(std::make_pair(i, u));
+	}
+
+	//std::cout << "created graph init \n";
+	int n_edges = 0;
+
+	int mm_score = 0;
+	int gap_score = 10;
+	int fixed_cost = 2;
+	for(int i = 0; i < n_frags; i++) {
+		ListDigraph::Node u = fragId_to_node.find(i)->second;
+		for(int j = i+1; j < n_frags; j++) {
+			int delta_x = fragments[j].first - (fragments[i].first + fragment_weights[i]);
+			int delta_y = fragments[j].second - (fragments[i].second + fragment_weights[i]);
+			if(delta_x >= 0 && delta_y >= 0) {
+				// add edge
+				ListDigraph::Node v = fragId_to_node.find(j)->second;
+				ListDigraph::Arc  a = g.addArc(u, v);
+				
+				int gap = delta_x > delta_y ? delta_x - delta_y : delta_y - delta_x;
+				int mm = delta_x > delta_y ? delta_y : delta_x;
+				gap_weights.set(a, gap*gap_score + mm_score*mm +fixed_cost); // custom gap scoring function
+				n_edges++;
+			}
+		}
+	}
+	//std::cout << "created graph full n_edges=" << n_edges << "\n";
+	
+
+	// topological sort
+	ListDigraph::NodeMap<int> order(g);
+	topologicalSort(g, order);
+
+	//std::cout << "topsort \n";
+
+	std::vector<ListDigraph::Node> nodes;
+	for(ListDigraph::NodeIt u(g); u != INVALID; ++u) {
+		nodes.push_back(u);
+		//std::cout << order[u] << "\n";
+	}
+	//std::cout << " n_nodes " << nodes.size() << "\n";
+	std::sort(nodes.begin(), nodes.end(), node_comp(&order));
+	
+	//std::cout << " sorted! \n";
+	
+	ListDigraph::NodeMap<int> best_score(g, 0);
+	best_score.set(source, 0);
+	ListDigraph::NodeMap<ListDigraph::Node> pred(g);
+	for(int i = 1; i < n_frags + 2; i++) {
+		ListDigraph::Node u = nodes[i]; // ordered	
+		
+		int max_score = 0;
+		ListDigraph::Node pred_n;
+		// get incoming edges
+		for(ListDigraph::InArcIt e(g,u); e != INVALID; ++e ) {
+			ListDigraph::Node v = g.source(e);
+			// get the best score to this node
+			int score_v = best_score[v];
+			int score = score_v - gap_weights[e] + frag_weights[u];
+			if(score >= max_score) {
+				max_score = score;
+				pred_n = v;
+			}
+		}
+		best_score.set(u, max_score);
+		pred.set(u, pred_n);
+	}
+
+	// start at sink
+	ListDigraph::Node n = sink;
+	int best_chain_score = best_score[sink];
+	while(n != source) {
+		n = pred[n];
+		if(n != source) best_chain.push_back(frag_ids[n]);
+		//std::cout << "frag " << frag_ids[n] << " " << best_score[n] << "\n";
+	}
+	//std::cout << "best chain score " << best_chain_score << "\n";
+	
+}
+
+void chain_fragments_local(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights) {
+
+#if(CLASP_LIB)
+        int n_frags = fragments.size();
+        slmatch_t* frags =  (slmatch_t *) malloc(n_frags*sizeof(slmatch_t));
+        for (int i = 0; i < n_frags; i++) {
+                slmatch_t* frag = &frags[i];
+                bl_slmatchInit(frag, 0);
+                frag->p = fragments[i].first;
+                frag->q = fragment_weights[i];
+                frag->i = fragments[i].second;
+                frag->j = fragment_weights[i];
+                frag->scr = fragment_weights[i]*10;
+                frag->idx = i;
+                frag->subject = 0;
+        }
+        int eps = 0;
+        int lambda = 1;
+        int maxgap = -1;
+        bl_slChainSop(frags, n_frags, eps, lambda, maxgap);
+
+        for(int i = 0; i < n_frags; i++){
+                slmatch_t *match = &frags[i];
+                std::cout << "FRAG " << match->i << " " <<  match->i + match->j - 1 << " " << match->p << " " <<  match->p + match->q - 1 << " " <<  match->scr << " \n";
+                if (match->chain) {
+                        slchain_t *chain = (slchain_t *) match->chain;
+                        if (chain->scr >= 0 && bl_containerSize(chain->matches) >= 1) {
+                                fprintf(stderr, "CHAIN %d\t%d\t%d\t%d\t%.3f\n", chain->i, chain->i + chain->j - 1, chain->p, chain->p + chain->q - 1, chain->scr);
+                                for (int k = 0; k < bl_containerSize(chain->matches); k++){
+                                        slmatch_t *frag = *(slmatch_t **) bl_containerGet(chain->matches, k);
+                                        fprintf(stderr, "%d\t%d\t%d\t%d\t%.3f\n", frag->i, frag->i + frag->j - 1, frag->p, frag->p + frag->q - 1, frag->scr);
+                                }
+                        }
+                        //bl_slchainDestruct(chain);
+                        //free(chain);
+                        //match->chain = NULL;
+                }
+        }
+#endif
+
+}
+
+void chain_fragments_global(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights) {
+
+#if(SEQAN_LIB)
+	seqan::String<seqan::Seed<int, seqan::MultiSeed>> s_fragments;
+        for (int i = 0; i < fragments.size(); i++) {
+                seqan::Seed<int, seqan::MultiSeed> seed(2);
+                seqan::setLeftPosition(seed, 0, fragments[i].first);
+                seqan::setRightPosition(seed, 0, fragments[i].first + fragment_weights[i]);
+                seqan::setLeftPosition(seed, 1, fragments[i].second);
+                seqan::setRightPosition(seed, 1, fragments[i].second + fragment_weights[i]);
+                seqan::setWeight(seed, fragment_weights[i]*10);
+                seqan::appendValue(s_fragments, seed);
+        }
+
+        int gap_diff_score = 3;
+        int gap_m_score = 1;
+        seqan::String<seqan::Seed<int, seqan::MultiSeed> > global_chain;
+        seqan::Score<int, seqan::ChainSoP> gap_scoring(0, gap_m_score, gap_diff_score);
+        int chain_score = seqan::globalChaining(s_fragments, global_chain, gap_scoring);
+
+        int p1_x = seqan::leftPosition(global_chain[1], 0);
+        int p1_y = seqan::leftPosition(global_chain[1], 1);
+        int min_p_start = (p1_x < p1_y) ? p1_x : p1_y;
+        int diff_p_start = (p1_x < p1_y) ? p1_y - p1_x : p1_x - p1_y;
+        chain_score += min_p_start*gap_m_score;
+        chain_score += diff_p_start*gap_diff_score;
+
+        int p2_x = seqan::leftPosition(global_chain[seqan::length(global_chain) - 1], 0) - seqan::leftPosition(global_chain[seqan::length(global_chain) - 2], 0);
+        int p2_y = seqan::leftPosition(global_chain[seqan::length(global_chain) - 1], 1) - seqan::leftPosition(global_chain[seqan::length(global_chain) - 2], 1);
+        int min_p_end = (p2_x < p2_y) ? p2_x : p2_y;
+        int diff_p_end = (p2_x < p2_y) ? p2_y - p2_x : p2_x - p2_y;
+        chain_score += min_p_end*gap_m_score;
+        chain_score += diff_p_end*gap_diff_score;
+
+
+        //for (int i = 0; i < seqan::length(global_chain); i++) {
+        //      std::cout <<  seqan::leftPosition(global_chain[i], 0) << " " <<  seqan::leftPosition(global_chain[i], 1) << ";";
+        //}
+        //std::cout << "(CHAIN SCORE =" << chain_score << ")\n";
+        //std::cout << chain_score << "\n";
+
+        // HIS over the fragments
+        //seqan::String<unsigned int> weights;
+        //seqan::resize(weights, fragment_weights.size(), 0);
+        //for(int i = 0; i < fragment_weights.size(); i++) {
+        //      seqan::assignProperty(weights, i, fragment_weights[i]);
+        //}
+        //typedef seqan::Position<seqan::String<unsigned int> >::Type TPosition;
+        //seqan::String<TPosition> spos;
+        //w = heaviestIncreasingSubsequence(fragments, weights, spos);
+
+        //for (int i = 0; i < fragments.size(); i++) {
+        //      std::cout << fragments[i] << "(Weight=" << seqan::getProperty(weights, i) << "),";
+        //}
+        //std::cout << "\n" << "His: \n";
+        //for (int i = length(spos) - 1; i >= 0; i--) {
+        //      std::cout << fragments[spos[i]] <<  ',';
+        //}
+        //std::cout << "(HIS Weight=" << w << ")\n";
+#endif
+}
+
+
+void vote_cast_and_count_chaining(const ref_match_t ref_contig, const seq_t rlen,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
 		std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
-		const index_params_t* params, seq_t* n_votes, int* pos) {
+		const index_params_t* params, int* n_votes, int* pos) {
 
-	std::vector<int> votes(ref_contig.len + rlen);
 	std::vector<std::pair<pos_cipher_t, pos_cipher_t>> matched_kmers;
-
 	int pos0 = rlen;
 	uint32 skip = 0;
 	for(uint32 i = 0; i < read_ciphers.size(); i++) {
@@ -563,88 +817,216 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 			if(!is_unique_kmer(contig_ciphers, j)) continue;
 			if(read_ciphers[i].first == contig_ciphers[j].first) {
 				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
-				votes[pos0 + match_aln_pos]++;
 				matched_kmers.push_back(std::make_pair(contig_ciphers[j].second, read_ciphers[i].second));
+				//skip = j+1;
+				//break;
 			} else if(contig_ciphers[j].first > read_ciphers[i].first) {
 				skip = j;
 				break;
 			}
 		}
-
 	}
-
-	/*unsigned int w = 0;
-	if(matched_kmers.size() > 0) {
-		std::sort(matched_kmers.begin(), matched_kmers.end());
-
-		// find maximal overlapping fragments
-		std::vector<int> fragment_weights;
-		std::vector<pos_cipher_t> fragments;
-		int idx = 0;
-		fragments.push_back(matched_kmers[0].second);
-		fragment_weights.push_back(params->k2);
-		for(int i = 1; i < matched_kmers.size(); i++) {
-			if((matched_kmers[i].first == matched_kmers[i-1].first+1) && 
-		   	(matched_kmers[i].second == matched_kmers[i-1].second+1)) {
-				fragment_weights[idx]++;
-			} else {
-				fragments.push_back(matched_kmers[i].second);
-				idx++;
-				fragment_weights.push_back(params->k2);
-			}
-		}
-
-		// HIS over the fragments
-		seqan::String<unsigned int> weights;
-		seqan::resize(weights, fragment_weights.size(), 0);
-		for(int i = 0; i < fragment_weights.size(); i++) {
-			seqan::assignProperty(weights, i, fragment_weights[i]);
-		}
-		typedef seqan::Position<seqan::String<unsigned int> >::Type TPosition;
-    		seqan::String<TPosition> spos;
-    		w = heaviestIncreasingSubsequence(fragments, weights, spos);
-
-		//for (int i = 0; i < fragments.size(); i++) {
-        	//	std::cout << fragments[i] << "(Weight=" << seqan::getProperty(weights, i) << "),";
-    		//}
-		//std::cout << "\n" << "His: \n";
-		//for (int i = length(spos) - 1; i >= 0; i--) {
-        	//	std::cout << fragments[spos[i]] <<  ',';
-    		//}
-		//std::cout << "(HIS Weight=" << w << ")\n";
-	}*/
-
-	std::vector<int> votes_conv(ref_contig.len + rlen);
-	int max = 0;
-	uint32 max_idx = 0;
-	for(uint32 i = 0; i < votes.size(); i++) {
-		uint32 start = i > params->delta_inlier ? i - params->delta_inlier : 0;
-		uint32 end = i + params->delta_inlier;
-		if(end >= votes.size()) end = votes.size()-1;
-		for(uint32 j = start; j < end; j++) {
-			votes_conv[i] += votes[j];
-		}
-		if(votes_conv[i] > max) {
-			max = votes_conv[i];
-			max_idx = i;
-		}
-	}
-	if(max == 0) return;
 	
-	//std::cout << "MAX VOTES: " << max << " POS = " << max_idx << "\n";
+	if(matched_kmers.size() == 0) return;
+	std::sort(matched_kmers.begin(), matched_kmers.end());
 
-	n_votes[0] = max;
-	pos[0] = max_idx - pos0;
-	int max2 = 0;
-	for(uint32 i = 0; i < votes_conv.size(); i++) {
-		if(i == max_idx) continue;
-		if(votes_conv[i] > max2 && !pos_in_range(max_idx, i, params->delta_x*params->delta_inlier)) {
-			max2 = votes_conv[i];
-			n_votes[1] = max2;
-			pos[1] = i - pos0;
+	// find maximal overlapping fragments
+	std::vector<int> fragment_weights;
+	std::vector<std::pair<pos_cipher_t, pos_cipher_t>> fragments;
+	int idx = 0;
+	fragments.push_back(std::make_pair(matched_kmers[0].first, matched_kmers[0].second));
+	fragment_weights.push_back(params->k2);
+	std::cout << "SORTED ORIG MATCH " << matched_kmers[0].first - matched_kmers[0].second << " " << matched_kmers[0].first << " " << matched_kmers[0].second << "\n";
+	for(int i = 1; i < matched_kmers.size(); i++) {
+		int match_aln_pos = matched_kmers[i].first - matched_kmers[i].second;
+		std::cout << "SORTED ORIG MATCH " << match_aln_pos << " " << matched_kmers[i].first << " " << matched_kmers[i].second << "\n";
+		//if((matched_kmers[i].first == matched_kmers[i-1].first + params->sampling_intv) && 
+	   	//(matched_kmers[i].second == matched_kmers[i-1].second + params->sampling_intv)) {
+		int delta_contig = matched_kmers[i].first - matched_kmers[i-1].first;		
+		int delta_read = matched_kmers[i].second - matched_kmers[i-1].second;
+		int last_pos = fragments[idx].first + fragment_weights[idx];
+		if(delta_contig == delta_read && matched_kmers[i].first < (last_pos + 1)) {
+			fragment_weights[idx] += matched_kmers[i].first + params->k2 - last_pos;
+		} else {
+			int r = 0;
+			if(matched_kmers[i].second > matched_kmers[i-1].second) { // indels
+				int d1 = last_pos - matched_kmers[i].first;
+				int d2 = fragments[idx].second + fragment_weights[idx] - matched_kmers[i].second;
+				if(d1 > 0) r = d1;
+				if(d2 > 0) r = d1 > d2 ? d1 : d2;	
+			}
+			fragments.push_back(std::make_pair(matched_kmers[i].first + r, matched_kmers[i].second + r));
+			fragment_weights.push_back(params->k2 - r);
+			idx++;
 		}
 	}
+
+	for (int i = 0; i < fragments.size(); i++) {
+		std::cout << fragments[i].first << " " << fragments[i].second << " (Weight=" << fragment_weights[i] << "),";
+        }
+	std::cout << "\n";
+
+	std::vector<int> best_chain;
+	chain_fragments_dp(fragments, fragment_weights, best_chain);
+
+	std::vector<int> votes(ref_contig.len + rlen);	
+	for(int i = 0; i < best_chain.size(); i++) {      
+        	int match_aln_pos = fragments[best_chain[i]].first - fragments[best_chain[i]].second;
+        //for (int i = 0; i < fragments.size(); i++) {
+	//	int match_aln_pos = fragments[i].first - fragments[i].second;
+	//	votes[pos0 + match_aln_pos] += fragment_weights[i] - params->k2 +1;
+        //      std::cout << "CHAIN MATCH " << match_aln_pos << " " << fragments[i].first << " " << fragments[i].second << "\n";
+
+		votes[pos0 + match_aln_pos] += fragment_weights[best_chain[i]] - params->k2 +1;
+       		std::cout << "CHAIN MATCH " << match_aln_pos << " " << fragments[best_chain[i]].first << " " << fragments[best_chain[i]].second << "\n";
+	}
+
+
+	//std::vector<int> votes(ref_contig.len + rlen);
+	//for(int i = 1; i < seqan::length(global_chain)-1; i++) {	
+	//	int match_aln_pos = seqan::leftPosition(global_chain[i], 0) - seqan::leftPosition(global_chain[i], 1);
+	//	votes[pos0 + match_aln_pos] += 20*(seqan::rightPosition(global_chain[i], 0) - seqan::leftPosition(global_chain[i], 0));
+	//}
+
+//*#if(CHAIN_VOTES) 
+
+	std::vector<int> votes_prefsum(ref_contig.len + rlen);
+        votes_prefsum[0] = votes[0];
+        for(int i = 1; i < votes.size(); i++) {
+                votes_prefsum[i] = votes[i] + votes_prefsum[i-1];
+
+		std::cout << votes[i] << " ";
+        }
+	std::cout << "\n";
+
+        int max = 0;
+        uint32 max_pos = 0;
+        for(int i = 0; i < votes.size(); i++) {
+                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+                if(votes_conv > max) {
+                        max = votes_conv;
+                        max_pos = i;
+                }
+        }
+
+	 // pick the middle position in the max range
+        int i = max_pos;
+        while(i<votes.size()) {
+                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+                if(votes_conv == max) {
+                        i++;
+                } else {
+                        break;
+                }
+        }
+        max_pos = (i + max_pos)/2;
+
+        n_votes[0] = max;
+        pos[0] = max_pos - pos0;
+
+        /*int second_best = 0;
+        for(int i = 0; i < votes.size(); i++) {
+                if(i == max_pos) continue;
+                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+                if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
+                        second_best = votes_conv;
+                        n_votes[1] = second_best;
+                        pos[1] = i - pos0;
+                }
+        }*/
+
+//#endif*/
 }
+
+void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
+                std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& read_ciphers,
+                std::vector<std::pair<kmer_cipher_t, pos_cipher_t>>& contig_ciphers,
+                const index_params_t* params, int* n_votes, int* pos) {
+
+        std::vector<int> votes(ref_contig.len + rlen);
+        int pos0 = rlen;
+        uint32 skip = 0;
+        bool any_matches = false;
+	for(int i = 0; i < read_ciphers.size(); i++) {
+                if(read_ciphers[i].first == 0) continue;
+                if(!is_unique_kmer(read_ciphers, i)) continue;
+                for(uint32 j = skip; j < contig_ciphers.size(); j++) {
+                        if(!is_unique_kmer(contig_ciphers, j)) continue;
+                        if(read_ciphers[i].first == contig_ciphers[j].first) {
+                                any_matches = true;
+				int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
+				//std::cout << "ORIG MATCH " << match_aln_pos << " " << contig_ciphers[j].second << " " << read_ciphers[i].second << "\n";
+				votes[pos0 + match_aln_pos]++;
+				//skip = j + 1; break;
+                        } else if(contig_ciphers[j].first > read_ciphers[i].first) {
+                                skip = j;
+                                break;
+                        }
+                }
+
+        }
+
+	if(!any_matches) return;
+
+	std::cout << "VOTES: \n";
+        std::vector<int> votes_prefsum(ref_contig.len + rlen);
+        votes_prefsum[0] = votes[0];
+	for(int i = 1; i < votes.size(); i++) {
+		std::cout << votes[i] << " ";
+		votes_prefsum[i] = votes[i] + votes_prefsum[i-1];
+	}
+	std::cout << "\n";
+
+	int max = 0;
+        uint32 max_pos = 0;
+        for(int i = 0; i < votes.size(); i++) {
+                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+                if(votes_conv > max) {
+			max = votes_conv;
+                       	max_pos = i;
+                }
+        }
+
+	// pick the middle position in the max range
+	int i = max_pos; 
+	while(i<votes.size()) {
+		uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+		int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+		if(votes_conv == max) {
+			i++;
+		} else {
+			break;
+		}
+	}
+	max_pos = (i + max_pos)/2;
+
+        n_votes[0] = max;
+	pos[0] = max_pos - pos0;
+
+	
+	/*int second_best = 0;
+	for(int i = 0; i < votes.size(); i++) {
+                if(i == max_pos) continue;
+		uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+                if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
+                        second_best = votes_conv;
+                        n_votes[1] = second_best;
+			pos[1] = i - pos0;
+                }
+        }*/
+}
+
 
 void store_precomp_contigs(const char* fileName, reads_t& reads) {
 	std::string fname(fileName);
@@ -711,7 +1093,7 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, const index_
 	if(params->load_mhi) {
 		ref.index.release();
 		if(params->precomp_contig_file_name.size() != 0) {
-			store_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
+			//store_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
 		}
 	} else {
 		load_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
@@ -971,13 +1353,66 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 
 			int pos_sig[2] = { 0 };
 			seq_t pos[2] = { 0 };
-			seq_t n_votes[2] = { 0 };
-			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
+			int n_votes[2] = { 0 };
+			vote_cast_and_count_chaining(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
 			for(int i = 0; i < 2; i++) {
 				if(n_votes[i] == 0) continue;
 				pos[i] = pos_sig[i] + ref_contig.pos;
+			
+				if(pos_in_range_asym(r->ref_pos_r, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+                                        pos_in_range_asym(r->ref_pos_l, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size)) {
+					
+					std::cout << "chain " << n_votes[i] << " " << pos[i] << " sig " << pos_sig[i] << " contig " << ref_contig.pos <<"\n";
+					print_read(r);
+
+				}
 			}
+
+			/*n_sampled_kmers = (n_kmers-1)/3 + 1;
+                        std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers_tmp(n_sampled_kmers);
+                        for(int c = 0; c < n_sampled_kmers; c++) {
+                                contig_kmer_ciphers_tmp[c] = std::make_pair((r->contig_kmer_ciphers[j])[3*c], 3*c);
+                        }
+                        std::sort(contig_kmer_ciphers_tmp.begin(), contig_kmer_ciphers_tmp.end());
+			*/
+			int pos_sig_tmp[2] = { 0 };
+                        seq_t pos_tmp[2] = { 0 };
+                        int n_votes_tmp[2] = { 0 };
+			std::cout << "SAMPLED \n";
+			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes_tmp, pos_sig_tmp);
+		
+			for(int i = 0; i < 2; i++) {
+                                if(n_votes_tmp[i] == 0) continue;
+                                pos_tmp[i] = pos_sig_tmp[i] + ref_contig.pos;
+
+				if(pos_tmp[i] != pos[i] || n_votes_tmp[i] != n_votes[i]) {
+					std::cout << "chain " << n_votes[i] << " " << pos[i] << " orig " << n_votes_tmp[i] << " " << pos_tmp[i] << "\n";
+					//print_read(r);
+					std::cout << "DIFF\n";
+				 	if(pos_in_range_asym(r->ref_pos_r, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size) ||
+                                        	pos_in_range_asym(r->ref_pos_l, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size)) {
+                                		std::cout << "TRUE!!!!!!\n";
+						
+						if((pos_in_range(r->ref_pos_l, pos_tmp[i], 10) || pos_in_range(r->ref_pos_r, pos_tmp[i], 10)) &&
+							(!pos_in_range(r->ref_pos_l, pos[i], 10) && !pos_in_range(r->ref_pos_r, pos[i], 10))) {
+						//if(n_votes_tmp[i] > n_votes[i]) {
+							std::cout << "TRUE!!!!!! BETTER XXXX\n";
+							print_read(r);
+							int z = r->ref_pos_l;
+							while(true) {
+								if(z > r->ref_pos_r) break;
+								printf("%c", iupacChar[(int)ref.seq[z]]);
+								z++;
+							}
+							printf("\n");
+						}
+					}
+					//r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
+                        	}
+                        }
+			
+
 			// update votes and its alignment position
 			for(int i = 0; i < 2; i++) {
 				if(n_votes[i] > r->top_aln.inlier_votes) {
@@ -1088,7 +1523,7 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, const index_params_t* par
                         std::vector<std::pair<kmer_cipher_t, uint16_t>>& read_kmer_ciphers = (r->ref_matches[j].rc) ? read_kmers_rc : read_kmers_f;
                         int pos_sig[2] = { 0 };
                         seq_t pos[2] = { 0 };
-                        seq_t n_votes[2] = { 0 };
+                        int n_votes[2] = { 0 };
                         vote_cast_and_count(r->ref_matches[j], r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
                         for(int i = 0; i < 2; i++) {
@@ -1154,6 +1589,8 @@ void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const in
 		if(r->top_aln.inlier_votes > r->second_best_aln.inlier_votes) {
 			// if sufficient votes were accumulated (lower thresholds for unique hit)
 			if(r->top_aln.inlier_votes > params->votes_cutoff) {
+				if(r->second_best_aln.inlier_votes < 0) r->second_best_aln.inlier_votes = 0;
+
 				r->top_aln.score = params->mapq_scale_x*(r->top_aln.inlier_votes - r->second_best_aln.inlier_votes)/r->top_aln.inlier_votes;
 				// scale by the distance from theoretical best possible votes
 				if(avg_score > 0 && params->enable_scale) {
@@ -1174,7 +1611,7 @@ void eval(reads_t& reads, const ref_t& ref, const index_params_t* params) {
 	// ---- debug -----
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		if (VERBOSE > 0 && r->top_aln.score >= 30 &&
+		if (VERBOSE == 0 && r->top_aln.score >= 10 &&
 				!pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) &&
 				!pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
 			printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n",
@@ -1237,11 +1674,11 @@ void eval(reads_t& reads, const ref_t& ref, const index_params_t* params) {
 		}
 		confident++;
 		if(!r->top_aln.rc) {
-			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 20)) {
+			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 10)) {
 				r->dp_hit_acc = 1;
 			}
 		} else {
-			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 20)) {
+			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 10)) {
 				r->dp_hit_acc = 1;
 			}
 		}
