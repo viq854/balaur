@@ -194,6 +194,55 @@ void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist) {
 	file.close();
 }
 
+void ref_kmer_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref) {
+	printf("Loading FASTA file %s... \n", fastaFname);
+	clock_t t = clock();
+	fasta2ref(fastaFname, ref);
+	printf("Reference loading time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
+
+	std::string stats_fname(fastaFname);
+	stats_fname += std::string("_ref_repeat_stats.csv");
+	std::ofstream stats_file;
+	stats_file.open(stats_fname.c_str(), std::ios::out);
+	if (!stats_file.is_open()) {
+		printf("ref_kmer_repeat_stats: Cannot open the KMER FINGERPRINT file %s!\n", stats_fname.c_str());
+		exit(1);
+	}
+	stats_file << "max_repeat_count,n_repeats\n";
+
+	uint32 n_kmers = (params->ref_window_size - params->k2 + 1);
+	//#pragma omp parallel for
+	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { // for each window of the genome
+		// generate the kmers of this window (pairs of kmers + pos)
+		std::vector<std::pair<minhash_t, seq_t>> kmers(n_kmers);
+		for(uint32 j = 0; j < n_kmers; j++) {
+			kmers[j] = std::make_pair(CityHash32(&ref.seq.c_str()[pos + j], params->k2), j);
+		}
+		std::sort(kmers.begin(), kmers.end());
+		int max_repeats = 0;
+		int n_repeats = 0;
+		uint16_t counter = 1;
+		for(uint32 j = 1; j < n_kmers; j++) {
+			if(kmers[j].first == kmers[j-1].first) {
+				counter++;
+				if(counter == 2) {
+					n_repeats++;
+				}
+				n_repeats++;
+				if(counter > max_repeats) {
+					max_repeats = counter;
+				}
+			} else {
+				counter = 1;
+			}
+		}
+		if(n_repeats > 0) {
+			stats_file << max_repeats << "," << n_repeats << "\n";
+		}
+	}
+	stats_file.close();
+}
+
 void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	printf("Loading FASTA file %s... \n", fastaFname);
 	clock_t t = clock();

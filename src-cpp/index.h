@@ -188,6 +188,10 @@ typedef struct {
 	std::vector<uint64> packed_32bp_kmers;
 	std::vector<kmer_cipher_t> precomputed_kmer2_hashes;
 	std::vector<uint16_t> precomputed_neighbor_repeats;
+	//std::vector<char> precomputed_local_repeats;
+	std::unordered_set<uint32> repeats;
+	//std::vector<kmer_cipher_t> repeats_vec;
+
 } ref_t;
 
 // **** Read Set Index ****

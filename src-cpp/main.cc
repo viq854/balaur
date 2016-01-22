@@ -152,12 +152,14 @@ int main(int argc, char *argv[]) {
 
 		// load the reference index
 		ref_t ref;
-		//fasta2ref(argv[optind+1], ref);
+		fasta2ref(argv[optind+1], ref);
 		load_kmer2_hashes(argv[optind+1], ref, &params);
-		compute_store_repeat_info(argv[optind+1], ref, &params);
-		
-		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
+		//compute_store_repeat_info(argv[optind+1], ref, &params);
+		compute_store_repeat_local(argv[optind+1], ref, &params);		
 
+		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
+	
+		//ref_kmer_repeat_stats(argv[optind+1], &params, ref);
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);
 		//store_ref_index_stats(argv[optind+1], ref, &params);

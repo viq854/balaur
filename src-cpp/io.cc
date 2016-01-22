@@ -116,6 +116,31 @@ bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* pa
 	return true;
 }
 
+bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
+        std::string fname(refFname);
+        fname += std::string(".local_rep_map.");
+        fname += std::to_string(params->k2);
+        fname += std::to_string(params->kmer_hashing_alg);
+        std::ifstream file;
+        file.open(fname.c_str(), std::ios::in | std::ios::binary);
+        if (!file.is_open()) {
+                return false;
+        }
+	seq_t n_repeats;
+	file.read(reinterpret_cast<char*>(&n_repeats), sizeof(n_repeats));
+	
+	std::cout << "N repeats: " << n_repeats << "\n";
+	for(uint64_t i = 0; i < n_repeats; i++) {
+		uint32 r;
+        	file.read(reinterpret_cast<char*>(&r), sizeof(r));
+		ref.repeats.insert((uint32) r);
+		//ref.repeats_vec.push_back(r);
+	}
+	//std::sort(ref.repeats_vec.begin(), ref.repeats_vec.end());
+	file.close();
+        return true;
+}
+
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
 	#pragma omp parallel for
@@ -178,6 +203,39 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 		file.write(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[i]), sizeof(ref.precomputed_neighbor_repeats[i]));
 	}
 	file.close();
+}
+
+void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
+        std::string fname(refFname);
+        fname += std::string(".local_rep_map.");
+        fname += std::to_string(params->k2);
+        fname += std::to_string(params->kmer_hashing_alg);
+        std::ofstream file;
+        file.open(fname.c_str(), std::ios::out | std::ios::binary);
+        if (!file.is_open()) {
+                printf("compute_store_repeat_local: Cannot open the file %s!\n", fname.c_str());
+                exit(1);
+        }
+
+	//#pragma omp parallel for
+	seq_t n_repeats = 0;
+        for (seq_t i = 0; i < ref.precomputed_kmer2_hashes.size(); i++) {
+                uint32 k = (uint32) ref.precomputed_kmer2_hashes[i];
+		if(ref.repeats.find(k) != ref.repeats.end()) continue;
+                for(seq_t j = 1; j < params->ref_window_size; j++) {
+                        if((i+j) >= ref.precomputed_kmer2_hashes.size()) break;
+                        if(k == (uint32) ref.precomputed_kmer2_hashes[i + j]) {
+                                ref.repeats.insert(k);
+				n_repeats++;
+				break;
+                        }
+                }
+        }
+	file.write(reinterpret_cast<char*>(&n_repeats), sizeof(n_repeats));
+	for (auto& k: ref.repeats) {
+		file.write(reinterpret_cast<const char*>(&k), sizeof(k));
+	} 
+        file.close();
 }
 
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {

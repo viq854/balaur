@@ -49,6 +49,9 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params);
 void mark_windows_to_discard(ref_t& ref, const index_params_t* params);
 void mark_freq_kmers(ref_t& ref, const index_params_t* params);
+void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params);
+bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params);
+
 
 // stats
 void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);
@@ -58,6 +61,7 @@ void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const i
 void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
 void kmer_stats(const char* refFname);
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
+void ref_kmer_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits
