@@ -549,7 +549,7 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 			ciphers[i/params->sampling_intv] = (ciphers[i] ^ key1)*key2;
 		} else {
 			ciphers[i/params->sampling_intv] = genrand64_int64();
-                        ciphers[i+r] = 0;
+                        if(r > 0 && r < (n_kmers-i)) ciphers[i+r] = 0;
 		}
 	}
 #endif

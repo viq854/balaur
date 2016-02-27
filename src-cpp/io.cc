@@ -116,7 +116,7 @@ bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* pa
 	return true;
 }
 
-bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
+/*bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
         std::string fname(refFname);
         fname += std::string(".local_rep_map.");
         fname += std::to_string(params->k2);
@@ -139,7 +139,7 @@ bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* p
 	//std::sort(ref.repeats_vec.begin(), ref.repeats_vec.end());
 	file.close();
         return true;
-}
+}*/
 
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
@@ -205,7 +205,7 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 	file.close();
 }
 
-void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
+/*void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params) {
         std::string fname(refFname);
         fname += std::string(".local_rep_map.");
         fname += std::to_string(params->k2);
@@ -236,7 +236,7 @@ void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_pa
 		file.write(reinterpret_cast<const char*>(&k), sizeof(k));
 	} 
         file.close();
-}
+}*/
 
 bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);

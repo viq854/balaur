@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
 		fasta2ref(argv[optind+1], ref);
 		load_kmer2_hashes(argv[optind+1], ref, &params);
 		//compute_store_repeat_info(argv[optind+1], ref, &params);
-		compute_store_repeat_local(argv[optind+1], ref, &params);		
+		//compute_store_repeat_local(argv[optind+1], ref, &params);		
 
 		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
 	
