@@ -12,7 +12,7 @@ typedef enum {SHA1_E = 0, CITY_HASH64 = 1, PACK64 = 2} kmer_hash_alg;
 #define DISK_SYNC_PARTIAL_TABLES 0
 
 // program parameters
-typedef struct {	
+struct  index_params_t {	
 	algorithm alg; 					// LSH scheme to use
 	kmer_hash_alg kmer_hashing_alg;
 
@@ -67,13 +67,15 @@ typedef struct {
 	std::string precomp_contig_file_name;
 	bool monolith;
 
-	void set_default_index_params() {
+	index_params_t() {
+		alg = MINH; // only minhash enabled for now
 		kmer_type = OVERLAP;
 		kmer_hashing_alg = SHA1_E;
-		h = 64;
-		n_tables = 32;
+		h = 128;
+		n_tables = 78;
 		sketch_proj_len = 2;
-		n_buckets_pow2 = 16;
+		n_buckets_pow2 = 18;
+		n_buckets = pow(2, n_buckets_pow2);
 		bucket_size = 200;
 		k = 16;
 		kmer_dist = 1;
@@ -94,6 +96,11 @@ typedef struct {
 		mapq_scale_x = 100;
 		sampling_intv = 1;
 		n_threads = 1;
+		
+		set_kmer_hash_function();
+		set_minhash_hash_function();
+		set_minhash_proj_hash_function();
+		generate_sparse_sketch_projections();
 	}
 
 	// set the initial kmer hash function (rolling hash)
@@ -102,7 +109,7 @@ typedef struct {
 	}
 
 	// generate random vector hash function sketch buckets
-	void set_minhash_sketch_hash_function() {
+	void set_minhash_proj_hash_function() {
 		sketch_proj_hash_func = rand_hash_function_t(n_buckets_pow2, sketch_proj_len);
 	}
 
@@ -137,26 +144,25 @@ typedef struct {
 		}
 	}
 
-} index_params_t;
+};
 
 // **** Reference Index ****
+#define REPORT_WINDOW_PROC_GRANULARITY 2000000
 typedef std::map<uint32, seq_t> MapKmerCounts;
 
 // min-hash signature index
 struct buckets_t {
 	uint32 n_entries; // total number of entries across all buckets
 	std::vector<VectorSeqPos> buckets_data_vectors;
-
-	// per thread local buckets
 	std::vector<std::vector<VectorSeqPos> > per_thread_buckets_data_vectors;
 	std::vector<VectorU32> per_thread_bucket_sizes;
 };
 
-typedef struct {
+struct mutable_index_t {
 	std::vector<buckets_t> per_table_buckets; // buckets for T tables
-} mutable_index_t;
+} ;
 
-typedef struct {
+struct static_index_t {
 	// stores the bucket entries across all the tables
 	std::vector<loc_t> buckets_data;
 	// stores offsets for each bucket id
@@ -165,20 +171,19 @@ typedef struct {
 		std::vector<loc_t>().swap(buckets_data);
 		std::vector<uint64>().swap(bucket_offsets);
 	}
-
-} static_index_t;
+} ;
 
 // reference genome index
-typedef struct {
+struct ref_t {
 	std::string seq; 					// reference sequence
 	seq_t len;							// reference sequence length
 	VectorU32 subsequence_offsets;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
 	MarisaTrie high_freq_kmer_trie;		// frequent reference kmers TRIE
-	VectorBool high_freq_kmer_bitmap;	// frequent reference kmers bitmap
-	VectorBool ignore_kmer_bitmask;
-	VectorBool ignore_window_bitmask;
+	std::vector<bool> high_freq_kmer_bitmap;	// frequent reference kmers bitmap
+	std::vector<bool> ignore_kmer_bitmask;
+	std::vector<bool> ignore_window_bitmask;
 
 	// lsh
 	mutable_index_t mutable_index;
@@ -192,7 +197,13 @@ typedef struct {
 	//std::unordered_set<uint32> repeats;
 	//std::vector<kmer_cipher_t> repeats_vec;
 
-} ref_t;
+	void mark_windows_to_discard(const index_params_t* params);
+	void mark_freq_kmers(const index_params_t* params);
+	void build_index(const char* fastaFname, const index_params_t* params);
+	void load_index(const char* fastaFname, const index_params_t* params);
+	void store_index(const char* fastaFname, const index_params_t* params);
+	void ref_kmer_fingerprint_stats(const std::string& fastaFname, const index_params_t* params);
+};
 
 // **** Read Set Index ****
 
@@ -279,7 +290,6 @@ struct read_t {
 	read_t() {
 		len = 0;
 		rid = 0;
-
 		valid_minhash_f = 0;
 		valid_minhash_rc = 0;
 		best_n_bucket_hits = 0;
@@ -314,21 +324,13 @@ struct read_t {
 		ref_pos_r = 0;
 	}
 };
-typedef std::vector<read_t> VectorReads;
-typedef std::vector<read_t*> VectorPReads;
 
 // collection of reads
 typedef struct {
 	const char* fname;
-	VectorReads reads;				// read data
+	std::vector<read_t> reads;				// read data
 	MapKmerCounts kmer_hist;		// kmer histogram
 	MapKmerCounts low_freq_kmer_hist;
 } reads_t;
-
-void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx);
-void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, ref_t& ref);
-void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);
-void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& ridx);
-void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 
 #endif /*INDEX_H_*/

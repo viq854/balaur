@@ -1,13 +1,4 @@
 #include <float.h>
-
-#if(SEQAN_LIB)
-#include <seqan/seeds.h>
-#include <seqan/graph_algorithms.h>
-#include <seqan/basic.h>
-#include <seqan/sequence.h>
-#include <seqan/stream.h>
-#endif
-
 #include <openssl/sha.h>
 #include <emmintrin.h>
 #include <smmintrin.h>
@@ -28,13 +19,19 @@
 #include <queue>
 #include <unordered_map>
 #include <bitset>
-#include <omp.h>
 #include "index.h"
 #include "io.h"
 #include "hash.h"
 #include "sam.h"
 #include "lsh.h"
 
+#if(SEQAN_LIB)
+#include <seqan/seeds.h>
+#include <seqan/graph_algorithms.h>
+#include <seqan/basic.h>
+#include <seqan/sequence.h>
+#include <seqan/stream.h>
+#endif
 #if(CLASP_LIB)
 extern "C" {
 #include "clasp_v1_1/libs/sltypes.h"
@@ -169,10 +166,7 @@ int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhas
 	}
 	const uint64 bucket_data_offset = ref.index.bucket_offsets[bid];
 	const uint64 bucket_data_size = ref.index.bucket_offsets[bid+1] - bucket_data_offset;
-
-	//const uint64 bucket_data_offset = r->bucket_offsets[t];
-	//const uint64 bucket_data_size = r->bucket_offsets[t+1] - bucket_data_offset;
-
+	
 	// get the next entry in the bucket that matches the read projection hash value
 	bool first = entry->next_idx == 0;
 	if(first) {
@@ -183,19 +177,13 @@ int get_next_contig(const ref_t& ref, const std::vector<std::pair<uint64, minhas
 		std::vector<loc_t>::const_iterator range_start = std::lower_bound(ref.index.buckets_data.begin() + bucket_data_offset, ref.index.buckets_data.begin() + bucket_data_offset + bucket_data_size, l, comp_loc()); 	
 		entry->next_idx = std::distance(ref.index.buckets_data.begin() + bucket_data_offset, range_start);
 	}
-	//while(entry->next_idx < bucket_data_size) {
-		if(ref.index.buckets_data[bucket_data_offset + entry->next_idx].hash == read_proj_hash) {
-			entry->pos = ref.index.buckets_data[bucket_data_offset + entry->next_idx].pos;
-			entry->len = ref.index.buckets_data[bucket_data_offset + entry->next_idx].len;
-			entry->tid = t;
-			entry->next_idx++;
-			return 1;
-		}
-		//if(!first) {
-		//	return 0;
-		//}
-		//entry->next_idx++;
-	//}
+	if(ref.index.buckets_data[bucket_data_offset + entry->next_idx].hash == read_proj_hash) {
+		entry->pos = ref.index.buckets_data[bucket_data_offset + entry->next_idx].pos;
+		entry->len = ref.index.buckets_data[bucket_data_offset + entry->next_idx].len;
+		entry->tid = t;
+		entry->next_idx++;
+		return 1;
+	}
 	return 0;
 }
 
@@ -501,7 +489,7 @@ static std::vector<int> n_repeats_v_contig;
 void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const uint64 key1, const uint64 key2, const ref_t& ref, const index_params_t* params) {
 
 	const int n_kmers = seq_len - params->k2 + 1;
-    	uint32_t hash[5];
+	uint32_t hash[5];
 	for(int i = 0; i < n_kmers; i++) {
 #if(VANILLA)
 		ciphers[i] = CityHash64(&seq[i], params->k2);
@@ -513,17 +501,18 @@ void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, 
 
 #if(!VANILLA)
 	__m128i* c = (__m128i*)ciphers;
-        __m128i xor_pad = _mm_set1_epi64((__m64)key1);
-        for(int i = 0; i < n_kmers/2; i++) {
-                c[i] = _mm_xor_si128(c[i], xor_pad);
-                ciphers[2*i] *= key2;
-                ciphers[2*i+1] *= key2;
-        }
-        for(int i = 2*(n_kmers/2); i < n_kmers; i++) {
-                ciphers[i] ^= key1;
-                ciphers[i] *= key2;
-        }
+	__m128i xor_pad = _mm_set1_epi64((__m64)key1);
+	for(int i = 0; i < n_kmers/2; i++) {
+		c[i] = _mm_xor_si128(c[i], xor_pad);
+		ciphers[2*i] *= key2;
+		ciphers[2*i+1] *= key2;
+	}
+	for(int i = 2*(n_kmers/2); i < n_kmers; i++) {
+		ciphers[i] ^= key1;
+		ciphers[i] *= key2;
+	}
 	
+	// mask repeats
 	std::unordered_map<kmer_cipher_t, int> s;
 	std::pair<std::unordered_map<kmer_cipher_t, int>::iterator, bool> r;
 	for(int i = 0; i < n_kmers; i++) {
@@ -549,33 +538,28 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 			ciphers[i/params->sampling_intv] = (ciphers[i] ^ key1)*key2;
 		} else {
 			ciphers[i/params->sampling_intv] = genrand64_int64();
-                        if(r > 0 && r < (n_kmers-i)) ciphers[i+r] = 0;
+			if(r > 0 && r < (n_kmers-i)) ciphers[i+r] = 0;
 		}
 	}
 #endif
 }
 
 #define CHAIN_VOTES 1
-
 #include "lemon/list_graph.h"
 #include <lemon/connectivity.h>
 #include <lemon/concepts/graph.h>
 #include <lemon/concepts/graph_components.h>
-
 using namespace lemon;
-
 
 struct node_comp
 {
 	ListDigraph::NodeMap<int>* order;
-	
 	node_comp(ListDigraph::NodeMap<int>* _order) {
 		 order = _order;
 	}
-
-    	bool operator()( const ListDigraph::Node& x, const ListDigraph::Node& y ) const {
-    		return (*order)[x] < (*order)[y];
-    	}
+	bool operator()( const ListDigraph::Node& x, const ListDigraph::Node& y ) const {
+		return (*order)[x] < (*order)[y];
+	}
 };
 
 void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights, std::vector<int>& best_chain) {
@@ -586,7 +570,6 @@ void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& frag
 	ListDigraph::NodeMap<int> frag_weights(g, 0); 
 	ListDigraph::ArcMap<double> gap_weights(g, 0);
 	ListDigraph::NodeMap<int> frag_ids(g);
-
 	std::map<int, ListDigraph::Node> fragId_to_node;
 
 	// add source node
@@ -608,10 +591,7 @@ void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& frag
 		frag_ids.set(u, i);
 		fragId_to_node.insert(std::make_pair(i, u));
 	}
-
-	//std::cout << "created graph init \n";
 	int n_edges = 0;
-
 	int mm_score = 0;
 	int gap_score = 10;
 	int fixed_cost = 2;
@@ -621,10 +601,8 @@ void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& frag
 			int delta_x = fragments[j].first - (fragments[i].first + fragment_weights[i]);
 			int delta_y = fragments[j].second - (fragments[i].second + fragment_weights[i]);
 			if(delta_x >= 0 && delta_y >= 0) {
-				// add edge
 				ListDigraph::Node v = fragId_to_node.find(j)->second;
 				ListDigraph::Arc  a = g.addArc(u, v);
-				
 				int gap = delta_x > delta_y ? delta_x - delta_y : delta_y - delta_x;
 				int mm = delta_x > delta_y ? delta_y : delta_x;
 				gap_weights.set(a, gap*gap_score + mm_score*mm +fixed_cost); // custom gap scoring function
@@ -632,31 +610,21 @@ void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& frag
 			}
 		}
 	}
-	//std::cout << "created graph full n_edges=" << n_edges << "\n";
-	
-
 	// topological sort
 	ListDigraph::NodeMap<int> order(g);
 	topologicalSort(g, order);
-
-	//std::cout << "topsort \n";
-
+	
 	std::vector<ListDigraph::Node> nodes;
 	for(ListDigraph::NodeIt u(g); u != INVALID; ++u) {
 		nodes.push_back(u);
-		//std::cout << order[u] << "\n";
 	}
-	//std::cout << " n_nodes " << nodes.size() << "\n";
 	std::sort(nodes.begin(), nodes.end(), node_comp(&order));
-	
-	//std::cout << " sorted! \n";
 	
 	ListDigraph::NodeMap<int> best_score(g, 0);
 	best_score.set(source, 0);
 	ListDigraph::NodeMap<ListDigraph::Node> pred(g);
 	for(int i = 1; i < n_frags + 2; i++) {
 		ListDigraph::Node u = nodes[i]; // ordered	
-		
 		int max_score = 0;
 		ListDigraph::Node pred_n;
 		// get incoming edges
@@ -680,14 +648,10 @@ void chain_fragments_dp(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& frag
 	while(n != source) {
 		n = pred[n];
 		if(n != source) best_chain.push_back(frag_ids[n]);
-		//std::cout << "frag " << frag_ids[n] << " " << best_score[n] << "\n";
-	}
-	//std::cout << "best chain score " << best_chain_score << "\n";
-	
+	}	
 }
 
 void chain_fragments_local(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights) {
-
 #if(CLASP_LIB)
         int n_frags = fragments.size();
         slmatch_t* frags =  (slmatch_t *) malloc(n_frags*sizeof(slmatch_t));
@@ -725,11 +689,9 @@ void chain_fragments_local(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& f
                 }
         }
 #endif
-
 }
 
 void chain_fragments_global(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& fragments, std::vector<int>& fragment_weights) {
-
 #if(SEQAN_LIB)
 	seqan::String<seqan::Seed<int, seqan::MultiSeed>> s_fragments;
         for (int i = 0; i < fragments.size(); i++) {
@@ -761,7 +723,6 @@ void chain_fragments_global(std::vector<std::pair<pos_cipher_t, pos_cipher_t>>& 
         int diff_p_end = (p2_x < p2_y) ? p2_y - p2_x : p2_x - p2_y;
         chain_score += min_p_end*gap_m_score;
         chain_score += diff_p_end*gap_diff_score;
-
 
         //for (int i = 0; i < seqan::length(global_chain); i++) {
         //      std::cout <<  seqan::leftPosition(global_chain[i], 0) << " " <<  seqan::leftPosition(global_chain[i], 1) << ";";
@@ -849,27 +810,19 @@ void vote_cast_and_count_chaining(const ref_match_t ref_contig, const seq_t rlen
 			idx++;
 		}
 	}
-
-	//for (int i = 0; i < fragments.size(); i++) {
-	//	std::cout << fragments[i].first << " " << fragments[i].second << " (Weight=" << fragment_weights[i] << "),";
-        //}
-	//std::cout << "\n";
-
 	std::vector<int> best_chain;
 	chain_fragments_dp(fragments, fragment_weights, best_chain);
 
 	std::vector<int> votes(ref_contig.len + rlen);	
 	for(int i = 0; i < best_chain.size(); i++) {      
         	int match_aln_pos = fragments[best_chain[i]].first - fragments[best_chain[i]].second;
-        //for (int i = 0; i < fragments.size(); i++) {
-	//	int match_aln_pos = fragments[i].first - fragments[i].second;
+         //for (int i = 0; i < fragments.size(); i++) {
+		//	int match_aln_pos = fragments[i].first - fragments[i].second;
 		votes[pos0 + match_aln_pos] += fragment_weights[i] - params->k2 +1;
-        //      std::cout << "CHAIN MATCH " << match_aln_pos << " " << fragments[i].first << " " << fragments[i].second << "\n";
-
+		//  std::cout << "CHAIN MATCH " << match_aln_pos << " " << fragments[i].first << " " << fragments[i].second << "\n";
 		votes[pos0 + match_aln_pos] += fragment_weights[best_chain[i]] - params->k2 +1;
        	//	std::cout << "CHAIN MATCH " << match_aln_pos << " " << fragments[best_chain[i]].first << " " << fragments[best_chain[i]].second << "\n";
 	}
-
 
 	//std::vector<int> votes(ref_contig.len + rlen);
 	//for(int i = 1; i < seqan::length(global_chain)-1; i++) {	
@@ -878,57 +831,50 @@ void vote_cast_and_count_chaining(const ref_match_t ref_contig, const seq_t rlen
 	//}
 
 //*#if(CHAIN_VOTES) 
-
 	std::vector<int> votes_prefsum(ref_contig.len + rlen);
-        votes_prefsum[0] = votes[0];
-        for(int i = 1; i < votes.size(); i++) {
-                votes_prefsum[i] = votes[i] + votes_prefsum[i-1];
-		//std::cout << votes[i] << " ";
-        }
-	//std::cout << "\n";
-
-        int max = 0;
-        uint32 max_pos = 0;
-        for(int i = 0; i < votes.size(); i++) {
-                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
-                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
-                if(votes_conv > max) {
-                        max = votes_conv;
-                        max_pos = i;
-                }
-        }
+	votes_prefsum[0] = votes[0];
+	for(int i = 1; i < votes.size(); i++) {
+		votes_prefsum[i] = votes[i] + votes_prefsum[i-1];
+	}
+	int max = 0;
+	uint32 max_pos = 0;
+	for(int i = 0; i < votes.size(); i++) {
+			uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+			uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+			int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+			if(votes_conv > max) {
+					max = votes_conv;
+					max_pos = i;
+			}
+	}
 
 	 // pick the middle position in the max range
-        int i = max_pos;
-        while(i<votes.size()) {
-                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
-                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
-                if(votes_conv == max) {
-                        i++;
-                } else {
-                        break;
-                }
-        }
-        max_pos = (i + max_pos)/2;
-
-        n_votes[0] = max;
-        pos[0] = max_pos - pos0;
-
-        /*int second_best = 0;
-        for(int i = 0; i < votes.size(); i++) {
-                if(i == max_pos) continue;
-                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
-                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
-                if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
-                        second_best = votes_conv;
-                        n_votes[1] = second_best;
-                        pos[1] = i - pos0;
-                }
-        }*/
-
+	int i = max_pos;
+	while(i<votes.size()) {
+			uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+			uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+			int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+			if(votes_conv == max) {
+					i++;
+			} else {
+					break;
+			}
+	}
+	max_pos = (i + max_pos)/2;
+	n_votes[0] = max;
+	pos[0] = max_pos - pos0;
+	/*int second_best = 0;
+	for(int i = 0; i < votes.size(); i++) {
+			if(i == max_pos) continue;
+			uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+			uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+			int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+			if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
+					second_best = votes_conv;
+					n_votes[1] = second_best;
+					pos[1] = i - pos0;
+			}
+	}*/
 //#endif*/
 }
 
@@ -938,29 +884,27 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
                 const index_params_t* params, int* n_votes, int* pos) {
 
 	int approx_pos_range = params->k2;
-        std::vector<int> votes(ref_contig.len + rlen);
-        int pos0 = rlen;
-        uint32 skip = 0;
-        bool any_matches = false;
+	std::vector<int> votes(ref_contig.len + rlen);
+	int pos0 = rlen;
+	uint32 skip = 0;
+	bool any_matches = false;
 	for(int i = 0; i < read_ciphers.size(); i++) {
-                if(read_ciphers[i].first == 0) continue;
-                if(!is_unique_kmer(read_ciphers, i)) continue;
-                for(uint32 j = skip; j < contig_ciphers.size(); j++) {
-                        if(!is_unique_kmer(contig_ciphers, j)) continue;
-                        if(read_ciphers[i].first == contig_ciphers[j].first) {
-                                any_matches = true;
-				
+		if(read_ciphers[i].first == 0) continue;
+		if(!is_unique_kmer(read_ciphers, i)) continue;
+		for(uint32 j = skip; j < contig_ciphers.size(); j++) {
+			if(!is_unique_kmer(contig_ciphers, j)) continue;
+			if(read_ciphers[i].first == contig_ciphers[j].first) {
+				any_matches = true;
 				int pos_read = read_ciphers[i].second;
 				int read_range_start = (pos_read/approx_pos_range)*approx_pos_range;
 				int read_range_end = read_range_start + approx_pos_range;
 				if(read_range_end >= params->sampling_intv*read_ciphers.size()) read_range_end = params->sampling_intv*read_ciphers.size();
-
-				int pos_contig = contig_ciphers[j].second;				
+					
+				int pos_contig = contig_ciphers[j].second;
 				int contig_range_start = (pos_contig/approx_pos_range)*approx_pos_range;
 				int contig_range_end = contig_range_start + approx_pos_range;
 				if(contig_range_end >= params->sampling_intv*contig_ciphers.size()) contig_range_end = params->sampling_intv*contig_ciphers.size();				
-
-	//			std::cout << " true pos " << contig_ciphers[j].second << " " << read_ciphers[i].second << " match pos = " << contig_ciphers[j].second - read_ciphers[i].second << " c_s/c_e/_s/r_e " << contig_range_start << "/" << contig_range_end << "/" << read_range_start << "/" << read_range_end << "\n"; 
+				//std::cout << " true pos " << contig_ciphers[j].second << " " << read_ciphers[i].second << " match pos = " << contig_ciphers[j].second - read_ciphers[i].second << " c_s/c_e/_s/r_e " << contig_range_start << "/" << contig_range_end << "/" << read_range_start << "/" << read_range_end << "\n"; 
 				int s = contig_range_start - read_range_end;
 				int t = contig_range_end - read_range_start;
 
@@ -969,50 +913,43 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 					//for(int m = contig_range_start; m < contig_range_end; m++) {
 						//int match_aln_pos = m - k;
 						//std::cout << match_aln_pos << "\n"; 
-						//votes[pos0 + match_aln_pos]++;
-					//}
+					//votes[pos0 + match_aln_pos]++;
+				//}
 				}
-				
-
 				//int match_aln_pos = contig_ciphers[j].second - read_ciphers[i].second;
 				//votes[pos0 + match_aln_pos]++;
 				//skip = j + 1; break;
-                        } else if(contig_ciphers[j].first > read_ciphers[i].first) {
-                                skip = j;
-                                break;
-                        }
-                }
-
-        }
-
+			} else if(contig_ciphers[j].first > read_ciphers[i].first) {
+					skip = j;
+					break;
+			}
+		}
+	}
 	if(!any_matches) return;
-
 	//std::cout << "VOTES: \n";
-        std::vector<int> votes_prefsum(ref_contig.len + rlen);
-        votes_prefsum[0] = votes[0];
+	std::vector<int> votes_prefsum(ref_contig.len + rlen);
+	votes_prefsum[0] = votes[0];
 	for(int i = 1; i < votes.size(); i++) {
 		//std::cout << i << ":" << votes[i] << " ";
 		votes_prefsum[i] = votes[i] + votes_prefsum[i-1];
-	}
-	//std::cout << "\n";
+	}//std::cout << "\n";
 
 	int max = 0;
-        uint32 max_pos = 0;
-        for(int i = 0; i < votes.size(); i++) {
-                uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
-                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
-                if(votes_conv > max) {
+	uint32 max_pos = 0;
+	for(int i = 0; i < votes.size(); i++) {
+		uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
+		uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+		int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+		if(votes_conv > max) {
 			max = votes_conv;
-                       	max_pos = i;
-                }
-        }
-
+			max_pos = i;
+		}
+	}
 	// pick the middle position in the max range
 	int i = max_pos; 
 	while(i < votes.size()) {
 		uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+		uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
 		int votes_conv = votes_prefsum[end] - votes_prefsum[start];
 		if(votes_conv == max) {
 			i++;
@@ -1021,22 +958,21 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 		}
 	}
 	max_pos = (i + max_pos)/2;
-
-        n_votes[0] = max;
+	n_votes[0] = max;
 	pos[0] = max_pos - pos0;
 	
 	int second_best = 0;
 	for(int i = 0; i < votes.size(); i++) {
-                if(i == max_pos) continue;
+		if(i == max_pos) continue;
 		uint32 start = i > params->delta_inlier ? i - params->delta_inlier - 1 : 0;
-                uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
-                int votes_conv = votes_prefsum[end] - votes_prefsum[start];
-                if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
-                        second_best = votes_conv;
-                        n_votes[1] = second_best;
+		uint32 end = i + params->delta_inlier >=  votes.size() ? votes.size() - 1: i + params->delta_inlier;
+		int votes_conv = votes_prefsum[end] - votes_prefsum[start];
+		if(votes_conv > second_best && !pos_in_range(max_pos, i, params->delta_x*params->delta_inlier)) {
+			second_best = votes_conv;
+			n_votes[1] = second_best;
 			pos[1] = i - pos0;
-                }
-        }
+		}
+	}
 }
 
 
@@ -1248,7 +1184,6 @@ void phase1_minhash(const ref_t& ref, reads_t& reads, const index_params_t* para
 void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* params) {
 	printf("////////////// Phase 2: Contig Encryption //////////////\n");
 	omp_set_num_threads(params->n_threads);
-
 	int d_thr = 10000;
 	//if(params->ref_window_size > 150) d_thr = 500;
 	//if(params->ref_window_size > 1000) d_thr = 20;
@@ -1275,20 +1210,20 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	double start_time = omp_get_wtime();
 	#pragma omp parallel for
         for(uint32 i = 0; i < reads.reads.size(); i++) {
-                read_t* r = &reads.reads[i];
-                if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-                r->kmers_f = new kmer_cipher_t[r->len - params->k2 + 1];
-                r->kmers_rc = new kmer_cipher_t[r->len - params->k2 + 1];
-                for(uint32 j = 0; j < r->ref_matches.size(); j++) {
-                        if(r->contig_kmer_ciphers[j] == NULL) continue;
-			ref_match_t ref_contig = r->ref_matches[j];
-                        if(r->ref_strand != 3) {
-                                if(ref_contig.rc) r->ref_strand |= 2;
-                                else r->ref_strand |= 1;
-                        }
-                }
-                r->key1_xor_pad = genrand64_int64();
-                r->key2_mult_pad = genrand64_int64();
+			read_t* r = &reads.reads[i];
+			if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+			r->kmers_f = new kmer_cipher_t[r->len - params->k2 + 1];
+			r->kmers_rc = new kmer_cipher_t[r->len - params->k2 + 1];
+			for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+				if(r->contig_kmer_ciphers[j] == NULL) continue;
+				ref_match_t ref_contig = r->ref_matches[j];
+				if(r->ref_strand != 3) {
+					if(ref_contig.rc) r->ref_strand |= 2;
+					else r->ref_strand |= 1;
+				}
+			}
+			r->key1_xor_pad = genrand64_int64();
+			r->key2_mult_pad = genrand64_int64();
         }
 
 	double t2 = omp_get_wtime();
@@ -1308,9 +1243,9 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 	printf("Total client prep time: %.2f sec\n", omp_get_wtime() - start_time);
 	
 	// ---- determine the total communication size ----
-    	uint64 total_size = 0;
+	uint64 total_size = 0;
 	uint64 total_count = 0;
-    	uint64 total_contigs = 0;
+	uint64 total_contigs = 0;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(r->ref_strand & 1) total_size += (r->len - params->k2 + 1)*sizeof(kmer_cipher_t);
@@ -1323,7 +1258,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 			total_count += n_sampled_kmers;
 		}
 		total_contigs += r->n_proc_contigs;
-    	}
+	}
 	printf("Total contigs: %llu \n", total_contigs);
 	printf("Total count: %llu contig kmers \n", total_count);
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
@@ -1339,12 +1274,10 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-
 		std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_f;
 		std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_rc;
 		if(r->ref_strand & 1) read_kmers_f.resize(r->len - params->k2 + 1);
 		if(r->ref_strand & 2) read_kmers_rc.resize(r->len - params->k2 + 1);
-		
 		for(int c = 0; c < r->len - params->k2 + 1; c++) {
 			 if(r->ref_strand & 1) read_kmers_f[c] = std::make_pair(r->kmers_f[c], c);
 			 if(r->ref_strand & 2) read_kmers_rc[c] = std::make_pair(r->kmers_rc[c], c);
@@ -1360,8 +1293,8 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			int n_sampled_kmers = (n_kmers-1)/params->sampling_intv + 1;
 			std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers(n_sampled_kmers);
 			for(int c = 0; c < n_sampled_kmers; c++) {
-                        	contig_kmer_ciphers[c] = std::make_pair((r->contig_kmer_ciphers[j])[c], params->sampling_intv*c);
-                	}
+					contig_kmer_ciphers[c] = std::make_pair((r->contig_kmer_ciphers[j])[c], params->sampling_intv*c);
+			}
 			std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
 
 			int pos_sig[2] = { 0 };
@@ -1372,59 +1305,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			for(int i = 0; i < 2; i++) {
 				if(n_votes[i] == 0) continue;
 				pos[i] = pos_sig[i] + ref_contig.pos;
-			
-				/*if(pos_in_range_asym(r->ref_pos_r, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size) ||
-                                        pos_in_range_asym(r->ref_pos_l, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size)) {
-					
-					std::cout << "chain " << n_votes[i] << " " << pos[i] << " sig " << pos_sig[i] << " contig " << ref_contig.pos <<"\n";
-					print_read(r);
-
-				}*/
 			}
-
-			/*n_sampled_kmers = (n_kmers-1)/3 + 1;
-                        std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers_tmp(n_sampled_kmers);
-                        for(int c = 0; c < n_sampled_kmers; c++) {
-                                contig_kmer_ciphers_tmp[c] = std::make_pair((r->contig_kmer_ciphers[j])[3*c], 3*c);
-                        }
-                        std::sort(contig_kmer_ciphers_tmp.begin(), contig_kmer_ciphers_tmp.end());
-			
-			int pos_sig_tmp[2] = { 0 };
-                        seq_t pos_tmp[2] = { 0 };
-                        int n_votes_tmp[2] = { 0 };
-			std::cout << "SAMPLED \n";
-			vote_cast_and_count(ref_contig, r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes_tmp, pos_sig_tmp);
-		
-			for(int i = 0; i < 2; i++) {
-                                if(n_votes_tmp[i] == 0) continue;
-                                pos_tmp[i] = pos_sig_tmp[i] + ref_contig.pos;
-
-				if(pos_tmp[i] != pos[i] || n_votes_tmp[i] != n_votes[i]) {
-					std::cout << "chain " << n_votes[i] << " " << pos[i] << " orig " << n_votes_tmp[i] << " " << pos_tmp[i] << "\n";
-					//print_read(r);
-					std::cout << "DIFF\n";
-				 	if(pos_in_range_asym(r->ref_pos_r, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size) ||
-                                        	pos_in_range_asym(r->ref_pos_l, pos[i], ref_contig.len + params->ref_window_size, params->ref_window_size)) {
-                                		std::cout << "TRUE!!!!!!\n";
-						
-						if((pos_in_range(r->ref_pos_l, pos_tmp[i], 10) || pos_in_range(r->ref_pos_r, pos_tmp[i], 10)) &&
-							(!pos_in_range(r->ref_pos_l, pos[i], 10) && !pos_in_range(r->ref_pos_r, pos[i], 10))) {
-						//if(n_votes_tmp[i] > n_votes[i]) {
-							std::cout << "TRUE!!!!!! BETTER XXXX\n";
-							print_read(r);
-							int z = r->ref_pos_l;
-							while(true) {
-								if(z > r->ref_pos_r) break;
-								printf("%c", iupacChar[(int)ref.seq[z]]);
-								z++;
-							}
-							printf("\n");
-						}
-					}
-					//r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
-                        	}
-                        }
-			*/
 
 			// update votes and its alignment position
 			for(int i = 0; i < 2; i++) {
@@ -1483,110 +1364,106 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, const index_params_t* par
 	int d_thr = 800;
         if(params->ref_window_size > 150) d_thr = 500;
         //if(params->ref_window_size > 1000) d_thr = 20;
-
         omp_set_num_threads(params->n_threads);
         int sum_score = 0;
         int n_nonzero_scores = 0;
         double start_time = omp_get_wtime();
         #pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
         for(uint32 i = 0; i < reads.reads.size(); i++) {
-                read_t* r = &reads.reads[i];
-                if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
-                r->key1_xor_pad = genrand64_int64();
-                r->key2_mult_pad = genrand64_int64();
-                std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_f;
-                std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_rc;
+			read_t* r = &reads.reads[i];
+			if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+			r->key1_xor_pad = genrand64_int64();
+			r->key2_mult_pad = genrand64_int64();
+			std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_f;
+			std::vector<std::pair<kmer_cipher_t, uint16_t>> read_kmers_rc;
 
-                for(uint32 j = 0; j < r->ref_matches.size(); j++) {
-                        if(r->n_proc_contigs > d_thr && r->ref_matches[j].n_diff_bucket_hits < 2) continue;
-                        if(r->ref_matches[j].n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
-                        if(r->ref_matches[j].n_diff_bucket_hits < params->min_n_hits) continue;
+			for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+				if(r->n_proc_contigs > d_thr && r->ref_matches[j].n_diff_bucket_hits < 2) continue;
+				if(r->ref_matches[j].n_diff_bucket_hits < (int) (r->best_n_bucket_hits - params->dist_best_hit)) continue;
+				if(r->ref_matches[j].n_diff_bucket_hits < params->min_n_hits) continue;
 
-                        const int n_kmers = r->ref_matches[j].len - params->k2 + 1;
-                        kmer_cipher_t* contig_ciphers = new kmer_cipher_t[n_kmers];
-                        generate_voting_kmer_ciphers_ref(contig_ciphers, ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
-                        std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers(n_kmers);
-                        for(int c = 0; c < n_kmers; c++) {
-                                contig_kmer_ciphers[c] = std::make_pair(contig_ciphers[c], c);
-                        }
-                        delete(contig_ciphers);
-                        std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
+				const int n_kmers = r->ref_matches[j].len - params->k2 + 1;
+				kmer_cipher_t* contig_ciphers = new kmer_cipher_t[n_kmers];
+				generate_voting_kmer_ciphers_ref(contig_ciphers, ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
+				std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers(n_kmers);
+				for(int c = 0; c < n_kmers; c++) {
+						contig_kmer_ciphers[c] = std::make_pair(contig_ciphers[c], c);
+				}
+				delete(contig_ciphers);
+				std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
 
-                        if((!r->ref_matches[j].rc) && (!(r->ref_strand & 1))) {
-                                r->ref_strand |= 1;
-                                r->kmers_f = new kmer_cipher_t[r->len - params->k2 + 1];
-                                generate_voting_kmer_ciphers_read(r->kmers_f, r->seq.c_str(), r->len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
-                                read_kmers_f.resize(r->len - params->k2 + 1);
-                                for(int c = 0; c < r->len - params->k2 + 1; c++) {
-                                        read_kmers_f[c] = std::make_pair(r->kmers_f[c], c);
-                                }
-                                std::sort(read_kmers_f.begin(), read_kmers_f.end());
+				if((!r->ref_matches[j].rc) && (!(r->ref_strand & 1))) {
+					r->ref_strand |= 1;
+					r->kmers_f = new kmer_cipher_t[r->len - params->k2 + 1];
+					generate_voting_kmer_ciphers_read(r->kmers_f, r->seq.c_str(), r->len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
+					read_kmers_f.resize(r->len - params->k2 + 1);
+					for(int c = 0; c < r->len - params->k2 + 1; c++) {
+							read_kmers_f[c] = std::make_pair(r->kmers_f[c], c);
+					}
+					std::sort(read_kmers_f.begin(), read_kmers_f.end());
+				} else if((r->ref_matches[j].rc) && (!(r->ref_strand & 2))) {
+					r->ref_strand |= 2;
+					r->kmers_rc = new kmer_cipher_t[r->len - params->k2 + 1];
+					generate_voting_kmer_ciphers_read(r->kmers_rc, r->rc.c_str(), r->len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
+					read_kmers_rc.resize(r->len - params->k2 + 1);
+					for(int c = 0; c < r->len - params->k2 + 1; c++) {
+							read_kmers_rc[c] = std::make_pair(r->kmers_rc[c], c);
+					}
+					std::sort(read_kmers_rc.begin(), read_kmers_rc.end());
+				}
+				std::vector<std::pair<kmer_cipher_t, uint16_t>>& read_kmer_ciphers = (r->ref_matches[j].rc) ? read_kmers_rc : read_kmers_f;
+				int pos_sig[2] = { 0 };
+				seq_t pos[2] = { 0 };
+				int n_votes[2] = { 0 };
+				vote_cast_and_count(r->ref_matches[j], r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
 
-                        } else if((r->ref_matches[j].rc) && (!(r->ref_strand & 2))) {
-                                r->ref_strand |= 2;
-                                r->kmers_rc = new kmer_cipher_t[r->len - params->k2 + 1];
-                                generate_voting_kmer_ciphers_read(r->kmers_rc, r->rc.c_str(), r->len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
-                                read_kmers_rc.resize(r->len - params->k2 + 1);
-                                for(int c = 0; c < r->len - params->k2 + 1; c++) {
-                                        read_kmers_rc[c] = std::make_pair(r->kmers_rc[c], c);
-                                }
-                                std::sort(read_kmers_rc.begin(), read_kmers_rc.end());
-                        }
-
-                        std::vector<std::pair<kmer_cipher_t, uint16_t>>& read_kmer_ciphers = (r->ref_matches[j].rc) ? read_kmers_rc : read_kmers_f;
-                        int pos_sig[2] = { 0 };
-                        seq_t pos[2] = { 0 };
-                        int n_votes[2] = { 0 };
-                        vote_cast_and_count(r->ref_matches[j], r->len, read_kmer_ciphers, contig_kmer_ciphers, params, n_votes, pos_sig);
-
-                        for(int i = 0; i < 2; i++) {
-                                if(n_votes[i] == 0) continue;
-                                pos[i] = pos_sig[i] + r->ref_matches[j].pos;
-                        }
-                        // update votes and its alignment position
-                        for(int i = 0; i < 2; i++) {
-                                if(n_votes[i] > r->top_aln.inlier_votes) {
-                                        if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
-                                                r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
-                                                r->second_best_aln.total_votes = r->top_aln.total_votes;
-                                                r->second_best_aln.ref_start = r->top_aln.ref_start;
-                                        }
-                                        // update best alignment
-					 r->top_aln.inlier_votes = n_votes[i];
-                                        r->top_aln.ref_start = pos[i];
-                                        r->top_aln.rc = r->ref_matches[j].rc;
-                                } else if(n_votes[i] > r->second_best_aln.inlier_votes) {
-                                        if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
-                                                r->second_best_aln.inlier_votes = n_votes[i];
-                                                r->second_best_aln.ref_start = pos[i];
-                                        }
-                                }
-                        }
+				for(int i = 0; i < 2; i++) {
+					if(n_votes[i] == 0) continue;
+					pos[i] = pos_sig[i] + r->ref_matches[j].pos;
+				}
+				// update votes and its alignment position
+				for(int i = 0; i < 2; i++) {
+				if(n_votes[i] > r->top_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+							r->second_best_aln.inlier_votes = r->top_aln.inlier_votes;
+							r->second_best_aln.total_votes = r->top_aln.total_votes;
+							r->second_best_aln.ref_start = r->top_aln.ref_start;
+					}
+					// update best alignment
+					r->top_aln.inlier_votes = n_votes[i];
+					r->top_aln.ref_start = pos[i];
+					r->top_aln.rc = r->ref_matches[j].rc;
+				} else if(n_votes[i] > r->second_best_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], r->top_aln.ref_start, 30)) {
+							r->second_best_aln.inlier_votes = n_votes[i];
+							r->second_best_aln.ref_start = pos[i];
+					}
+				}
+			}
 
 #if(SIM_EVAL)
-                        if(pos_in_range_asym(r->ref_pos_r, r->ref_matches[j].pos, r->ref_matches[j].len + params->ref_window_size, params->ref_window_size) ||
-                                        pos_in_range_asym(r->ref_pos_l, r->ref_matches[j].pos, r->ref_matches[j].len + params->ref_window_size, params->ref_window_size)) {
-                                r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
-                        }
+			if(pos_in_range_asym(r->ref_pos_r, r->ref_matches[j].pos, r->ref_matches[j].len + params->ref_window_size, params->ref_window_size) ||
+							pos_in_range_asym(r->ref_pos_l, r->ref_matches[j].pos, r->ref_matches[j].len + params->ref_window_size, params->ref_window_size)) {
+					r->comp_votes_hit = n_votes[0] > n_votes[1] ? n_votes[0] : n_votes[1];
+			}
 #endif
-                }
+		}
+		if(r->ref_strand & 1) {
+				delete(r->kmers_f);
+		}
+		if(r->ref_strand & 2) {
+				delete(r->kmers_rc);
+		}
 
-                if(r->ref_strand & 1) {
-                        delete(r->kmers_f);
-                }
-                if(r->ref_strand & 2) {
-                        delete(r->kmers_rc);
-                }
-
-                if(r->top_aln.inlier_votes > 0) {
-                        sum_score += r->top_aln.inlier_votes;
-                        n_nonzero_scores++;
-                }
-        }
-        if(n_nonzero_scores > 0) {
-                *avg_score = sum_score/n_nonzero_scores;
-        }
-        printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
+		if(r->top_aln.inlier_votes > 0) {
+				sum_score += r->top_aln.inlier_votes;
+				n_nonzero_scores++;
+		}
+	}
+	if(n_nonzero_scores > 0) {
+			*avg_score = sum_score/n_nonzero_scores;
+	}
+	printf("Total time: %.2f sec\n", omp_get_wtime() - start_time);
 }
 
 void finalize(reads_t& reads, const uint32 avg_score, const ref_t& ref, const index_params_t* params) {

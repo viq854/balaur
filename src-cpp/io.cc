@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <fstream>
-#include <omp.h>
 #include <limits.h>
 #include "io.h"
 #include "types.h"
@@ -12,29 +11,28 @@
 /* Reference I/O */
 
 void fasta_error(const char* fastaFname) {
-	printf("Error: File %s does not comply with the FASTA file format \n", fastaFname);
+	printf("ERROR: File %s does not comply with the FASTA file format\n", fastaFname);
 	exit(1);
 }
 
 // reads the sequence data from the FASTA file
-void fasta2ref(const char *fastaFname, ref_t& ref) {
+void fasta2ref(const char* fastaFname, ref_t& ref) {
+	printf("Loading FASTA file: %s\n", fastaFname);
 	FILE* fastaFile = (FILE*) fopen(fastaFname, "r");
 	if (fastaFile == NULL) {
-		printf("fasta2ref: Cannot open FASTA file: %s!\n", fastaFname);
+		printf("ERROR: Cannot open FASTA file: %s \n", fastaFname);
 		exit(1);
 	}
 	char c = (char) getc(fastaFile);
 	if(c != '>') fasta_error(fastaFname);
 	while(!feof(fastaFile)) {
 		c = (char) getc(fastaFile);
-
 		ref.subsequence_offsets.push_back(ref.seq.size());
 		// sequence description line (> ...)
 		while(c != '\n' && !feof(fastaFile)){
 			c = (char) getc(fastaFile);
 		}
 		if(feof(fastaFile)) fasta_error(fastaFname);
-
 		// sequence data
 		while(c != '>' && !feof(fastaFile)){
 			if (c != '\n'){
@@ -47,7 +45,7 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 		}
 	}
 	ref.len = ref.seq.size();
-	printf("Done reading FASTA file. Number of subsequences: %zu. Total sequence length read = %u\n", ref.subsequence_offsets.size(), ref.len);
+	printf("Done reading FASTA file. Number of subsequences:  %zu. Total sequence length read: %u \n", ref.subsequence_offsets.size(), ref.len);
 	fclose(fastaFile);
 }
 
@@ -77,6 +75,7 @@ void store_valid_window_mask(const char* refFname, const ref_t& ref, const index
 }
 
 bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params_t* params) {
+	printf("Loading valid windows mask... \n");
 	std::string fname(refFname);
 	fname += std::string(".window_mask.");
 	fname += std::to_string(params->ref_window_size);
@@ -323,7 +322,8 @@ void load_ref_idx_flat(const char* refFname, ref_t& ref, const index_params_t* p
 }
 
 // store the reference index
-void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t* params) {
+void store_ref_idx(const char*refFname, const ref_t& ref, const index_params_t* params) {
+	printf("Storing the reference index for reference file: %s \n", refFname);
 	std::string fname(refFname);
 	fname += std::string(".idx.");
 	fname += std::string("h");
@@ -367,6 +367,7 @@ void store_ref_idx(const char* refFname, const ref_t& ref, const index_params_t*
 
 // load the reference index buckets
 void load_ref_idx(const char* refFname, ref_t& ref, const index_params_t* params) {
+	printf("Loading reference MinHash index... \n");
 	std::string fname(refFname);
 	fname += std::string(".idx.");
 	fname += std::string("h");
