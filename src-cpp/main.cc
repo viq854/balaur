@@ -63,6 +63,7 @@ void print_usage(index_params_t* params) {
 
 int main(int argc, char *argv[]) {
 	index_params_t params;
+	params.set_default_index_params();
 
 	if (argc < 4) {
 		print_usage(&params);
@@ -76,7 +77,7 @@ int main(int argc, char *argv[]) {
 			case 'k': params.k = atoi(optarg); break;
 			case 'b': params.sketch_proj_len = atoi(optarg); break;
 			case 'w': params.ref_window_size = atoi(optarg); break;
-			case 'p': params.n_buckets_pow2 = atoi(optarg);  params.n_buckets = pow(2, params.n_buckets_pow2); break;
+			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
 			case 's': params.bucket_size = atoi(optarg); break;
 			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
 			case 'H': params.max_count = atoi(optarg); break;
@@ -103,31 +104,61 @@ int main(int argc, char *argv[]) {
 
 	printf("**********BALAUR**************\n");
 	srand(1);
+	params.n_buckets = pow(2, params.n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
+		printf("Mode: Indexing \n");
+		params.alg = MINH; // only minhash enabled for now
+		params.set_kmer_hash_function();
+		params.set_minhash_hash_function();
+		params.set_minhash_sketch_hash_function();
+		params.generate_sparse_sketch_projections();
+		// index the reference and store
 		ref_t ref;
-		ref.build_index(argv[optind+1], &params);
-		ref.store_index(argv[optind+1], &params);
+		index_ref_lsh(argv[optind+1], &params, ref);
+		store_index_ref_lsh(argv[optind+1], &params, ref);
+
 	} else if (strcmp(argv[1], "align") == 0) {
+		printf("Mode: Alignment \n");
+		params.alg = MINH; // only minhash enabled for now
+		params.set_kmer_hash_function();
+		params.set_minhash_hash_function();
+		params.set_minhash_sketch_hash_function();
+		params.generate_sparse_sketch_projections();
 		params.load_mhi = false;
 		params.monolith = false;
+
 #if(VANILLA)
-		params.monolith = true;
+                params.load_mhi = true;
+                params.monolith = true;
 #endif
+
+		// 1. load the reference index
 		ref_t ref;
+		load_index_ref_lsh(argv[optind+1], &params, ref);
+
+		// 2. load the reads
 		reads_t reads;
-		ref.store_index(argv[optind+1], &params);
 		fastq2reads(argv[optind+2], reads);
+
+		// 3. align
 		balaur_main(argv[optind+1], ref, reads, &params);
+
 	} else if (strcmp(argv[1], "stats") == 0) {
+		printf("Mode: STATS \n");
+		
 		//ref_t ref;
 		//load_ref_idx(argv[optind+1], ref, &params);
 		//store_ref_idx_flat(argv[optind+1], ref, &params);
+
+		// load the reference index
 		ref_t ref;
 		fasta2ref(argv[optind+1], ref);
 		load_kmer2_hashes(argv[optind+1], ref, &params);
 		//compute_store_repeat_info(argv[optind+1], ref, &params);
 		//compute_store_repeat_local(argv[optind+1], ref, &params);		
+
 		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
+	
 		//ref_kmer_repeat_stats(argv[optind+1], &params, ref);
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);

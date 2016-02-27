@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <algorithm>
 #include <time.h>
+#include <omp.h>
 #include <fstream>
 #include <limits.h>
 #include "types.h"
@@ -12,7 +13,6 @@
 // K-Mer stats //
 
 void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params) {
-	printf("Loading kmer frequency info, kmer filtering... \n");
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 	fname += std::to_string(params->k);
@@ -44,8 +44,10 @@ void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const i
 void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
+
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+
 	if (!file.is_open()) {
 		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
 		exit(1);
