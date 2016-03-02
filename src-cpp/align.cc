@@ -536,6 +536,8 @@ void generate_voting_kmer_ciphers_read(kmer_cipher_t* ciphers, const char* seq, 
 #endif
 }
 
+static int n_prob_reads = 0;
+static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19};
 void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const uint64 key1, const uint64 key2, const ref_t& ref, const index_params_t* params) {
 
@@ -552,6 +554,40 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
                         if(r > 0 && r < (n_kmers-i)) ciphers[i+r] = 0;
 		}
 	}
+	/*const int n_bins = ceil(((float)n_kmers)/params->k2);
+	int idx = 0;
+	for(int i = 0; i < n_bins; i++) {
+		seq_t offset = i*params->k2;
+		int n_unique = 0;
+		int bin_size = params->k2;
+		if(i == n_bins - 1) bin_size = n_kmers - params->k2*i; 
+		const int n_kept = bin_size/params->sampling_intv;
+		for(int j = 0; j < bin_size; j++) {
+			if(n_unique == n_kept) break;
+			int k = bin_shuffle[j];
+			if(k >= bin_size) continue;
+			seq_t pos = offset + k;
+			uint16_t r = ref.precomputed_neighbor_repeats[pos + seq_offset];
+                	if(ciphers[pos] != 0 && (r == 0 || r >= (n_kmers-i))) {
+				ciphers[idx] = (ciphers[pos] ^ key1)*key2; 		
+				idx++;
+				n_unique++;
+			} else {
+				if(r > 0 && r < (n_kmers-i)) ciphers[pos + r] = 0;
+				//ciphers[idx] = genrand64_int64();//(ciphers[pos] ^ key1)*key2;
+                                //idx++;
+				//n_unique++;
+			}
+		}
+		for(int x = n_unique; x < n_kept; x++) {
+			ciphers[idx] = genrand64_int64();//(ciphers[pos] ^ key1)*key2;
+                        idx++;
+               	}
+		///if(n_unique < n_kept) {
+		//	n_prob_reads++;
+		//	break;
+		}
+	}*/
 #endif
 }
 
@@ -952,11 +988,11 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 				
 				int pos_read = read_ciphers[i].second;
 				int read_range_start = (pos_read/approx_pos_range)*approx_pos_range;
-				int read_range_end = read_range_start + approx_pos_range;
-				if(read_range_end >= params->sampling_intv*read_ciphers.size()) read_range_end = params->sampling_intv*read_ciphers.size();
+				int read_range_end = read_range_start + approx_pos_range;	
+				if(read_range_end >= read_ciphers.size()) read_range_end = read_ciphers.size();
 
 				int pos_contig = contig_ciphers[j].second;				
-				int contig_range_start = (pos_contig/approx_pos_range)*approx_pos_range;
+				int contig_range_start = pos_contig*approx_pos_range; //(pos_contig/approx_pos_range)*approx_pos_range;
 				int contig_range_end = contig_range_start + approx_pos_range;
 				if(contig_range_end >= params->sampling_intv*contig_ciphers.size()) contig_range_end = params->sampling_intv*contig_ciphers.size();				
 
@@ -966,6 +1002,7 @@ void vote_cast_and_count(const ref_match_t ref_contig, const seq_t rlen,
 
 				for(int k = s; k < t; k++) {
 					votes[pos0 + k]++;
+					
 					//for(int m = contig_range_start; m < contig_range_end; m++) {
 						//int match_aln_pos = m - k;
 						//std::cout << match_aln_pos << "\n"; 
@@ -1304,6 +1341,8 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, const index_params_t* p
 			generate_voting_kmer_ciphers_ref(r->contig_kmer_ciphers[j], ref.seq.c_str(), r->ref_matches[j].pos, r->ref_matches[j].len, r->key1_xor_pad, r->key2_mult_pad, ref, params);
 		}
 	}
+
+	printf("N prob reads %d \n", n_prob_reads);
 	printf("Encryption time: %.2f sec\n", omp_get_wtime() - t2);
 	printf("Total client prep time: %.2f sec\n", omp_get_wtime() - start_time);
 	
@@ -1335,7 +1374,7 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 	omp_set_num_threads(params->n_threads);
 	int sum_score = 0;
 	int n_nonzero_scores = 0;
-	#pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
+	//#pragma omp parallel for reduction(+:sum_score, n_nonzero_scores)
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
@@ -1357,10 +1396,10 @@ void phase2_voting(reads_t& reads, const ref_t& ref, const index_params_t* param
 			if(r->contig_kmer_ciphers[j] == NULL) continue;
 			std::vector<std::pair<kmer_cipher_t, uint16_t>>& read_kmer_ciphers = (ref_contig.rc) ? read_kmers_rc : read_kmers_f;
 			int n_kmers = ref_contig.len - params->k2 + 1;
-			int n_sampled_kmers = (n_kmers-1)/params->sampling_intv + 1;
+			int n_sampled_kmers = n_kmers/params->sampling_intv;
 			std::vector<std::pair<kmer_cipher_t, uint16_t>> contig_kmer_ciphers(n_sampled_kmers);
 			for(int c = 0; c < n_sampled_kmers; c++) {
-                        	contig_kmer_ciphers[c] = std::make_pair((r->contig_kmer_ciphers[j])[c], params->sampling_intv*c);
+                        	contig_kmer_ciphers[c] = std::make_pair((r->contig_kmer_ciphers[j])[c], c/(params->k2/params->sampling_intv));//params->sampling_intv*c);
                 	}
 			std::sort(contig_kmer_ciphers.begin(), contig_kmer_ciphers.end());
 

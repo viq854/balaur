@@ -142,9 +142,9 @@ inline void perm64(uint64* m, const int* perm) {
 	*m = p;
 }
 
-inline void shuffle(int *perm) {
+inline void shuffle(int *perm, const int datalen) {
 	int tmp;
-	int len = 32;
+	int len = datalen;
 	while(len) {
 		int j = irand(len);
 		if (j != len - 1) {
@@ -153,6 +153,17 @@ inline void shuffle(int *perm) {
 			perm[len-1] = tmp;
 		}
 		len--;
+	}
+}
+
+template<typename T>
+void shuffle_partitions(T* data,  int datalen,  int partlen) {
+	int n_bins = ceil(datalen/partlen);
+	for(int i = 0; i < n_bins; i++) {
+		seq_t s = i*partlen;
+		int len = partlen;
+		if(s + len > datalen) len = datalen - s;
+		shuffle(&data[s], len);
 	}
 }
 

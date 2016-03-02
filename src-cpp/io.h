@@ -62,6 +62,8 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, Marisa
 void kmer_stats(const char* refFname);
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
 void ref_kmer_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
+void bin_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
+
 
 // compression
 #define CHARS_PER_SHORT 8   // number of chars in 16 bits

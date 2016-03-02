@@ -305,7 +305,7 @@ int is_inform_ref_window(const char* seq, const uint32_t len, const index_params
 		if(base_counts[i] == 0) {
 			n_empty++;
 		}
-		if(base_counts[i] < params->ref_window_size/LOW_BASE_FRAC) {
+		if(base_counts[i] < 5) { //params->ref_window_size/LOW_BASE_FRAC) {
 			n_low++;
 		}
 	}

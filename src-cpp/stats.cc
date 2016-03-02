@@ -399,6 +399,48 @@ void kmer_stats(const char* refFname) {
 	file.close();
 }
 
+void bin_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref) {
+	mark_windows_to_discard(ref, params);
+
+	seq_t n_repeat_windows = 0;
+	#pragma omp parallel for reduction(+:n_repeat_windows)
+	for(seq_t pos = 0; pos < ref.len - params->ref_window_size + 1; pos++) { 
+		if(ref.ignore_window_bitmask[pos]) continue;
+
+		int n_kmers = params->ref_window_size - params->k2 +1;
+		std::vector<bool> repeat_mask(n_kmers);
+		for(seq_t i = 0; i < n_kmers; i++) {
+			uint16_t r = ref.precomputed_neighbor_repeats[pos + i];
+			if(r > 0 && r < (n_kmers-i)) {
+				repeat_mask[i] = true;
+				repeat_mask[i+r] = true;
+			}
+		}
+	
+		// check eah bin for repeats
+		int n_bins = ceil(n_kmers/params->k2);
+		int n_repeat_bins = 0;
+		for(int i = 0; i < n_bins; i++) {
+			int n_repeats = 0;
+			seq_t s = i*params->k2;
+			seq_t e = (i+1)*params->k2;
+			if(e > n_kmers) e = n_kmers;
+			for(seq_t j = s; j < e; j++) {
+				if(repeat_mask[j]) {
+					n_repeats++;
+				}
+			}
+			if(n_repeats > params->k2/params->sampling_intv) {
+				n_repeat_bins++;
+			}
+		}
+		if(n_repeat_bins > 0) {
+			n_repeat_windows++;
+		}
+	}
+	printf("Num windows with at least one bucket with more than %u repeats: %u \n", params->k2/params->sampling_intv, n_repeat_windows);	
+}
+
 #define BUCKET_SIZE_THR_DEBUG 50000
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
