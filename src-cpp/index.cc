@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <time.h>
 #include <limits.h>
-#include <omp.h>
 #include "types.h"
 #include "index.h"
 #include "lsh.h"

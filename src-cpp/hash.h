@@ -8,10 +8,14 @@
 //#include "../rollinghashcpp/cyclichash.h"
 struct CyclicHash{ CyclicHash(int x, int y){}; };
 
+#if(USE_SHA1_ASM)
 extern "C" 
 {
  	void sha1_compress(uint32_t state[5], const uint8_t block[64]);
 }
+#else
+	void sha1_compress(uint32_t state[5], const uint8_t block[64]);
+#endif
 
 void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]);
 

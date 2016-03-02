@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <algorithm>
 #include <time.h>
-#include <omp.h>
 #include <fstream>
 #include <limits.h>
 #include "types.h"

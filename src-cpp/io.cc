@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <fstream>
-#include <omp.h>
 #include <limits.h>
 #include "io.h"
 #include "types.h"

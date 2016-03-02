@@ -60,4 +60,19 @@ struct none_t {};
 typedef none_t MarisaTrie;
 #endif
 
+
+#include <sys/time.h>
+#ifdef _OPENMP
+#include <omp.h>
+#else 
+inline void omp_set_num_threads(int) { }
+inline int omp_get_num_threads() { return 1; }
+inline int omp_get_thread_num() { return 0; }
+inline double omp_get_wtime() {
+	 struct timeval tp;
+	 gettimeofday(&tp, NULL);
+	 return tp.tv_sec + tp.tv_usec * 1e-6;
+}
+#endif
+
 #endif /*TYPES_H_*/

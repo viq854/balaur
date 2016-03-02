@@ -28,7 +28,6 @@
 #include <queue>
 #include <unordered_map>
 #include <bitset>
-#include <omp.h>
 #include "index.h"
 #include "io.h"
 #include "hash.h"
