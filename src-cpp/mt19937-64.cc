@@ -55,7 +55,7 @@
 
 
 #include <stdio.h>
-#include "mt64.h"
+#include "../third-party/mt64.h"
 
 #define NN 312
 #define MM 156

@@ -19,12 +19,7 @@ struct minhash_matrix_t {
 
 void minhash_set(std::vector<minhash_t> encrypted_kmers, const index_params_t* params, VectorMinHash& min_hashes);
 
-bool minhash(const char* seq, const seq_t seq_len,
-		const VectorBool& ref_freq_kmer_bitmask,
-		const MarisaTrie& ref_freq_kmer_trie,
-		const MarisaTrie& reads_hist,
-		const index_params_t* params,
-		VectorMinHash& min_hashes);
+bool minhash(const std::string& seq, const VectorBool& ref_freq_kmer_bitmap, VectorMinHash& min_hashes);
 bool minhash_rolling_init(const char* seq, const seq_t ref_offset, const seq_t seq_len,
 		minhash_matrix_t& rolling_minhash_matrix,
 		const VectorBool& ref_freq_kmer_bitmask,

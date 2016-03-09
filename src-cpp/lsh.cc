@@ -1,3 +1,5 @@
+#include <emmintrin.h>
+#include <smmintrin.h>
 #include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
@@ -11,7 +13,7 @@
 #include "limits.h"
 #include "lsh.h"
 #include "hash.h"
-
+#include "seq.h"
 
 void sha1_hash(const uint8_t *message, uint32_t len, uint32_t hash[5]) {
         hash[0] = UINT32_C(0x67452301);
@@ -76,42 +78,56 @@ uint32_t get_kmer_weight(const char* kmer_seq, uint32 kmer_len,
 /////////////////////////
 // --- LSH: minhash ---
 
-bool minhash(const char* seq, const seq_t seq_len,
-			const VectorBool& ref_freq_kmer_bitmap,
-			const MarisaTrie& ref_freq_kmer_trie,
-			const MarisaTrie& reads_hist,
-			const index_params_t* params,
-			VectorMinHash& min_hashes) {
 
-	bool any_valid_kmers = false;
-	uint32 n_valid_kmers = 0;
 
-	for(uint32 i = 0; i <= (seq_len - params->k); i++) {
-		// check if this kmer should be discarded
-#if USE_MARISA
-		if(!get_kmer_weight(&seq[i], params->k, ref_freq_kmer_trie, reads_hist, params)) continue;
-#else
-		uint32_t packed_kmer;
-		if(pack_32(&seq[i], params->k, &packed_kmer) < 0) {
-			continue; // has ambiguous bases
-		}
-		if(ref_freq_kmer_bitmap[packed_kmer]) {
-			continue; // this is a high-freq kmer
-		}
-#endif
-		n_valid_kmers++;
-		minhash_t kmer_hash = params->kmer_hasher->encrypt_base_seq(&seq[i], params->k);
-		for(uint32_t h = 0; h < params->h; h++) { // update the min values
-			const rand_hash_function_t* f = &params->minhash_functions[h];
-			minhash_t min = f->apply(kmer_hash);
-			if(min < min_hashes[h] || !any_valid_kmers) {
-				min_hashes[h] = min;
+bool minhash(const std::string& seq, const VectorBool& ref_freq_kmer_bitmap, VectorMinHash& min_hashes) {
+		const int n_kmers = get_n_kmers(seq.size(), params->k);
+		minhash_t v[n_kmers]  __attribute__((aligned(16)));;
+		uint32 n_valid_kmers = 0;
+		
+		kmer_parser_t seq_parser;
+		seq_parser.init(seq, params->k);
+		kmer_t kmer;
+		for(int i = 0; i < n_kmers; i++) {
+			seq_parser.get_next_kmer(kmer);
+			if(!kmer.valid) continue;
+			if(ref_freq_kmer_bitmap[kmer.packed]) {
+					continue;
 			}
-		}
-		any_valid_kmers = true;
-	}
+			v[n_valid_kmers] = CityHash32(&seq[i], params->k); 
+			n_valid_kmers++;
+        }
+        if(n_valid_kmers <= 2*params->k) {
+                return false;
+        }
 
-	return n_valid_kmers > 2*params->k;
+        __m128i* vs = (__m128i*)v;
+        __m128i scalar, p1, curr_min_vec;
+        for(uint32_t h = 0; h < params->h; h++) { // update the min values
+                const minhash_t s = params->minhash_functions[h].a;
+                scalar = _mm_set1_epi32(s);
+                curr_min_vec = _mm_mullo_epi32(vs[0], scalar);
+                for(uint32 i = 1; i < n_valid_kmers/4; i++) {
+                        p1 = _mm_mullo_epi32(vs[i], scalar);
+                        curr_min_vec = _mm_min_epu32(p1, curr_min_vec);
+                }
+                minhash_t result[4] __attribute__((aligned(16)));
+                _mm_store_si128((__m128i*)result, curr_min_vec);
+                min_hashes[h] = result[0];
+                for(int i = 1; i < 4; i++) {
+                        if(result[i] < min_hashes[h]) {
+                                min_hashes[h] = result[i];
+                        }
+                }
+
+                for(int i = 4*(n_valid_kmers/4); i < n_valid_kmers; i++) {
+                        const minhash_t p = s*v[i];
+                        if(p < min_hashes[h]) {
+                                 min_hashes[h] = p;
+                        }
+                }
+        }
+        return true;
 }
 
 void minhash_set(std::vector<minhash_t> encrypted_kmers, const index_params_t* params, VectorMinHash& min_hashes) {

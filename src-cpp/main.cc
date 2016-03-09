@@ -36,7 +36,7 @@
 #include "index.h"
 #include "align.h"
 
-void print_usage(index_params_t* params) {
+void print_usage() {
 	printf("Usage: ./balaur [options] <index|align> <ref.fa> <reads.fq> \n");
 	printf("Hashing options:\n\n");
 	printf("       -h        number of hash functions for MinHash fingerprint construction (i.e. fingerprint length) [%d]\n", params->h);
@@ -61,87 +61,76 @@ void print_usage(index_params_t* params) {
 	printf("       -t        number of threads [%d]\n", params->n_threads);
 }
 
+index_params_t* params;
 int main(int argc, char *argv[]) {
-	index_params_t params;
-	params.set_default_index_params();
+	params = new index_params_t();
+	params->set_default_index_params();
 
 	if (argc < 4) {
-		print_usage(&params);
+		print_usage();
 		exit(1);
 	}
 	int c;
 	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:I:")) >= 0) {
 		switch (c) {
-			case 'h': params.h = atoi(optarg); break;
-			case 'T': params.n_tables = atoi(optarg); break;
-			case 'k': params.k = atoi(optarg); break;
-			case 'b': params.sketch_proj_len = atoi(optarg); break;
-			case 'w': params.ref_window_size = atoi(optarg); break;
-			case 'p': params.n_buckets_pow2 = atoi(optarg); break;
-			case 's': params.bucket_size = atoi(optarg); break;
-			case 'l': params.bucket_entry_coverage = atoi(optarg); break;
-			case 'H': params.max_count = atoi(optarg); break;
-			case 'L': params.min_count = atoi(optarg); break;
-			case 'm': params.min_n_hits = atoi(optarg); break;
-			case 'N': params.dist_best_hit = atoi(optarg); break;
-			case 'v': params.k2 = atoi(optarg); break;
-			case 'P': params.precomp_k2 = false; break;
-			case 'S': params.enable_scale = false; break;
-			case 'n': params.n_init_anchors = atoi(optarg); break;
-			case 'd': params.delta_inlier = atoi(optarg); break;
-			case 'x': params.delta_x = atoi(optarg); break;
-			case 'f': params.mapq_scale_x = atoi(optarg); break;
-			case 'c': params.votes_cutoff = atoi(optarg); break;
-			case 'i': params.in_index_fname = std::string(optarg); break;
-			case 'o': params.out_index_fname = std::string(optarg); break;
-			case 't': params.n_threads = atoi(optarg); break;
-			case 'z': params.precomp_contig_file_name = std::string(optarg); break;
-			case 'e': params.kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
-			case 'I': params.sampling_intv = atoi(optarg); break;
+			case 'h': params->h = atoi(optarg); break;
+			case 'T': params->n_tables = atoi(optarg); break;
+			case 'k': params->k = atoi(optarg); break;
+			case 'b': params->sketch_proj_len = atoi(optarg); break;
+			case 'w': params->ref_window_size = atoi(optarg); break;
+			case 'p': params->n_buckets_pow2 = atoi(optarg); break;
+			case 's': params->bucket_size = atoi(optarg); break;
+			case 'l': params->bucket_entry_coverage = atoi(optarg); break;
+			case 'H': params->max_count = atoi(optarg); break;
+			case 'L': params->min_count = atoi(optarg); break;
+			case 'm': params->min_n_hits = atoi(optarg); break;
+			case 'N': params->dist_best_hit = atoi(optarg); break;
+			case 'v': params->k2 = atoi(optarg); break;
+			case 'P': params->precomp_k2 = false; break;
+			case 'S': params->enable_scale = false; break;
+			case 'n': params->n_init_anchors = atoi(optarg); break;
+			case 'd': params->delta_inlier = atoi(optarg); break;
+			case 'x': params->delta_x = atoi(optarg); break;
+			case 'f': params->mapq_scale_x = atoi(optarg); break;
+			case 'c': params->votes_cutoff = atoi(optarg); break;
+			case 'i': params->in_index_fname = std::string(optarg); break;
+			case 'o': params->out_index_fname = std::string(optarg); break;
+			case 't': params->n_threads = atoi(optarg); break;
+			case 'z': params->precomp_contig_file_name = std::string(optarg); break;
+			case 'e': params->kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
+			case 'I': params->sampling_intv = atoi(optarg); break;
 			default: return 0;
 		}
 	}
 
 	printf("**********BALAUR**************\n");
 	srand(1);
-	params.n_buckets = pow(2, params.n_buckets_pow2);
+	params->n_buckets = pow(2, params->n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
 		printf("Mode: Indexing \n");
-		params.alg = MINH; // only minhash enabled for now
-		params.set_kmer_hash_function();
-		params.set_minhash_hash_function();
-		params.set_minhash_sketch_hash_function();
-		params.generate_sparse_sketch_projections();
-		// index the reference and store
 		ref_t ref;
-		index_ref_lsh(argv[optind+1], &params, ref);
-		store_index_ref_lsh(argv[optind+1], &params, ref);
-
+		index_ref_lsh(argv[optind+1], params, ref);
+		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
-		params.alg = MINH; // only minhash enabled for now
-		params.set_kmer_hash_function();
-		params.set_minhash_hash_function();
-		params.set_minhash_sketch_hash_function();
-		params.generate_sparse_sketch_projections();
-		params.load_mhi = false;
-		params.monolith = false;
+		params->load_mhi = false;
+		params->monolith = false;
 
 #if(VANILLA)
-                params.load_mhi = true;
-                params.monolith = true;
+                params->load_mhi = true;
+                params->monolith = true;
 #endif
 
 		// 1. load the reference index
 		ref_t ref;
-		load_index_ref_lsh(argv[optind+1], &params, ref);
+		load_index_ref_lsh(argv[optind+1], params, ref);
 
 		// 2. load the reads
 		reads_t reads;
 		fastq2reads(argv[optind+2], reads);
 
 		// 3. align
-		balaur_main(argv[optind+1], ref, reads, &params);
+		balaur_main(argv[optind+1], ref, reads);
 
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
@@ -156,8 +145,8 @@ int main(int argc, char *argv[]) {
 		//load_kmer2_hashes(argv[optind+1], ref, &params);
 		//compute_store_repeat_info(argv[optind+1], ref, &params);
 		//compute_store_repeat_local(argv[optind+1], ref, &params);		
-		load_repeat_info(argv[optind+1], ref, &params);
-		bin_repeat_stats(argv[optind+1], &params, ref);
+		load_repeat_info(argv[optind+1], ref, params);
+		bin_repeat_stats(argv[optind+1], params, ref);
 
 		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
 	
@@ -167,7 +156,7 @@ int main(int argc, char *argv[]) {
 		//store_ref_index_stats(argv[optind+1], ref, &params);
 		//kmer_stats(argv[optind+1]);
 	} else {
-		print_usage(&params);
+		print_usage();
 		exit(1);
 	}
 	return 0;

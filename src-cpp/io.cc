@@ -501,6 +501,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 	char c;
 	while(!feof(readsFile)) {
 		read_t r;
+		memset(&r, 0, sizeof(r));
 		c = (char) getc(readsFile);
 		while(c != '@' && !feof(readsFile)) {
 			c = (char) getc(readsFile);
@@ -562,49 +563,45 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 	fclose(readsFile);
 }
 
-// assumes that reads were generated with wgsim
-void parse_read_mapping(const char* read_name, unsigned int* seq_id, unsigned int* ref_pos_l, unsigned int* ref_pos_r, int* strand) {
-    std::istringstream is((std::string(read_name)));
-    std::string seqid;
-    std::string refl;    
-    std::string refr;
-    std::getline(is, seqid, '_');
-    std::getline(is, refl, '_');
-    std::getline(is, refr, '_');
-    if(seqid.compare("X") == 0) {
-    	*seq_id = 23;
-    } else {
-    	*seq_id = atoi(seqid.c_str());
-    }
-    *ref_pos_l = atoi(refl.c_str());
-    *ref_pos_r = atoi(refr.c_str());
-}
-
-void get_sim_read_info(const ref_t& ref, reads_t& reads) {
-#if(SIM_EVAL)
-	#pragma omp parallel for
-	for (uint32 i = 0; i < reads.reads.size(); i++) {
+void store_precomp_contigs(const char* fileName, reads_t& reads) {
+	std::string fname(fileName);
+	std::ofstream file;
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_or_load_contigs: Cannot open file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
-		parse_read_mapping(r->name.c_str(), &r->seq_id, &r->ref_pos_l, &r->ref_pos_r, &r->strand);
-		r->seq_id = r->seq_id - 1;
-		if(ref.subsequence_offsets.size() > 1) {
-			r->ref_pos_l += ref.subsequence_offsets[r->seq_id]; // convert to global id
-			r->ref_pos_r += ref.subsequence_offsets[r->seq_id];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		uint32 ref_size = r->ref_matches.size();
+		file.write(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+		file.write(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+	}
+}
+void load_precomp_contigs(const char* fileName, reads_t& reads) {
+	std::string fname(fileName);
+	std::ifstream file;
+	file.open(fname.c_str(), std::ios::in | std::ios::binary);
+	if (!file.is_open()) {
+		printf("store_or_load_contigs: Cannot open file %s!\n", fname.c_str());
+		exit(1);
+	}
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+		uint32 ref_size;
+		file.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+		r->ref_matches.resize(ref_size);
+		file.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+		r->n_proc_contigs = ref_size;
+		for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+			ref_match_t ref_contig = r->ref_matches[j];
+			if(ref_contig.n_diff_bucket_hits > r->best_n_bucket_hits) {
+				r->best_n_bucket_hits = ref_contig.n_diff_bucket_hits;
+			}
 		}
 	}
-#endif
-}
-
-void print_read(read_t* read) {
-	printf("%s \n", read->name.c_str());
-	for(uint32 i = 0; i < read->len; i++) {
-		printf("%c", iupacChar[(int) read->seq[i]]);
-	}
-	printf("\n");
-	for(uint32 i = 0; i < read->len; i++) {
-		printf("%c", iupacChar[(int) read->rc[i]]);
-	}
-	printf("\n");
 }
 
 // --- Compression ---

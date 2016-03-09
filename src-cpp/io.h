@@ -51,7 +51,8 @@ void mark_windows_to_discard(ref_t& ref, const index_params_t* params);
 void mark_freq_kmers(ref_t& ref, const index_params_t* params);
 void compute_store_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params);
 bool load_repeat_local(const char* refFname, ref_t& ref, const index_params_t* params);
-
+void load_precomp_contigs(const char* fileName, reads_t& reads);
+void store_precomp_contigs(const char* fileName, reads_t& reads);
 
 // stats
 void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);

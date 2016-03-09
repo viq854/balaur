@@ -3,8 +3,8 @@
 
 #pragma once
 #include "types.h"
-#include "city.h"
-#include "mt64.h"
+#include "../third-party/city.h"
+#include "../third-party/mt64.h"
 //#include "../rollinghashcpp/cyclichash.h"
 struct CyclicHash{ CyclicHash(int x, int y){}; };
 

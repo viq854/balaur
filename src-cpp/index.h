@@ -1,6 +1,12 @@
 #ifndef INDEX_H_
 #define INDEX_H_
 
+#include <istream>
+#include <sstream>
+#include <iostream>
+
+#include "utils.h"
+
 #pragma once
 
 typedef enum {SIMH, MINH, SAMPLE} algorithm;
@@ -50,11 +56,7 @@ typedef struct {
 	bool enable_scale;
 	int mapq_scale_x;
 	int sampling_intv;
-
-	// simhash mapping parameters
-	uint32 p; 					// number of permutation tables
-	uint32 msbits_match;		// number of most significant bits to match
-	uint32 max_hammd; 			// maximum hamming distance to
+	int proc_contigs_thr;
 
 	// multi-threading
 	uint32_t n_threads;
@@ -68,6 +70,14 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
+		set_kmer_hash_function();
+		set_minhash_hash_function();
+		set_minhash_sketch_hash_function();
+		generate_sparse_sketch_projections();
+		
+		proc_contigs_thr = 10000;
+		//if(ref_window_size > 150) proc_contigs_thr = 500;
+		//if(ref_window_size > 1000) proc_contigs_thr = 20;
 		kmer_type = OVERLAP;
 		kmer_hashing_alg = SHA1_E;
 		h = 64;
@@ -138,6 +148,7 @@ typedef struct {
 	}
 
 } index_params_t;
+extern index_params_t* params;
 
 // **** Reference Index ****
 typedef std::map<uint32, seq_t> MapKmerCounts;
@@ -201,8 +212,9 @@ struct ref_match_t {
 	uint32 len;
 	bool rc;
 	int n_diff_bucket_hits;
-	ref_match_t() : pos(0), len(0), rc(0), n_diff_bucket_hits(0) {};
-	ref_match_t(seq_t _pos, uint32 _len, bool _rc, int _buckets) : pos(_pos), len(_len), rc(_rc), n_diff_bucket_hits(_buckets) {}
+	bool valid;
+	ref_match_t() : pos(0), len(0), rc(0), n_diff_bucket_hits(0), valid(false) {};
+	ref_match_t(seq_t _pos, uint32 _len, bool _rc, int _buckets) : pos(_pos), len(_len), rc(_rc), n_diff_bucket_hits(_buckets), valid(false) {}
 };
 typedef std::vector<ref_match_t> VectorRefMatches;
 
@@ -216,47 +228,37 @@ struct aln_t {
 
 struct read_t {
 	uint32_t len; 					// read length
-	std::string name; 				// read name
+	std::string name; 			// read name
 	std::string seq;				// read sequence
 	std::string rc;					// reverse complement sequence
 	std::string qual;				// quality scores
 	uint32 rid;
 
-	// kmer hashes (unique, shuffled)
-	std::vector<minhash_t> kmer_ciphers_phase1_f;
-	std::vector<minhash_t> kmer_ciphers_phase1_rc;
-
 	// LSH sketches
 	VectorMinHash minhashes_f;		// minhash vector
-	VectorMinHash minhashes_rc;		// minhash vector for the reverse complement
+	VectorMinHash minhashes_rc;	// minhash vector for the reverse complement
 	char valid_minhash_f;
 	char valid_minhash_rc;
-
-	// kmer k2 hashes
-	kmer_cipher_t* kmers_f;
-	kmer_cipher_t* kmers_rc;
-
-	uint64 key1_xor_pad;
-	uint64 key2_mult_pad;
 
 	// alignment information
 	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 	char ref_strand;
+	int n_match_f;
 
 	// local csr buckets
-	std::vector<loc_t> buckets;
-	std::vector<int> bucket_offsets;
+	//std::vector<loc_t> buckets;
+	//std::vector<int> bucket_offsets;
 
 	std::vector<ref_match_t> ref_matches;
 	std::vector<kmer_cipher_t*> contig_kmer_ciphers;
 
+	aln_t top_aln;
+	aln_t second_best_aln;
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
 	bool any_bucket_hits;
-	aln_t top_aln;
-	aln_t second_best_aln;
 	int max_total_votes;
 	int max_total_votes_low_anchors;
 
@@ -275,43 +277,71 @@ struct read_t {
 	unsigned int seq_id;
 	uint32_t ref_pos_l;
 	uint32_t ref_pos_r;
+	read_t() {}
+	
+	// assumes that reads were generated with wgsim
+	void parse_read_mapping() {
+		std::istringstream is((std::string(name)));
+		std::string _seqid;
+		std::string refl;    
+		std::string refr;
+		std::getline(is, _seqid, '_');
+		std::getline(is, refl, '_');
+		std::getline(is, refr, '_');
+		if(_seqid.compare("X") == 0) {
+			seq_id = 23;
+		} else {
+			seq_id = atoi(_seqid.c_str());
+		}
+		ref_pos_l = atoi(refl.c_str());
+		ref_pos_r = atoi(refr.c_str());
+	}
 
-	read_t() {
-		len = 0;
-		rid = 0;
+	void get_sim_read_info(const ref_t& ref) {
+#if(SIM_EVAL)
+		parse_read_mapping();
+		seq_id = seq_id - 1;
+		if(ref.subsequence_offsets.size() > 1) {
+			ref_pos_l += ref.subsequence_offsets[seq_id]; // convert to global id
+			ref_pos_r += ref.subsequence_offsets[seq_id];
+		}
+#endif
+	}
 
-		valid_minhash_f = 0;
-		valid_minhash_rc = 0;
-		best_n_bucket_hits = 0;
-		true_n_bucket_hits = 0;
-		any_bucket_hits = false;
-		key1_xor_pad = 0;
-		key2_mult_pad = 0;
-
-		// alignment info
-		top_aln.score = 0;
-		top_aln.ref_start = 0;
-		top_aln.inlier_votes = 0;
-		top_aln.total_votes = 0;
-		second_best_aln.inlier_votes = 0;
-		second_best_aln.total_votes = 0;
-		max_total_votes = 0;
-		max_total_votes_low_anchors = 0;
-		ref_strand = 0;
-
-		// simulation alignment info/stats
-		acc = 0;
-		collected_true_hit = 0;
-		processed_true_hit = false;
-		bucketed_true_hit = 0;
-		comp_votes_hit = 0;
-		n_proc_contigs = 0;
-		dp_hit_acc = 0;
-		top_hit_acc = 0;
-		strand = 0;
-		seq_id = 0;
-		ref_pos_l = 0;
-		ref_pos_r = 0;
+	/*void print_read() {
+		printf("%s \n", name.c_str());
+		for(uint32 i = 0; i < len; i++) {
+			printf("%c", iupacChar[(int) seq[i]]);
+		}
+		printf("\n");
+		for(uint32 i = 0; i < read->len; i++) {
+			printf("%c", iupacChar[(int) read->rc[i]]);
+		}
+		printf("\n");
+	}*/
+	
+	inline bool is_valid() {
+		return (valid_minhash_f || valid_minhash_rc);
+	}
+	void compare_and_update_best_aln(int* n_votes, seq_t* pos, bool rc) {
+		for(int i = 0; i < 2; i++) {
+				if(n_votes[i] > top_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+						second_best_aln.inlier_votes = top_aln.inlier_votes;
+						second_best_aln.total_votes = top_aln.total_votes;
+						second_best_aln.ref_start = top_aln.ref_start;
+					}
+					// update best alignment
+					top_aln.inlier_votes = n_votes[i];
+					top_aln.ref_start = pos[i];
+					top_aln.rc = rc;
+				} else if(n_votes[i] > second_best_aln.inlier_votes) {
+					if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+						second_best_aln.inlier_votes = n_votes[i];
+						second_best_aln.ref_start = pos[i];
+					}
+				}
+			}
 	}
 };
 typedef std::vector<read_t> VectorReads;
@@ -328,7 +358,6 @@ typedef struct {
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx);
 void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, ref_t& ref);
 void store_index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref);
-void index_reads_lsh(const char* readsFname, ref_t& ref, index_params_t* params, reads_t& ridx);
 void ref_kmer_fingerprint_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 
 #endif /*INDEX_H_*/
