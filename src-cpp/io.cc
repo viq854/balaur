@@ -501,7 +501,6 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 	char c;
 	while(!feof(readsFile)) {
 		read_t r;
-		memset(&r, 0, sizeof(r));
 		c = (char) getc(readsFile);
 		while(c != '@' && !feof(readsFile)) {
 			c = (char) getc(readsFile);

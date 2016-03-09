@@ -237,33 +237,25 @@ struct read_t {
 	// LSH sketches
 	VectorMinHash minhashes_f;		// minhash vector
 	VectorMinHash minhashes_rc;	// minhash vector for the reverse complement
-	char valid_minhash_f;
-	char valid_minhash_rc;
 
 	// alignment information
-	VectorU32 ref_bucket_id_matches_by_table;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
-	char ref_strand;
-	int n_match_f;
-
-	// local csr buckets
-	//std::vector<loc_t> buckets;
-	//std::vector<int> bucket_offsets;
-
 	std::vector<ref_match_t> ref_matches;
-	std::vector<kmer_cipher_t*> contig_kmer_ciphers;
-
+	
 	aln_t top_aln;
 	aln_t second_best_aln;
+	
+	//char ref_strand;
+	int n_match_f;
+	char valid_minhash_f;
+	char valid_minhash_rc;
 	int best_n_bucket_hits;
 	int true_n_bucket_hits;
 	bool any_bucket_hits;
 	int max_total_votes;
 	int max_total_votes_low_anchors;
-
-	// simulation alignment info/stats
-	char acc; // DEBUG: whether read matched accurately
+	char acc; 
 	char top_hit_acc;
 	char dp_hit_acc;
 	bool collected_true_hit;
@@ -271,13 +263,32 @@ struct read_t {
 	int bucketed_true_hit;
 	int comp_votes_hit;
 	int n_proc_contigs;
-
-	// original mapping information from simulations
 	int strand;
 	unsigned int seq_id;
 	uint32_t ref_pos_l;
 	uint32_t ref_pos_r;
-	read_t() {}
+	
+	read_t():  n_match_f(0),
+	 valid_minhash_f(0),
+	 valid_minhash_rc(0),
+	 best_n_bucket_hits(0),
+	 true_n_bucket_hits(0),
+	 any_bucket_hits(0),
+	 max_total_votes(0),
+	 max_total_votes_low_anchors(0),
+	 acc(0),
+	 top_hit_acc(0),
+	 dp_hit_acc(0),
+	 collected_true_hit(0),
+	 processed_true_hit(0),
+	 bucketed_true_hit(0),
+	 comp_votes_hit(0),
+	 n_proc_contigs(0),
+	 strand(0),
+	seq_id(0),
+	ref_pos_l(0),
+	ref_pos_r(0)
+	{}
 	
 	// assumes that reads were generated with wgsim
 	void parse_read_mapping() {
