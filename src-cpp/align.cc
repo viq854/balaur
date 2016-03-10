@@ -38,7 +38,8 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	// --- phase 1 ---
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads);
-
+	filter_candidate_contigs(reads);
+	
 	if(params->load_mhi) {
 		ref.index.release();
 		if(params->precomp_contig_file_name.size() != 0) {
@@ -108,6 +109,7 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task
 		total_size += task->offsets[task->offsets.size()-1]*sizeof(kmer_cipher_t);
 		total_contigs += task->offsets.size()-1;
 	}
+	printf("Total number of tasks: %llu \n", encrypt_kmer_buffers.size());
 	printf("Total contigs: %llu \n", total_contigs);
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
 }

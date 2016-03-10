@@ -10,5 +10,6 @@
 #define MAX_BUCKET_SIZE 1000
 
 void assemble_candidate_contigs(const ref_t& ref, reads_t& reads);
-
+void filter_candidate_contigs(reads_t& reads);
+ 
 #endif

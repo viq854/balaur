@@ -251,11 +251,19 @@ void assemble_candidate_contigs(const ref_t& ref, reads_t& reads) {
 				//_mm_prefetch((const char *)&ref.index.buckets_data[ref.index.bucket_offsets[bid]],_MM_HINT_T0);
 			}
 			find_candidate_contigs(ref, r, true);
-			
-			// post-process the assembled contigs
-			for(size_t c = 0; c < r->ref_matches.size(); c++) {
-				test_and_set_valid_contig(r->ref_matches[c], r->n_proc_contigs, r->best_n_bucket_hits);
-			}
+		}
+	}
+}
+
+void filter_candidate_contigs(reads_t& reads) {
+	for(uint32 i = 0; i < reads.reads.size(); i++) {
+		read_t* r = &reads.reads[i];
+		if(!r->is_valid()) continue;
+		for(size_t c = 0; c < r->ref_matches.size(); c++) {
+			if(r->n_match_f == 0 && r->ref_matches[c].rc) {
+				r->n_match_f = c;
+			} 
+			test_and_set_valid_contig(r->ref_matches[c], r->n_proc_contigs, r->best_n_bucket_hits);
 		}
 	}
 }
