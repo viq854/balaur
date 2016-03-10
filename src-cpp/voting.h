@@ -29,40 +29,62 @@ struct kmer_match_t {
 struct voting_results;
 
 struct voting_task {
-	// layout: read [len, ... kmers ...]  // contig 0 // contig 1 // ....
+	// layout: read [ ... kmers ...]  // contig 0 // contig 1 // ....
 	// read sequence (fwd or rc) is first, following by contig kmers
 	kmer_cipher_t* data;
 	std::vector<int> offsets; // n_contigs + 2
-	
+	std::vector<int> contig_orig_lens;
 	//uint64 key1_xor_pad;
 	//uint64 key2_mult_pad;
 	
 	// client-only data
 	int rid;
-	int strand;
+	enum strand_t {FWD, RC};
+	strand_t strand;
 	int start;
 	int end;
 	
 	inline int get_contig_len(const int contig_id) const {
-		return data[offsets[contig_id + 1]];
+		return contig_orig_lens[contig_id];
 	}
 	inline int get_contig_data_offset(const int contig_id) const {
-		return offsets[contig_id + 1] + 1;
+		return offsets[contig_id + 1] ;
 	}
 	inline int get_contig_data_len(const int contig_id) const {
-		return offsets[contig_id +2] - offsets[contig_id +1] - 1;
+		return offsets[contig_id +2] - offsets[contig_id +1] ;
+	}
+	
+	kmer_cipher_t* get_read() {
+		return &data[0];
+	}
+	
+	kmer_cipher_t* get_contig(const int contig_id) {
+		return &data[get_contig_data_offset(contig_id)];
+	}
+	
+	inline int get_data_len() {
+		if(offsets.size() == 0) return 0;
+		return offsets[offsets.size()-1];
 	}
 	
 	void alloc_len(const int len) {
-		if(offsets.size() == 0)  offsets.push_back(0);
-		int cur_size = offsets[offsets.size()-1];
-		cur_size += 1 + get_n_kmers(len, params->k2);
+		int cur_size = get_data_len();
+		if(cur_size == 0) { // allocating read space
+			cur_size += get_n_kmers(len, params->k2); // dense
+		} else {
+			cur_size += get_n_sampled_kmers(len, params->k2, params->sampling_intv); // sparse
+			contig_orig_lens.push_back(len);
+		}
 		offsets.push_back(cur_size);
 	}
 	
-	static voting_task* alloc_voting_task(const int rlen, const std::vector<ref_match_t>& contigs, const int start, const int end) {
+	static voting_task* alloc_voting_task(const int rlen, const int rid, const strand_t strand, const std::vector<ref_match_t>& contigs, const int start, const int end) {
 		voting_task* task = new voting_task();
 		task->alloc_len(rlen);
+		task->rid = rid;
+		task->strand = strand;
+		task->start = start;
+		task->end = end;
 		for(int i = start; i < end; i++) {
 			if(!contigs[i].valid) continue;
 			task->alloc_len(contigs[i].len);
@@ -71,8 +93,13 @@ struct voting_task {
 			delete task;
 			return 0;
 		}
-		task->data = new kmer_cipher_t[task->offsets[task->offsets.size()-1]];
+		task->data = new kmer_cipher_t[task->get_data_len()];
 		return task;
+	}
+	
+	void free() {
+		delete data;
+		delete this;
 	}
 	
 	void process(voting_results& out);

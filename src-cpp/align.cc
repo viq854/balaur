@@ -138,7 +138,7 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_result
 		uint64 key1_xor_pad = genrand64_int64();
 		uint64 key2_mult_pad = genrand64_int64();
 		if(r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, r.ref_matches, 0, r.n_match_f);
+			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
 			if(new_task != NULL) {
 				generate_voting_kmer_ciphers_read(&new_task->data[1], r.seq.c_str(), r.len, key1_xor_pad, key2_mult_pad);
 				for(int j = 0; j < r.n_match_f; j++) {
@@ -155,7 +155,7 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_result
 			}
 		}
 		if(r.ref_matches.size() - r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, r.ref_matches, r.n_match_f, r.ref_matches.size());
+			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::RC, r.ref_matches, r.n_match_f, r.ref_matches.size());
 			if(new_task != NULL) {
 				generate_voting_kmer_ciphers_read(&new_task->data[1], r.rc.c_str(), r.len, key1_xor_pad, key2_mult_pad);
 				for(int j = r.n_match_f; j < r.ref_matches.size(); j++) {
@@ -212,11 +212,11 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 		read_t& r = reads.reads[i];
 		if(!r.is_valid()) continue;
 		if(r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, r.ref_matches, 0, r.n_match_f);
+			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
 			if(new_task != NULL) encrypt_kmer_buffers.push_back(new_task);
 		}
 		if(r.ref_matches.size() - r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, r.ref_matches, r.n_match_f, r.ref_matches.size());
+			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::RC, r.ref_matches, r.n_match_f, r.ref_matches.size());
 			if(new_task != NULL) encrypt_kmer_buffers.push_back(new_task);
 		}
 	}
@@ -228,14 +228,14 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		read_t& r = reads.reads[task->rid];
 		uint64 key1_xor_pad = genrand64_int64();
 		uint64 key2_mult_pad = genrand64_int64();
-		if(task->strand == 0) {
-			generate_voting_kmer_ciphers_read(&task->data[1], r.seq.c_str(), r.len, key1_xor_pad, key2_mult_pad);
+		if(task->strand == voting_task::strand_t::FWD) {
+			generate_voting_kmer_ciphers_read(task->get_read(), r.seq.c_str(), r.len, key1_xor_pad, key2_mult_pad);
 		} else {
-			generate_voting_kmer_ciphers_read(&task->data[1], r.rc.c_str(), r.len, key1_xor_pad, key2_mult_pad);
+			generate_voting_kmer_ciphers_read(task->get_read(), r.rc.c_str(), r.len, key1_xor_pad, key2_mult_pad);
 		}
 		for(int j = task->start; j < task->end; j++) {
 			if(!r.ref_matches[j].valid) continue;
-			generate_voting_kmer_ciphers_ref(&task->data[1], ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
+			generate_voting_kmer_ciphers_ref(task->get_contig(j - task->start), ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
 		}
 	}
 }

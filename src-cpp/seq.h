@@ -77,4 +77,8 @@ static inline int get_n_kmers(const int len, const int k) {
 	return len - k + 1;
 }
 
+static inline int get_n_sampled_kmers(const int len, const int k, const int sampling_ratio) {
+	return get_n_kmers(len, k)/sampling_ratio;
+}
+
 #endif
