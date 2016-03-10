@@ -1,4 +1,5 @@
 #include "contigs.h"
+#include <bitset>
 
 // Priority heap support (used to process reference index buckets)
 struct heap_entry_t {
@@ -146,9 +147,11 @@ void process_contig(ref_match_t contig, read_t* r) {
 }
 
 inline void test_and_set_valid_contig(ref_match_t& ref_contig, const int n_proc_contigs, const int max_bucket_hits) {
+	ref_contig.valid = true;
 	if ((ref_contig.n_diff_bucket_hits < 2 && n_proc_contigs > params->proc_contigs_thr) 
 		|| (ref_contig.n_diff_bucket_hits < (int) (max_bucket_hits - params->dist_best_hit)))  {
-		ref_contig.valid = true;
+		std::cout << "xxx \n";
+		ref_contig.valid = false;
 	}
 }
 

@@ -48,10 +48,10 @@ struct voting_task {
 		return contig_orig_lens[contig_id];
 	}
 	inline int get_contig_data_offset(const int contig_id) const {
-		return offsets[contig_id + 1] ;
+		return offsets[contig_id] ;
 	}
 	inline int get_contig_data_len(const int contig_id) const {
-		return offsets[contig_id +2] - offsets[contig_id +1] ;
+		return offsets[contig_id + 1] - offsets[contig_id] ;
 	}
 	
 	kmer_cipher_t* get_read() {

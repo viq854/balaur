@@ -38,7 +38,6 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	// --- phase 1 ---
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads);
-	filter_candidate_contigs(reads);
 	
 	if(params->load_mhi) {
 		ref.index.release();
@@ -48,6 +47,7 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	} else {
 		load_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
 	}
+	filter_candidate_contigs(reads);
 
 	// --- phase 2 ---
 	load_kmer2_hashes(fastaName, ref, params);
@@ -215,13 +215,18 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 		if(!r.is_valid()) continue;
 		if(r.n_match_f > 0) {
 			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
-			if(new_task != NULL) encrypt_kmer_buffers.push_back(new_task);
+			if(new_task != 0) {
+				encrypt_kmer_buffers.push_back(new_task);
+			}
 		}
 		if(r.ref_matches.size() - r.n_match_f > 0) {
 			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::RC, r.ref_matches, r.n_match_f, r.ref_matches.size());
-			if(new_task != NULL) encrypt_kmer_buffers.push_back(new_task);
+			if(new_task != 0) {
+				encrypt_kmer_buffers.push_back(new_task);
+			}
 		}
 	}
+
 }
 
 void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers) {
@@ -237,6 +242,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		}
 		for(int j = task->start; j < task->end; j++) {
 			if(!r.ref_matches[j].valid) continue;
+			int contig_id = j - task->start;
 			generate_voting_kmer_ciphers_ref(task->get_contig(j - task->start), ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
 		}
 	}
