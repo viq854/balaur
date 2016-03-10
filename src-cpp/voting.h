@@ -53,6 +53,12 @@ struct voting_task {
 	inline int get_contig_data_len(const int contig_id) const {
 		return offsets[contig_id + 1] - offsets[contig_id] ;
 	}
+	inline int get_read_data_len() const {
+		return offsets[0];
+	}
+	inline int get_n_contigs() const {
+		return contig_orig_lens.size();
+	}
 	
 	kmer_cipher_t* get_read() {
 		return &data[0];
@@ -110,7 +116,7 @@ struct voting_stats {
 };
 
 struct voting_results {
-	enum TOPID {BEST, SECOND};
+	enum topid {BEST, SECOND};
 	int best_score[2];
 	int local_pos[2];
 	seq_t global_pos[2];

@@ -18,18 +18,18 @@ inline void record_vote(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, const 
 	votes[offset + match_aln_pos]++;
 }
 
-void record_vote_discretized(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, const int n_rk, const int n_ck, const int offset, std::vector<int>& votes) {
+void record_vote_discretized(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, const int max_rpos, const int max_cpos, const int offset, std::vector<int>& votes) {
 	const int bin_size = params->k2;
 	
 	const int rbin_idx = rkmer.pos;
 	const int rrange_start = rbin_idx*bin_size;
 	int rrange_end = rrange_start + bin_size;	
-	if(rrange_end > n_rk) rrange_end = n_rk;
+	if(rrange_end > max_rpos) rrange_end = max_rpos;
 	
 	const int cbin_idx = ckmer.pos;			
 	const int crange_start = cbin_idx*bin_size;
 	int crange_end = crange_start + bin_size;
-	if(crange_end > n_ck) crange_end = n_ck;	
+	if(crange_end > max_cpos) crange_end = max_cpos;	
 
 	const int s = crange_start - rrange_end + 1;
 	const int t = crange_end - rrange_start;
@@ -41,9 +41,9 @@ void record_vote_discretized(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, c
 
 // finds the matching contig and read kmers and records their votes
 // returns true if there was at least one match between the kmers
-bool vote_cast_and_count(const seq_t rlen, const seq_t clen,  const std::vector<kmer_enc_t>& read_kmers, const std::vector<kmer_enc_t>& contig_kmers, std::vector<int>& votes) {
-	votes.resize(clen + rlen);
-	const int cstart_pos = rlen;
+bool vote_cast_and_count(const std::vector<kmer_enc_t>& read_kmers, const std::vector<kmer_enc_t>& contig_kmers, const int max_rpos, const int max_cpos, std::vector<int>& votes) {
+	votes.resize(max_rpos + max_cpos); // minimal req: last read kmer + first contig kmer
+	const int cstart_pos = max_rpos;
 	uint32 skip = 0;
 	bool any_matches = false;
 	for(int i = 0; i < read_kmers.size(); i++) {
@@ -53,7 +53,7 @@ bool vote_cast_and_count(const seq_t rlen, const seq_t clen,  const std::vector<
 			if(!is_unique_kmer(contig_kmers, j)) continue;
 			if(read_kmers[i].hash == contig_kmers[j].hash) {
 				any_matches = true;
-				record_vote_discretized(read_kmers[i], contig_kmers[j], get_n_kmers(rlen, params->k2), get_n_kmers(clen, params->k2),  cstart_pos, votes);
+				record_vote_discretized(read_kmers[i], contig_kmers[j], max_rpos, max_cpos,  cstart_pos, votes);
 			} else if(contig_kmers[j].hash > read_kmers[i].hash) {
 					skip = j;
 					break;
@@ -169,11 +169,9 @@ void find_max_vote_mid(const std::vector<int> votes_prefsum, int& max_val, int& 
 }
 
 // dense, pos scrambled within bin_size
-void prepare_voting_read_kmers(const kmer_cipher_t* rkmers, const int rlen, std::vector<kmer_enc_t>& rvk) {
+void prepare_voting_read_kmers(const kmer_cipher_t* rkmers, std::vector<kmer_enc_t>& rvk) {
 	const int bin_size = params->k2;
-	const int n_kmers = rlen - params->k2 + 1;
-	rvk.resize(n_kmers);
-	for(int i = 0; i < n_kmers; i++) {
+	for(int i = 0; i < rvk.size(); i++) {
 		rvk[i] = kmer_enc_t(rkmers[i], i/bin_size);
 	}
 	std::sort(rvk.begin(), rvk.end(), kmer_enc_t::comp());
@@ -190,20 +188,18 @@ void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_e
 }
 
 void voting_task::process(voting_results& out) {
-	std::vector<kmer_enc_t> rvk;
-	int rlen = data[0];
-	prepare_voting_read_kmers(&data[1], rlen, rvk);
-	int n_contigs = 0; //TODO
-	// process each contig
+	const int n_read_kmers = get_read_data_len();
+	std::vector<kmer_enc_t> rvk(n_read_kmers);
+	prepare_voting_read_kmers(get_read(), rvk);
+	int n_contigs = get_n_contigs();
 	for(int i = 0; i < n_contigs; i++) {
-		int clen = get_contig_len(i);
-		int n_sampled_kmers = get_contig_data_len(i);
-		std::vector<kmer_enc_t> cvk(n_sampled_kmers);
-		prepare_voting_contig_kmers(&data[get_contig_data_offset(i)], cvk);
+		const int n_contig_kmers = get_contig_data_len(i);
+		std::vector<kmer_enc_t> cvk(n_contig_kmers);
+		prepare_voting_contig_kmers(get_contig(i), cvk);
 		
 		// find matches and count votes
 		std::vector<int> votes;
-		bool any_votes = vote_cast_and_count(rlen, clen, rvk, cvk, votes);
+		bool any_votes = vote_cast_and_count(rvk, cvk, n_read_kmers, get_n_kmers(get_contig_len(i), params->k2), votes);
 		if(any_votes) return;
 	
 		// convolution
@@ -211,11 +207,11 @@ void voting_task::process(voting_results& out) {
 		prefsum(votes, votes_prefsum);
 		// max vote
 		voting_results cur;
-		find_max_vote_mid(votes_prefsum , cur.best_score[0], cur.local_pos[0], params->delta_inlier, false, 0, 0);
-		cur.local_pos[0] -= rlen;
+		find_max_vote_mid(votes_prefsum , cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
+		cur.local_pos[0] -= n_read_kmers;
 		// second best
-		find_max_vote_mid(votes_prefsum , cur.best_score[1], cur.local_pos[1], params->delta_inlier, true, cur.local_pos[0], params->delta_x*params->delta_inlier);
-		cur.local_pos[1] -= rlen;
+		find_max_vote_mid(votes_prefsum , cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
+		cur.local_pos[1] -= n_read_kmers;
 		out.compare_and_update(cur);
 	}
 }
@@ -230,8 +226,8 @@ void run_voting(const std::vector<voting_task*>& tasks, std::vector<voting_resul
 	int n_nonzero = 0;
 	for(size_t i = 0; i < tasks.size(); i++) {
 		tasks[i]->process(results[i]);
-		if(results[i].best_score[0] > 0) {
-			sum += results[i].best_score[0];
+		if(results[i].best_score[voting_results::topid::BEST] > 0) {
+			sum += results[i].best_score[voting_results::topid::BEST];
 			n_nonzero++;
 		}
 	}
