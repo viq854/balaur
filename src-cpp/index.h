@@ -70,11 +70,6 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
-		set_kmer_hash_function();
-		set_minhash_hash_function();
-		set_minhash_sketch_hash_function();
-		generate_sparse_sketch_projections();
-		
 		proc_contigs_thr = 10000;
 		//if(ref_window_size > 150) proc_contigs_thr = 500;
 		//if(ref_window_size > 1000) proc_contigs_thr = 20;

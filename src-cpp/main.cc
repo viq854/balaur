@@ -102,7 +102,11 @@ int main(int argc, char *argv[]) {
 			default: return 0;
 		}
 	}
-
+	set_kmer_hash_function();
+	set_minhash_hash_function();
+	set_minhash_sketch_hash_function();
+	generate_sparse_sketch_projections();
+		
 	printf("**********BALAUR**************\n");
 	srand(1);
 	params->n_buckets = pow(2, params->n_buckets_pow2);
