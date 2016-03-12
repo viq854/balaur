@@ -150,7 +150,6 @@ inline void test_and_set_valid_contig(ref_match_t& ref_contig, const int n_proc_
 	ref_contig.valid = true;
 	if ((ref_contig.n_diff_bucket_hits < 2 && n_proc_contigs > params->proc_contigs_thr) 
 		|| (ref_contig.n_diff_bucket_hits < (int) (max_bucket_hits - params->dist_best_hit)))  {
-		std::cout << "xxx \n";
 		ref_contig.valid = false;
 	}
 }
@@ -259,12 +258,14 @@ void assemble_candidate_contigs(const ref_t& ref, reads_t& reads) {
 }
 
 void filter_candidate_contigs(reads_t& reads) {
+	bool first_rc = true;
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(!r->is_valid()) continue;
 		for(size_t c = 0; c < r->ref_matches.size(); c++) {
-			if(r->n_match_f == 0 && r->ref_matches[c].rc) {
+			if(r->ref_matches[c].rc && first_rc) {
 				r->n_match_f = c;
+				first_rc = false;
 			} 
 			test_and_set_valid_contig(r->ref_matches[c], r->n_proc_contigs, r->best_n_bucket_hits);
 		}

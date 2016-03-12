@@ -12,3 +12,6 @@ inline bool pos_in_range_asym(uint32 pos1, uint32 pos2, uint32 delta1, uint32 de
 	uint32 delta11 = pos2 > delta1 ? delta1 : pos2;
 	return pos1 > pos2 - delta11 && pos1 < pos2 + delta2;
 }
+inline bool pos_in_intv(uint32 pos1, uint32 start, uint32 len) {
+	return pos1 >= start && pos1 <= (start + len);
+}

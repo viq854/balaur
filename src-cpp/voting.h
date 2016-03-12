@@ -34,11 +34,13 @@ struct voting_task {
 	kmer_cipher_t* data;
 	std::vector<int> offsets; // n_contigs + 2
 	std::vector<int> contig_orig_lens;
+	std::vector<int> contig_ids;
 	//uint64 key1_xor_pad;
 	//uint64 key2_mult_pad;
 	
 	// client-only data
 	int rid;
+	int true_cid;
 	enum strand_t {FWD, RC};
 	strand_t strand;
 	int start;
@@ -112,7 +114,7 @@ struct voting_task {
 };
 
 struct voting_stats {
-		float avg_score;
+		int avg_score;
 };
 
 struct voting_results {

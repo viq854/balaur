@@ -129,7 +129,7 @@ void find_kmer_matches(const std::vector<kmer_enc_t>& read_kmers, const std::vec
 }*/
 
 // optimized implementation of the convolution step using the prefix sum
-void prefsum(const std::vector<int>& votes, std::vector<int> votes_prefsum) {
+void prefsum(const std::vector<int>& votes, std::vector<int>& votes_prefsum) {
 	votes_prefsum.resize(votes.size());
 	votes_prefsum[0] = votes[0];
 	for(int i = 1; i < votes.size(); i++) {
@@ -141,7 +141,7 @@ void prefsum(const std::vector<int>& votes, std::vector<int> votes_prefsum) {
 // in the convolved votes array (optimization: convolution is done on the fly using the prefix sum)
 // returns the middle position in the range of positions with the same max value
 // can selectively exclude the vecitiny of a given position from consideration (e.g. used for finding second best)
-void find_max_vote_mid(const std::vector<int> votes_prefsum, int& max_val, int& max_idx, const int conv_range, const bool selective, const int exclude_pos, const int exclude_range) {
+void find_max_vote_mid(const std::vector<int>& votes_prefsum, int& max_val, int& max_idx, const int conv_range, const bool selective, const int exclude_pos, const int exclude_range) {
 	max_val = 0;
 	for(int i = 0; i < votes_prefsum.size(); i++) {
 		if(selective && pos_in_range(exclude_pos, i, exclude_range)) continue;
@@ -187,6 +187,8 @@ void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_e
 	std::sort(cvk.begin(), cvk.end(), kmer_enc_t::comp());
 }
 
+static int n_dropped = 0;
+static int n_kept = 0;
 void voting_task::process(voting_results& out) {
 	const int n_read_kmers = get_read_data_len();
 	std::vector<kmer_enc_t> rvk(n_read_kmers);
@@ -200,19 +202,47 @@ void voting_task::process(voting_results& out) {
 		// find matches and count votes
 		std::vector<int> votes;
 		bool any_votes = vote_cast_and_count(rvk, cvk, n_read_kmers, get_n_kmers(get_contig_len(i), params->k2), votes);
-		if(any_votes) return;
-	
+		if(!any_votes) {
+			if(true_cid == i) {
+				n_dropped++;
+			}
+			continue;
+		}
+
+		if(true_cid == i) {
+			n_kept++;
+		}
+
 		// convolution
 		std::vector<int> votes_prefsum;
 		prefsum(votes, votes_prefsum);
 		// max vote
 		voting_results cur;
-		find_max_vote_mid(votes_prefsum , cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
+		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
 		cur.local_pos[0] -= n_read_kmers;
 		// second best
-		find_max_vote_mid(votes_prefsum , cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
+		//find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
 		cur.local_pos[1] -= n_read_kmers;
+		cur.contig_id[0] = contig_ids[i];
+		cur.contig_id[1] = contig_ids[i];
 		out.compare_and_update(cur);
+
+		//if(true_cid == i) {
+			/*std::cout << "contig\n";
+			for(int x = 0; x < n_contig_kmers; x++) {
+				std::cout << cvk[x].hash << " ";
+			} std::cout << "\n";
+			std::cout << "read\n";
+			for(int x = 0; x < n_read_kmers; x++) {
+                                std::cout << rvk[x].hash << " ";
+                        } std::cout << "\n";
+			*/
+			//std::cout << "true votes " << cur.best_score[voting_results::topid::BEST] << "\n";
+			//std::cout << "fin true votes " << out.best_score[voting_results::topid::BEST] << "\n";
+			//for(int x = 0; x < votes.size(); x++) {
+			//	std::cout << (int) votes_prefsum[x] << " ";
+			//} std::cout <<"\n";
+		//}
 	}
 }
 
@@ -225,6 +255,8 @@ void run_voting(const std::vector<voting_task*>& tasks, std::vector<voting_resul
 	int sum = 0;
 	int n_nonzero = 0;
 	for(size_t i = 0; i < tasks.size(); i++) {
+		results[i].rid = tasks[i]->rid;
+		results[i].rc = tasks[i]->strand;
 		tasks[i]->process(results[i]);
 		if(results[i].best_score[voting_results::topid::BEST] > 0) {
 			sum += results[i].best_score[voting_results::topid::BEST];
@@ -234,4 +266,5 @@ void run_voting(const std::vector<voting_task*>& tasks, std::vector<voting_resul
 	if(n_nonzero > 0) {
 		stats.avg_score = sum/n_nonzero;
 	}
+	std::cout << n_dropped << " " << n_kept << "\n";
 }
