@@ -44,6 +44,7 @@ void apply_keys(kmer_cipher_t* ciphers, const int n_ciphers, const uint64 key1, 
 	}
 }
 
+// simple repeat masking using a map for lookups
 void mask_repeats(kmer_cipher_t* ciphers, const int n_ciphers) {
 	std::unordered_map<kmer_cipher_t, int> s;
 	std::pair<std::unordered_map<kmer_cipher_t, int>::iterator, bool> r;
@@ -56,28 +57,57 @@ void mask_repeats(kmer_cipher_t* ciphers, const int n_ciphers) {
 	}
 }
 
-// contig hashing
-static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19};
-void lookup_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len, const ref_t& ref) {
-	const int n_kmers = get_n_kmers(seq_len, params->k2);
-	const int n_sampled_kmers = get_n_sampled_kmers(seq_len, params->k2, params->sampling_intv);
-	for(int i = 0; i < n_sampled_kmers; i++) {
-		const seq_t p = i*params->sampling_intv;
-		ciphers[i] = ref.precomputed_kmer2_hashes[seq_offset + p];
-	}
-	
-	for(int i = 0; i < n_sampled_kmers; i++) {
-		const seq_t p = i*params->sampling_intv;
-		const uint16_t r = ref.precomputed_neighbor_repeats[seq_offset + p];
+void compute_repeat_mask(const seq_t offset, const int len, const std::vector<uint16_t>& repeat_info, std::vector<bool>& repeat_mask) {
+	repeat_mask.resize(len);
+	for(int i = 0; i < len; i++) {
+		const uint16_t r = repeat_info[offset + i]; // distance to closest repeat
 		if(r == 0) continue; // unique kmer
-		const seq_t next_occ =  p + r;
-		if(next_occ >= n_kmers) continue; // repeat is outside the contig
-		ciphers[i] = genrand64_int64();
-		if(next_occ % params->sampling_intv == 0) {
-			ciphers[next_occ/params->sampling_intv] = genrand64_int64();
-		}
+		const seq_t next_occ =  i + r;
+		if(next_occ >= len) continue; // repeat is outside the contig
+		repeat_mask[i] = true;
+		repeat_mask[next_occ] = true;;
 	}
 }
+
+// strided lookup of precomputed ref kmers (access pattern stored in the shuffle array)
+void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle, const seq_t offset, const std::vector<kmer_cipher_t>& precomp_ref_hashes) {
+	for(int i = 0; i < shuffle.size(); i++) {
+		ciphers[i] = precomp_ref_hashes[offset + shuffle[i]];
+	}
+}
+
+static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19};
+bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes, const std::vector<uint16_t>& repeat_info) {
+	const int n_kmers = get_n_kmers(len, params->k2);
+	std::vector<bool> repeat_mask;
+	compute_repeat_mask(offset, n_kmers, repeat_info, repeat_mask);
+	
+	bool unique_sampled_bins = true;
+	const int n_bins = ceil(((float)n_kmers)/params->bin_size);
+	for(int i = 0; i < n_bins; i++) {
+		const int kmer_offset = i*params->bin_size;
+		const int cipher_offset = kmer_offset/params->sampling_intv;
+		int bin_size = params->bin_size;
+		if(i == n_bins -1) bin_size = n_kmers - kmer_offset;
+		const int n_sampled = bin_size/params->sampling_intv;
+		std::vector<int> shuffle(n_sampled); 
+		int n_unique = 0;
+		for(int j = 0; j < bin_size; j++) {
+			if(n_unique == n_sampled) break; // sampled sufficient unique kmers 
+			const int idx = bin_shuffle[j];
+			if(idx >= bin_size || repeat_mask[kmer_offset +idx]) continue; // index out of range in the last bucket or repeat
+			shuffle[n_unique] = idx;
+			n_unique++;
+		}
+		gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
+		if(n_unique != n_sampled) unique_sampled_bins = false;
+		for(int j = n_unique; j < n_sampled; j++) {
+			 ciphers[cipher_offset + j] = genrand64_int64();
+		}
+	}
+	return unique_sampled_bins;
+}
+
 
 //static int n_prob_reads = 0;
 //void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len,

@@ -58,6 +58,7 @@ typedef struct {
 	int mapq_scale_x;
 	int sampling_intv;
 	int proc_contigs_thr;
+	int bin_size;
 
 	// multi-threading
 	uint32_t n_threads;
@@ -71,6 +72,7 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
+		bin_size = 20;
 		proc_contigs_thr = 10000;
 		//if(ref_window_size > 150) proc_contigs_thr = 500;
 		//if(ref_window_size > 1000) proc_contigs_thr = 20;

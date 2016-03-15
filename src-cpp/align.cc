@@ -250,7 +250,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			if(!r.ref_matches[j].valid) continue;
 			int contig_id = idx;
 			idx++;
-			lookup_sha1_ciphers(task->get_contig(contig_id), ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, ref);
+			lookup_sha1_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
 			
 /*#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
