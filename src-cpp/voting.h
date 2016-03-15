@@ -35,6 +35,8 @@ struct voting_task {
 	std::vector<int> offsets; // n_contigs + 2
 	std::vector<int> contig_orig_lens;
 	std::vector<int> contig_ids;
+	std::vector<seq_t> global_pos; //TEMP
+
 	//uint64 key1_xor_pad;
 	//uint64 key2_mult_pad;
 	
@@ -96,12 +98,15 @@ struct voting_task {
 		for(int i = start; i < end; i++) {
 			if(!contigs[i].valid) continue;
 			task->alloc_len(contigs[i].len);
+                        task->contig_ids.push_back(i);
+                        task->global_pos.push_back(contigs[i].pos); // TEMP
 		}
 		if(task->offsets.size() == 1) { // all the contigs were filtered out
 			delete task;
 			return 0;
 		}
 		task->data = new kmer_cipher_t[task->get_data_len()];
+		task->true_cid = task->get_n_contigs() + 1; // default to no contigs
 		return task;
 	}
 	
@@ -126,21 +131,35 @@ struct voting_results {
 	int rid;
 	bool rc;
 	
+	voting_results() {
+		best_score[0] = 0;
+		best_score[1] = 0;
+		for(int i = 0; i < 2; i++) {
+			contig_id[i] = -1;
+			global_pos[i] = 0;
+		}
+	}
+
 	void compare_and_update(voting_results& vr) {
 		for(int i = 0; i < 2; i++) {
 			if(vr.best_score[i] > best_score[BEST]) {
-				if(!pos_in_range(vr.local_pos[i], local_pos[BEST], 30)) {
-					best_score[SECOND] = best_score[BEST] ;
-					local_pos[SECOND] = local_pos[BEST] ;
+				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], 30)) {
+					best_score[SECOND] = best_score[BEST];
+					local_pos[SECOND] = local_pos[BEST];
+					contig_id[SECOND] = contig_id[BEST];
+					global_pos[SECOND] = global_pos[BEST];
 				}
 				// update best alignment
 				best_score[BEST] = vr.best_score[i];
 				local_pos[BEST] = vr.local_pos[i];
 				contig_id[BEST] = vr.contig_id[i];
-			} else if(vr.best_score[i]> best_score[SECOND] ) {
-				if(!pos_in_range(local_pos[i],best_score[BEST], 30)) {
+				global_pos[BEST] = vr.global_pos[i];
+			} else if(vr.best_score[i]> best_score[SECOND]) {
+				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], 30)) {
 					best_score[SECOND]  = vr.best_score[i];
 					local_pos[SECOND]  = vr.local_pos[i];
+					contig_id[SECOND] = vr.contig_id[i];
+					global_pos[SECOND] = vr.global_pos[i];
 				}
 			}
 		}

@@ -102,13 +102,13 @@ int main(int argc, char *argv[]) {
 			default: return 0;
 		}
 	}
+	srand(1);
 	params->set_kmer_hash_function();
 	params->set_minhash_hash_function();
 	params->set_minhash_sketch_hash_function();
 	params->generate_sparse_sketch_projections();
 		
 	printf("**********BALAUR**************\n");
-	srand(1);
 	params->n_buckets = pow(2, params->n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
 		printf("Mode: Indexing \n");
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
-		params->load_mhi = false;
+		params->load_mhi = true;
 		params->monolith = false;
 
 #if(VANILLA)

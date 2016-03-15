@@ -283,7 +283,12 @@ struct read_t {
 	seq_id(0),
 	ref_pos_l(0),
 	ref_pos_r(0)
-	{}
+	{
+		top_aln.inlier_votes = 0;
+        	second_best_aln.inlier_votes = 0;
+		top_aln.ref_start = 0;
+		second_best_aln.ref_start = 0;
+	}
 	
 	// assumes that reads were generated with wgsim
 	void parse_read_mapping() {

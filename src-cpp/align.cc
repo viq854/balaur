@@ -177,7 +177,12 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 	for(size_t i = 0; i < results.size(); i++) {
 		voting_results& task_out = results[i];
 		read_t& r = reads.reads[task_out.rid];
-		task_out.convert2global_pos(r.ref_matches[task_out.contig_id[0]].pos, r.ref_matches[task_out.contig_id[1]].pos);
+		seq_t global_offset1 = 0;
+		seq_t global_offset2 = 0;
+		if(task_out.contig_id[0] >= 0) global_offset1 = r.ref_matches[task_out.contig_id[0]].pos; 
+		if(task_out.contig_id[1] >= 0) global_offset2 = r.ref_matches[task_out.contig_id[1]].pos;
+		
+		task_out.convert2global_pos(global_offset1, global_offset2);
 		r.compare_and_update_best_aln(task_out.best_score, task_out.global_pos, task_out.rc);
 	}
 	
@@ -193,7 +198,7 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 				r.top_aln.score = params->mapq_scale_x*(r.top_aln.inlier_votes - r.second_best_aln.inlier_votes)/r.top_aln.inlier_votes;
 				// scale by the distance from theoretical best possible votes
 				if(stats.avg_score > 0 && params->enable_scale) {
-					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float) stats.avg_score;
+					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float)1082; //(float) stats.avg_score;
 				}
 			}
 			if(r.top_aln.rc) {
@@ -214,8 +219,6 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 	for(size_t i = 0; i < reads.reads.size(); i++) {
 		read_t& r = reads.reads[i];
 		if(!r.is_valid()) continue;
-		
-		//std::cout << r.n_match_f << " " << r.ref_matches.size() << "\n";
 		if(r.n_match_f > 0) {
 			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
 			if(new_task != 0) {
@@ -248,17 +251,16 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			int contig_id = idx;
 			idx++;
 			generate_voting_kmer_ciphers_ref(task->get_contig(contig_id), ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
-			task->true_cid = task->get_n_contigs() + 1;
-			task->contig_ids.push_back(j);
-			#if(SIM_EVAL)
+			
+#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
 	 		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
 				r.collected_true_hit = true;
 				r.processed_true_hit = true;
 				r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
-				task->true_cid = contig_id-1;
+				task->true_cid = contig_id;
 			}
-			#endif
+#endif
 
 		}
 	}

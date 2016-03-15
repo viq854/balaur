@@ -31,7 +31,7 @@ void record_vote_discretized(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, c
 	int crange_end = crange_start + bin_size;
 	if(crange_end > max_cpos) crange_end = max_cpos;	
 
-	const int s = crange_start - rrange_end + 1;
+	const int s = crange_start - rrange_end; // + 1;
 	const int t = crange_end - rrange_start;
 
 	for(int k = s; k < t; k++) {
@@ -53,7 +53,7 @@ bool vote_cast_and_count(const std::vector<kmer_enc_t>& read_kmers, const std::v
 			if(!is_unique_kmer(contig_kmers, j)) continue;
 			if(read_kmers[i].hash == contig_kmers[j].hash) {
 				any_matches = true;
-				record_vote_discretized(read_kmers[i], contig_kmers[j], max_rpos, max_cpos,  cstart_pos, votes);
+				record_vote_discretized(read_kmers[i], contig_kmers[j], max_rpos, max_cpos, cstart_pos, votes);
 			} else if(contig_kmers[j].hash > read_kmers[i].hash) {
 					skip = j;
 					break;
@@ -153,6 +153,7 @@ void find_max_vote_mid(const std::vector<int>& votes_prefsum, int& max_val, int&
 			max_idx = i;
 		}
 	}
+	if(selective) return; // && max_val == 0) return;
 	// pick the middle position in the max-val range
 	int i = max_idx; 
 	while(i < votes_prefsum.size()) {
@@ -187,8 +188,6 @@ void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_e
 	std::sort(cvk.begin(), cvk.end(), kmer_enc_t::comp());
 }
 
-static int n_dropped = 0;
-static int n_kept = 0;
 void voting_task::process(voting_results& out) {
 	const int n_read_kmers = get_read_data_len();
 	std::vector<kmer_enc_t> rvk(n_read_kmers);
@@ -203,46 +202,25 @@ void voting_task::process(voting_results& out) {
 		std::vector<int> votes;
 		bool any_votes = vote_cast_and_count(rvk, cvk, n_read_kmers, get_n_kmers(get_contig_len(i), params->k2), votes);
 		if(!any_votes) {
-			if(true_cid == i) {
-				n_dropped++;
-			}
 			continue;
-		}
-
-		if(true_cid == i) {
-			n_kept++;
 		}
 
 		// convolution
 		std::vector<int> votes_prefsum;
 		prefsum(votes, votes_prefsum);
+
 		// max vote
 		voting_results cur;
 		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
-		cur.local_pos[0] -= n_read_kmers;
 		// second best
-		//find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
+		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
+		cur.local_pos[0] -= n_read_kmers;
 		cur.local_pos[1] -= n_read_kmers;
 		cur.contig_id[0] = contig_ids[i];
 		cur.contig_id[1] = contig_ids[i];
+		cur.global_pos[0] = global_pos[i];
+		cur.global_pos[1] = global_pos[i];
 		out.compare_and_update(cur);
-
-		//if(true_cid == i) {
-			/*std::cout << "contig\n";
-			for(int x = 0; x < n_contig_kmers; x++) {
-				std::cout << cvk[x].hash << " ";
-			} std::cout << "\n";
-			std::cout << "read\n";
-			for(int x = 0; x < n_read_kmers; x++) {
-                                std::cout << rvk[x].hash << " ";
-                        } std::cout << "\n";
-			*/
-			//std::cout << "true votes " << cur.best_score[voting_results::topid::BEST] << "\n";
-			//std::cout << "fin true votes " << out.best_score[voting_results::topid::BEST] << "\n";
-			//for(int x = 0; x < votes.size(); x++) {
-			//	std::cout << (int) votes_prefsum[x] << " ";
-			//} std::cout <<"\n";
-		//}
 	}
 }
 
@@ -266,5 +244,4 @@ void run_voting(const std::vector<voting_task*>& tasks, std::vector<voting_resul
 	if(n_nonzero > 0) {
 		stats.avg_score = sum/n_nonzero;
 	}
-	std::cout << n_dropped << " " << n_kept << "\n";
 }

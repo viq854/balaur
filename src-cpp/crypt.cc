@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include "hash.h"
 #include "index.h"
+#include "seq.h"
 
 static int max_repeats = 0;
 static int max_repeats_contig = 0;
@@ -55,17 +56,25 @@ static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19}
 void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len,
 		const uint64 key1, const uint64 key2, const ref_t& ref) {
 
-	const int n_kmers = seq_len - params->k2 + 1;
-	memcpy(&ciphers[0], &ref.precomputed_kmer2_hashes[seq_offset], n_kmers*sizeof(kmer_cipher_t));
+	const int n_kmers = get_n_kmers(seq_len, params->k2);
+	//memcpy(&ciphers[0], &ref.precomputed_kmer2_hashes[seq_offset], n_kmers*sizeof(kmer_cipher_t));
+	//ciphers[i] = CityHash64(&seq[seq_offset + p], params->k2);
+//#if(!VANILLA)
 
-#if(!VANILLA)
-	for(int i = 0; i < n_kmers; i+= params->sampling_intv) {
-		uint16_t r = ref.precomputed_neighbor_repeats[seq_offset + i];
-		if(ciphers[i] != 0 && (r == 0 || r >= (n_kmers-i))) {
-			ciphers[i/params->sampling_intv] = (ciphers[i] ^ key1)*key2;
+	const int n_sampled_kmers = get_n_sampled_kmers(seq_len, params->k2, params->sampling_intv);
+	for(int i = 0; i < n_sampled_kmers; i++) {
+                seq_t p = i*params->sampling_intv;
+		ciphers[i] = ref.precomputed_kmer2_hashes[seq_offset + p];
+	}
+
+	for(int i = 0; i < n_sampled_kmers; i++) {
+		seq_t p = i*params->sampling_intv;
+		uint16_t r = ref.precomputed_neighbor_repeats[seq_offset + p];
+		if(ciphers[i] != 0 && (r == 0 || r >= (n_kmers-p))) {
+			ciphers[i] = (ciphers[i] ^ key1)*key2;
 		} else {
-			ciphers[i/params->sampling_intv] = genrand64_int64();
-                        if(r > 0 && r < (n_kmers-i)) ciphers[i+r] = 0;
+			ciphers[i] = genrand64_int64();
+                        if(r > 0 && r < (n_kmers-p) && (p+r) % params->sampling_intv == 0) ciphers[(p+r)/params->sampling_intv] = 0;
 		}
 	}
 	/*const int n_bins = ceil(((float)n_kmers)/params->k2);
@@ -102,5 +111,5 @@ void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, c
 		//	break;
 		}
 	}*/
-#endif
+//#endif
 }

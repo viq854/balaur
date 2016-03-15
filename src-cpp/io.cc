@@ -578,6 +578,14 @@ void store_precomp_contigs(const char* fileName, reads_t& reads) {
 		file.write(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
 	}
 }
+
+struct ref_match_old_t {
+	uint32_t pos;
+	uint32 len;
+	bool rc;
+	int n_diff_bucket_hits;
+};
+
 void load_precomp_contigs(const char* fileName, reads_t& reads) {
 	std::string fname(fileName);
 	std::ifstream file;
@@ -592,6 +600,11 @@ void load_precomp_contigs(const char* fileName, reads_t& reads) {
 		uint32 ref_size;
 		file.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
 		r->ref_matches.resize(ref_size);
+		//std::vector<ref_match_old_t> matches(ref_size); 
+		//file.read(reinterpret_cast<char*>(&(matches[0])), matches.size()*sizeof(ref_match_old_t));
+		//for(int x = 0; x < ref_size; x++) {
+		//	r->ref_matches[x] = ref_match_t(matches[x].pos, matches[x].len, matches[x].rc, matches[x].n_diff_bucket_hits);
+		//}
 		file.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
 		r->n_proc_contigs = ref_size;
 		for(uint32 j = 0; j < r->ref_matches.size(); j++) {

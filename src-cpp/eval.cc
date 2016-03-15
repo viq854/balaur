@@ -69,11 +69,11 @@ void eval(reads_t& reads, const ref_t& ref) {
 		}
 		confident++;
 		if(!r->top_aln.rc) {
-			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 400)) {
+			if(pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 20)) {
 				r->dp_hit_acc = 1;
 			}
 		} else {
-			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 400)) {
+			if(pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 20)) {
 				r->dp_hit_acc = 1;
 			}
 		}

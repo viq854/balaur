@@ -86,21 +86,17 @@ bool minhash(const std::string& seq, const VectorBool& ref_freq_kmer_bitmap, Vec
 		uint32 n_valid_kmers = 0;
 		
 		kmer_parser_t seq_parser;
-		seq_parser.init(seq, params->k);
-		kmer_t kmer;
-		for(int i = 0; i < n_kmers; i++) {
-			//seq_parser.get_next_kmer(kmer);
-			//if(!kmer.valid) continue;
-			uint32_t packed_kmer;
-                	if((pack_32(&seq[i], params->k, &packed_kmer) < 0) || ref_freq_kmer_bitmap[packed_kmer]) {
-                        	continue;
-                	}
-			//if(ref_freq_kmer_bitmap[kmer.packed]) {
-			//		continue;
-			//}
+                seq_parser.init(seq, params->k);
+                kmer_t kmer;
+		while(seq_parser.get_next_kmer(kmer)) {
+			if(!kmer.valid) continue;
+			if(ref_freq_kmer_bitmap[kmer.packed]) continue;
+
+			int i = seq_parser.pos - params->k;
 			v[n_valid_kmers] = CityHash32(&seq[i], params->k); 
 			n_valid_kmers++;
-        }
+        	}
+
         if(n_valid_kmers <= 2*params->k) {
                 return false;
         }
