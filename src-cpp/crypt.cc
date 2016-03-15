@@ -6,6 +6,7 @@
 #include "hash.h"
 #include "index.h"
 #include "seq.h"
+#include "crypt.h"
 
 static int max_repeats = 0;
 static int max_repeats_contig = 0;
@@ -14,11 +15,13 @@ static std::vector<int> n_repeats_v_contig;
 
 // read hashing
 // repeat kmers are masked by default according to the repeat_mask
-void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const std::vector<bool> repeat_mask) {
+void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const std::vector<bool>& repeat_mask, bool rev_mask) {
 		const int n_kmers = get_n_kmers(seq_len, params->k2);
 		uint32_t hash[5];
 		for(int i = 0; i < n_kmers; i++) {
-			if(repeat_mask[i]) {
+			int mask_idx = i;
+			if(rev_mask) mask_idx = n_kmers-i-1;
+			if(repeat_mask[mask_idx]) {
 				ciphers[i]  = genrand64_int64();
 			} else {
 				sha1_hash(reinterpret_cast<const uint8_t*>(&seq[i]), params->k2, hash);

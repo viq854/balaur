@@ -241,9 +241,9 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		r.set_repeat_mask(params->k2);
 
 		if(task->strand == voting_task::strand_t::FWD) {
-			generate_sha1_ciphers(task->get_read(), r.seq.c_str(), r.len, r.repeat_mask);
+			generate_sha1_ciphers(task->get_read(), r.seq.c_str(), r.len, r.repeat_mask, false);
 		} else {
-			generate_sha1_ciphers(task->get_read(), r.rc.c_str(), r.len, r.repeat_mask);
+			generate_sha1_ciphers(task->get_read(), r.rc.c_str(), r.len, r.repeat_mask, true);
 		}
 		int idx = 0;
 		for(int j = task->start; j < task->end; j++) {
@@ -252,7 +252,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			idx++;
 			lookup_sha1_ciphers(task->get_contig(contig_id), ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, ref);
 			
-#if(SIM_EVAL)
+/*#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
 	 		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
 				r.collected_true_hit = true;
@@ -260,12 +260,12 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 				r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
 				task->true_cid = contig_id;
 			}
-#endif
+#endif*/
 		
-		// apply the task-specific keys
+			// apply the task-specific keys
+		}
 		uint64 key1_xor_pad = genrand64_int64();
 		uint64 key2_mult_pad = genrand64_int64();
 		apply_keys(task->get_data(), task->get_data_len(), key1_xor_pad, key2_mult_pad);
-		}
 	}
 }

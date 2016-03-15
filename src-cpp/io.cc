@@ -557,6 +557,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 		for(uint32 i = 0; i < r.len; i++) {
 			r.rc.append(1, nt4_complement[(int)r.seq.at(r.len-i-1)]);
 		}
+		r.rid = reads.reads.size();
 		reads.reads.push_back(r);
 	}
 	fclose(readsFile);

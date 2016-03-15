@@ -2,6 +2,9 @@
 #define SEQ_H
 
 #pragma once
+#include <istream>
+#include <sstream>
+#include <iostream>
 #include "types.h"
 
 // compression
@@ -21,17 +24,19 @@ int pack_64(const char *seq, const int length, uint64 *ret);
 void unpack_32(uint32 w, unsigned char *seq, const uint32 length);
 
 #define CHAR_MASK 3ULL
-typedef uint32 packed_kmer_t;
+//typedef uint32 packed_kmer_t;
+template<typename packed_kmer_t>
 struct kmer_t {
 	packed_kmer_t packed;
 	bool valid; // does not contain any ambiguous bases
 };
 
+template<typename packed_kmer_t, int NBITS_IN_WORD>
 struct kmer_parser_t {
 	std::string s; // sequence to parse
 	int kmer_len;
 	seq_t pos; // position in the sequence
-	kmer_t kmer;
+	kmer_t<packed_kmer_t> kmer;
 	bool first;
 	bool allowN;
 
@@ -53,7 +58,7 @@ struct kmer_parser_t {
 				kmer.valid = false;
 				break;
 			}
-			kmer.packed |= ((c & CHAR_MASK) << (BITS_IN_WORD - (i+1) * BITS_PER_CHAR));
+			kmer.packed |= ((c & CHAR_MASK) << (NBITS_IN_WORD - (i+1) * BITS_PER_CHAR));
 		}
 		if(kmer.valid) {
 			pos += kmer_len;
@@ -70,11 +75,11 @@ struct kmer_parser_t {
 			return;
 		}
 		kmer.packed <<= BITS_PER_CHAR;
-		kmer.packed |= ((c & CHAR_MASK) << (BITS_IN_WORD - kmer_len * BITS_PER_CHAR));
+		kmer.packed |= ((c & CHAR_MASK) << (NBITS_IN_WORD - kmer_len * BITS_PER_CHAR));
 		pos++;
 	}
 
-	bool get_next_kmer(kmer_t& new_kmer) {
+	bool get_next_kmer(kmer_t<packed_kmer_t>& new_kmer) {
 		if(pos >= s.size()) return false;
 		// process the next char in the sequence
 		if (first || !kmer.valid) {
@@ -98,14 +103,14 @@ static inline int get_n_sampled_kmers(const int len, const int k, const int samp
 	return get_n_kmers(len, k)/sampling_ratio;
 }
 
-static void find_repeats(const std::string& seq, const int k, std::vector<bool> repeat_mask) {
+static void find_repeats(const std::string& seq, const int k, std::vector<bool>& repeat_mask) {
 	const int n_kmers = get_n_kmers(seq.size(), k);
-	std::vector<std::pair<packed_kmer_t, int>> kmers(n_kmers);
+	std::vector<std::pair<uint64, int>> kmers(n_kmers);
 	repeat_mask.resize(n_kmers);
-	kmer_parser_t seq_parser;
+	kmer_parser_t<uint64, 64> seq_parser;
 	seq_parser.init(seq, k);
 	seq_parser.allowN = true;
-	kmer_t kmer;
+	kmer_t<uint64> kmer;
 	for(int i = 0; i < n_kmers; i++) {
 		seq_parser.get_next_kmer(kmer);
 		kmers[i] = std::make_pair(kmer.packed, i);

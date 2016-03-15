@@ -85,9 +85,9 @@ bool minhash(const std::string& seq, const VectorBool& ref_freq_kmer_bitmap, Vec
 		minhash_t v[n_kmers]  __attribute__((aligned(16)));;
 		uint32 n_valid_kmers = 0;
 		
-		kmer_parser_t seq_parser;
+		kmer_parser_t<uint32, 32> seq_parser;
                 seq_parser.init(seq, params->k);
-                kmer_t kmer;
+                kmer_t<uint32> kmer;
 		while(seq_parser.get_next_kmer(kmer)) {
 			if(!kmer.valid) continue;
 			if(ref_freq_kmer_bitmap[kmer.packed]) continue;

@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
 		printf("Mode: Alignment \n");
-		params->load_mhi = true;
+		params->load_mhi = false;
 		params->monolith = false;
 
 #if(VANILLA)
