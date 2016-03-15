@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "utils.h"
+#include "seq.h"
 
 #pragma once
 
@@ -237,6 +238,7 @@ struct read_t {
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_f;
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 	std::vector<ref_match_t> ref_matches;
+	std::vector<bool> repeat_mask;
 	
 	aln_t top_aln;
 	aln_t second_best_aln;
@@ -336,23 +338,28 @@ struct read_t {
 	}
 	void compare_and_update_best_aln(int* n_votes, seq_t* pos, bool rc) {
 		for(int i = 0; i < 2; i++) {
-				if(n_votes[i] > top_aln.inlier_votes) {
-					if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
-						second_best_aln.inlier_votes = top_aln.inlier_votes;
-						second_best_aln.total_votes = top_aln.total_votes;
-						second_best_aln.ref_start = top_aln.ref_start;
-					}
-					// update best alignment
-					top_aln.inlier_votes = n_votes[i];
-					top_aln.ref_start = pos[i];
-					top_aln.rc = rc;
-				} else if(n_votes[i] > second_best_aln.inlier_votes) {
-					if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
-						second_best_aln.inlier_votes = n_votes[i];
-						second_best_aln.ref_start = pos[i];
-					}
+			if(n_votes[i] > top_aln.inlier_votes) {
+				if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+					second_best_aln.inlier_votes = top_aln.inlier_votes;
+					second_best_aln.total_votes = top_aln.total_votes;
+					second_best_aln.ref_start = top_aln.ref_start;
+				}
+				// update best alignment
+				top_aln.inlier_votes = n_votes[i];
+				top_aln.ref_start = pos[i];
+				top_aln.rc = rc;
+			} else if(n_votes[i] > second_best_aln.inlier_votes) {
+				if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+					second_best_aln.inlier_votes = n_votes[i];
+					second_best_aln.ref_start = pos[i];
 				}
 			}
+		}
+	}
+	
+	void set_repeat_mask(const int k) {
+		if(repeat_mask.size() != 0) return;
+		find_repeats(seq, k, repeat_mask);
 	}
 };
 typedef std::vector<read_t> VectorReads;

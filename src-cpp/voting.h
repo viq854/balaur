@@ -68,6 +68,10 @@ struct voting_task {
 		return &data[0];
 	}
 	
+	kmer_cipher_t* get_data() {
+		return data;
+	}
+	
 	kmer_cipher_t* get_contig(const int contig_id) {
 		return &data[get_contig_data_offset(contig_id)];
 	}

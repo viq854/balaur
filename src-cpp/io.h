@@ -65,21 +65,4 @@ void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_p
 void ref_kmer_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 void bin_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);
 
-
-// compression
-#define CHARS_PER_SHORT 8   // number of chars in 16 bits
-#define CHARS_PER_WORD 	16	// number of chars in 32 bits
-#define BITS_PER_CHAR 	2
-#define BITS_IN_SHORT 	16
-#define BITS_IN_WORD 	32
-#define BITS_IN_LWORD 	64
-#define BASE_IGNORE		4
-#define KMER_HIST_SIZE16 (1ULL << 16) //65536
-#define KMER_HIST_SIZE32 (1ULL << 32)
-
-int pack_16(const char *seq, const int length, uint16_t *ret);
-int pack_32(const char *seq, const int length, uint32_t *ret); 
-int pack_64(const char *seq, const int length, uint64 *ret);
-void unpack_32(uint32 w, unsigned char *seq, const uint32 length);
-
 #endif /*IO_H_*/
