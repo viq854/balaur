@@ -32,7 +32,7 @@ void phase1_minhash(const ref_t& ref, reads_t& reads);
 void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers);
 void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<voting_results>& results, voting_stats& stats);
 void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results> voting_results,  voting_stats& stats);
-void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, const voting_stats& stats);
+void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	// --- phase 1 ---
@@ -171,7 +171,7 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_result
 	printf("Total time: %.2f sec\n", omp_get_wtime() - t);
 }
 
-void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, const voting_stats& stats) {
+void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats) {
 	printf("////////////// Finalize Mappings //////////////\n");
 	double t = omp_get_wtime();
 	for(size_t i = 0; i < results.size(); i++) {
@@ -185,6 +185,17 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 		task_out.convert2global_pos(global_offset1, global_offset2);
 		r.compare_and_update_best_aln(task_out.best_score, task_out.global_pos, task_out.rc);
 	}
+
+	int sum = 0;
+	int n_nonzero = 0;
+	for(size_t i = 0; i < reads.reads.size(); i++) {
+		read_t& r = reads.reads[i];
+		if(r.top_aln.inlier_votes > 0) {
+                        sum += r.top_aln.inlier_votes;
+                        n_nonzero++;
+                }
+	}
+	stats.avg_score = sum/n_nonzero;
 	
 	// ---- mapq score -----
 	for(size_t i = 0; i < reads.reads.size(); i++) {
@@ -198,7 +209,7 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 				r.top_aln.score = params->mapq_scale_x*(r.top_aln.inlier_votes - r.second_best_aln.inlier_votes)/r.top_aln.inlier_votes;
 				// scale by the distance from theoretical best possible votes
 				if(stats.avg_score > 0 && params->enable_scale) {
-					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float)1082; //(float) stats.avg_score;
+					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float) stats.avg_score;
 				}
 			}
 			if(r.top_aln.rc) {
@@ -235,6 +246,8 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 }
 
 void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers) {
+	
+	int n_filtered_contigs = 0;
 	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
 		voting_task* task = encrypt_kmer_buffers[i];
 		read_t& r = reads.reads[task->rid];
@@ -250,9 +263,12 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			if(!r.ref_matches[j].valid) continue;
 			int contig_id = idx;
 			idx++;
-			lookup_sha1_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
-			
-/*#if(SIM_EVAL)
+			bool unique = lookup_sha1_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
+			if(!unique) {
+				//task->set_void_contig(contig_id);
+				n_filtered_contigs++;
+			}			
+#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
 	 		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
 				r.collected_true_hit = true;
@@ -260,7 +276,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 				r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
 				task->true_cid = contig_id;
 			}
-#endif*/
+#endif
 		
 			// apply the task-specific keys
 		}
@@ -268,4 +284,6 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		uint64 key2_mult_pad = genrand64_int64();
 		apply_keys(task->get_data(), task->get_data_len(), key1_xor_pad, key2_mult_pad);
 	}
+	std::cout << n_filtered_contigs << "\n";
+
 }

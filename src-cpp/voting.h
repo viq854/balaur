@@ -52,11 +52,15 @@ struct voting_task {
 		return contig_orig_lens[contig_id];
 	}
 	inline int get_contig_data_offset(const int contig_id) const {
-		return offsets[contig_id] ;
+		return offsets[contig_id];
 	}
 	inline int get_contig_data_len(const int contig_id) const {
 		return offsets[contig_id + 1] - offsets[contig_id] ;
 	}
+	inline void set_void_contig(const int contig_id) {
+		offsets[contig_id] = offsets[contig_id + 1];
+	} 
+
 	inline int get_read_data_len() const {
 		return offsets[0];
 	}

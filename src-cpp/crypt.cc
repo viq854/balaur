@@ -99,10 +99,15 @@ bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 			shuffle[n_unique] = idx;
 			n_unique++;
 		}
-		gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
-		if(n_unique != n_sampled) unique_sampled_bins = false;
-		for(int j = n_unique; j < n_sampled; j++) {
-			 ciphers[cipher_offset + j] = genrand64_int64();
+		//gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
+		if(n_unique != n_sampled) {
+			unique_sampled_bins = false;
+			n_unique = 0;
+			for(int j = n_unique; j < n_sampled; j++) {
+				 ciphers[cipher_offset + j] = genrand64_int64();
+			}
+		} else {
+			gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
 		}
 	}
 	return unique_sampled_bins;
