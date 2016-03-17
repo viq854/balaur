@@ -70,8 +70,8 @@ void compute_repeat_mask(const seq_t offset, const int len, const std::vector<ui
 }
 
 // strided lookup of precomputed ref kmers (access pattern stored in the shuffle array)
-void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle, const seq_t offset, const std::vector<kmer_cipher_t>& precomp_ref_hashes) {
-	for(int i = 0; i < shuffle.size(); i++) {
+void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle, const int shuffle_len, const seq_t offset, const std::vector<kmer_cipher_t>& precomp_ref_hashes) {
+	for(int i = 0; i < shuffle_len; i++) {
 		ciphers[i] = precomp_ref_hashes[offset + shuffle[i]];
 	}
 }
@@ -84,13 +84,16 @@ bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 	
 	bool unique_sampled_bins = true;
 	const int n_bins = ceil(((float)n_kmers)/params->bin_size);
+	
+	std::vector<int> shuffle(params->bin_size/params->sampling_intv);
+
 	for(int i = 0; i < n_bins; i++) {
 		const int kmer_offset = i*params->bin_size;
 		const int cipher_offset = kmer_offset/params->sampling_intv;
 		int bin_size = params->bin_size;
 		if(i == n_bins -1) bin_size = n_kmers - kmer_offset;
 		const int n_sampled = bin_size/params->sampling_intv;
-		std::vector<int> shuffle(n_sampled); 
+		//std::vector<int> shuffle(n_sampled); 
 		int n_unique = 0;
 		for(int j = 0; j < bin_size; j++) {
 			if(n_unique == n_sampled) break; // sampled sufficient unique kmers 
@@ -107,7 +110,7 @@ bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 				 ciphers[cipher_offset + j] = genrand64_int64();
 			}
 		} else {
-			gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
+			gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, n_sampled, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
 		}
 	}
 	return unique_sampled_bins;

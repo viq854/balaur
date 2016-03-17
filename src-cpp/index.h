@@ -294,6 +294,8 @@ struct read_t {
         	second_best_aln.inlier_votes = 0;
 		top_aln.ref_start = 0;
 		second_best_aln.ref_start = 0;
+		hashes_f = 0;
+		hashes_rc = 0;
 	}
 	
 	// assumes that reads were generated with wgsim

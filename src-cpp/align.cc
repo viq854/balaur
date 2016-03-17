@@ -278,7 +278,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 				//task->set_void_contig(contig_id);
 				n_filtered_contigs++;
 			}			
-#if(SIM_EVAL)
+/*#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
 	 		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
 				r.collected_true_hit = true;
@@ -286,7 +286,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 				r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
 				task->true_cid = contig_id;
 			}
-#endif
+#endif*/
 		}
 		// apply the task-specific keys
 		uint64 key1_xor_pad = genrand64_int64();
