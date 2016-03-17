@@ -19,7 +19,7 @@ inline void record_vote(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, const 
 }
 
 void record_vote_discretized(const kmer_enc_t& rkmer, const kmer_enc_t& ckmer, const int max_rpos, const int max_cpos, const int offset, std::vector<int>& votes) {
-	const int bin_size = params->k2;
+	const int bin_size = params->bin_size;
 	
 	const int rbin_idx = rkmer.pos;
 	const int rrange_start = rbin_idx*bin_size;
@@ -180,8 +180,7 @@ void prepare_voting_read_kmers(const kmer_cipher_t* rkmers, std::vector<kmer_enc
 
 // sparse, pos scrambled within bin_size
 void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_enc_t>& cvk) {
-	const int bin_size = params->k2;
-	const int bin_size_sampled = bin_size/params->sampling_intv;
+	const int bin_size_sampled = params->bin_size/params->sampling_intv;
 	for(int i = 0; i < cvk.size(); i++) {
 		cvk[i] = kmer_enc_t(ckmers[i], i/bin_size_sampled);
 	}

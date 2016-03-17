@@ -241,6 +241,8 @@ struct read_t {
 	std::vector<std::pair<uint64, minhash_t>> ref_bucket_matches_by_table_rc;
 	std::vector<ref_match_t> ref_matches;
 	std::vector<bool> repeat_mask;
+	kmer_cipher_t* hashes_f;
+	kmer_cipher_t* hashes_rc;
 	
 	aln_t top_aln;
 	aln_t second_best_aln;
@@ -359,9 +361,9 @@ struct read_t {
 		}
 	}
 	
-	void set_repeat_mask(const int k) {
+	void set_repeat_mask(const int k, const int n_nbrs) {
 		if(repeat_mask.size() != 0) return;
-		find_repeats(seq, k, repeat_mask);
+		find_repeats(seq, k, n_nbrs, repeat_mask);
 	}
 };
 typedef std::vector<read_t> VectorReads;

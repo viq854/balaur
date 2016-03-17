@@ -28,23 +28,6 @@ void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t 
 				ciphers[i] = ((uint64) hash[0] << 32 | hash[1]);
 			}
 		}
-
-		int i = 0;
-		bool any = false;
-		while(i < n_kmers) {
-			int mask_idx = i;
-                        if(rev_mask) mask_idx = n_kmers-i-1;
-                        if(repeat_mask[mask_idx]) {
-				any = true;
-				for(int j = i; j < i + params->k2; j++) {
-					ciphers[j] = 0; //genrand64_int64();
-				}
-				i += params->k2;
-			} else {
-				i++;
-			}
-		}
-
 }
 
 void apply_keys(kmer_cipher_t* ciphers, const int n_ciphers, const uint64 key1, const uint64 key2) {

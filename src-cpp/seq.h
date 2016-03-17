@@ -103,7 +103,7 @@ static inline int get_n_sampled_kmers(const int len, const int k, const int samp
 	return get_n_kmers(len, k)/sampling_ratio;
 }
 
-static void find_repeats(const std::string& seq, const int k, std::vector<bool>& repeat_mask) {
+static void find_repeats(const std::string& seq, const int k, const int n_nbrs, std::vector<bool>& repeat_mask) {
 	const int n_kmers = get_n_kmers(seq.size(), k);
 	std::vector<std::pair<uint64, int>> kmers(n_kmers);
 	repeat_mask.resize(n_kmers);
@@ -122,6 +122,21 @@ static void find_repeats(const std::string& seq, const int k, std::vector<bool>&
 			repeat_mask[kmers[i].second] = true;
 			repeat_mask[kmers[i-1].second] = true;
 		}
+	}
+	
+	if(n_nbrs == 0) return;
+	
+	int i = 0;
+	while(i < n_kmers) {
+		if(!repeat_mask[i] || (i > 0 && repeat_mask[i-1])) {
+				i++;
+				continue;
+		}
+		for(int j = i + 1; j < i + n_nbrs; j++) {
+			if(j >= n_kmers) break;
+			repeat_mask[j] = true;
+		}
+		i += n_nbrs;
 	}
 }
 
