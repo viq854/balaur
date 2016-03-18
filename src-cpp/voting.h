@@ -90,7 +90,11 @@ struct voting_task {
 		if(cur_size == 0) { // allocating read space
 			cur_size += get_n_kmers(len, params->k2); // dense
 		} else {
-			cur_size += get_n_sampled_kmers(len, params->k2, params->sampling_intv); // sparse
+			if(params->bin_sampling()) {
+				cur_size += get_n_sampled_kmers(len, params->k2, params->sampling_intv, params->bin_size); // sampling by bin
+			} else {
+				cur_size += get_n_sampled_kmers(len, params->k2, params->sampling_intv); // uniform sparse
+			}
 			contig_orig_lens.push_back(len);
 		}
 		offsets.push_back(cur_size);
@@ -106,8 +110,8 @@ struct voting_task {
 		for(int i = start; i < end; i++) {
 			if(!contigs[i].valid) continue;
 			task->alloc_len(contigs[i].len);
-                        task->contig_ids.push_back(i);
-                        task->global_pos.push_back(contigs[i].pos); // TEMP
+			task->contig_ids.push_back(i);
+			task->global_pos.push_back(contigs[i].pos); // TEMP
 		}
 		if(task->offsets.size() == 1) { // all the contigs were filtered out
 			delete task;

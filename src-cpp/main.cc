@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:I:")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:I:B:M")) >= 0) {
 		switch (c) {
 			case 'h': params->h = atoi(optarg); break;
 			case 'T': params->n_tables = atoi(optarg); break;
@@ -99,6 +99,8 @@ int main(int argc, char *argv[]) {
 			case 'z': params->precomp_contig_file_name = std::string(optarg); break;
 			case 'e': params->kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
 			case 'I': params->sampling_intv = atoi(optarg); break;
+			case 'B': params->bin_size = atoi(optarg); break;
+			case 'M': params->mask_repeat_nbrs = true;
 			default: return 0;
 		}
 	}

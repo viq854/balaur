@@ -65,7 +65,7 @@ void compute_repeat_mask(const seq_t offset, const int len, const std::vector<ui
 		const seq_t next_occ =  i + r;
 		if(next_occ >= len) continue; // repeat is outside the contig
 		repeat_mask[i] = true;
-		repeat_mask[next_occ] = true;;
+		repeat_mask[next_occ] = true;
 	}
 }
 
@@ -77,23 +77,41 @@ void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle
 }
 
 static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19};
-bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes, const std::vector<uint16_t>& repeat_info) {
+void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes, const std::vector<uint16_t>& repeat_info) {
 	const int n_kmers = get_n_kmers(len, params->k2);
+	// mark repeats
 	std::vector<bool> repeat_mask;
 	compute_repeat_mask(offset, n_kmers, repeat_info, repeat_mask);
 	
-	bool unique_sampled_bins = true;
-	const int n_bins = ceil(((float)n_kmers)/params->bin_size);
+	// uniform sampling
+	if(!params->bin_sampling()) {
+		if(params->mask_repeat_nbrs > 0) {
+			mask_repeat_nbrs(repeat_mask, params->k2);
+		}
+		const int n_sampled_kmers = get_n_sampled_kmers(len, params->k2, params->sampling_intv);
+		for(int i = 0; i < n_sampled_kmers; i++) {
+			const int pos = i*params->sampling_intv;
+			if(repeat_mask[pos]) {
+				ciphers[i] = genrand64_int64();
+			} else {
+				ciphers[i] = precomp_ref_hashes[offset + pos];
+			}
+		}
+		return;
+	}
 	
-	std::vector<int> shuffle(params->bin_size/params->sampling_intv);
-
+	// bin sampling
+	const int n_bins = ceil(((float)n_kmers)/params->bin_size);
+	int bin_size = params->bin_size;
+	int n_sampled = bin_size/params->sampling_intv;
+	std::vector<int> shuffle(n_sampled);
 	for(int i = 0; i < n_bins; i++) {
 		const int kmer_offset = i*params->bin_size;
 		const int cipher_offset = kmer_offset/params->sampling_intv;
-		int bin_size = params->bin_size;
-		if(i == n_bins -1) bin_size = n_kmers - kmer_offset;
-		const int n_sampled = bin_size/params->sampling_intv;
-		//std::vector<int> shuffle(n_sampled); 
+		if(i == n_bins -1)  {
+			bin_size = n_kmers - kmer_offset;
+			n_sampled = bin_size/params->sampling_intv;
+		}
 		int n_unique = 0;
 		for(int j = 0; j < bin_size; j++) {
 			if(n_unique == n_sampled) break; // sampled sufficient unique kmers 
@@ -102,18 +120,14 @@ bool  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 			shuffle[n_unique] = idx;
 			n_unique++;
 		}
-		//gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
-		if(n_unique != n_sampled) {
-			unique_sampled_bins = false;
+		if(params->mask_repeat_nbrs) {
 			n_unique = 0;
-			for(int j = n_unique; j < n_sampled; j++) {
-				 ciphers[cipher_offset + j] = genrand64_int64();
-			}
-		} else {
-			gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, n_sampled, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
+		}
+		gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, n_unique, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
+		for(int j = n_unique; j < n_sampled; j++) {
+			ciphers[cipher_offset + j] = genrand64_int64();
 		}
 	}
-	return unique_sampled_bins;
 }
 
 

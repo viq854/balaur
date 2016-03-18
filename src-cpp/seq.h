@@ -99,8 +99,33 @@ static inline int get_n_kmers(const int len, const int k) {
 	return len - k + 1;
 }
 
+// uniform sampling at a given interval
 static inline int get_n_sampled_kmers(const int len, const int k, const int sampling_ratio) {
 	return get_n_kmers(len, k)/sampling_ratio;
+}
+
+// sampling within each bin at a given interval
+static inline int get_n_sampled_kmers(const int len, const int k, const int sampling_ratio, const int bin_size) {
+	const int n_kmers = get_n_kmers(len, k);
+	const int n_bins = ceil(((float)n_kmers)/bin_size);
+	const int n_sampled = bin_size/sampling_ratio;
+	const int n_sampled_last_bin =  (n_kmers -  (n_bins - 1)*bin_size)/sampling_ratio;
+	return (n_bins-1)*n_sampled + n_sampled_last_bin;
+}
+
+static void mask_repeat_nbrs(std::vector<bool>& repeat_mask, const int n_nbrs) {
+	int i = 0;
+	while(i < repeat_mask.size()) {
+		if(!repeat_mask[i] || (i > 0 && repeat_mask[i-1])) {
+				i++;
+				continue;
+		}
+		for(int j = i + 1; j < i + n_nbrs; j++) {
+			if(j >= repeat_mask.size()) break;
+			repeat_mask[j] = true;
+		}
+		i += n_nbrs;
+	}
 }
 
 static void find_repeats(const std::string& seq, const int k, const int n_nbrs, std::vector<bool>& repeat_mask) {
@@ -124,19 +149,8 @@ static void find_repeats(const std::string& seq, const int k, const int n_nbrs, 
 		}
 	}
 	
-	if(n_nbrs == 0) return;
-	
-	int i = 0;
-	while(i < n_kmers) {
-		if(!repeat_mask[i] || (i > 0 && repeat_mask[i-1])) {
-				i++;
-				continue;
-		}
-		for(int j = i + 1; j < i + n_nbrs; j++) {
-			if(j >= n_kmers) break;
-			repeat_mask[j] = true;
-		}
-		i += n_nbrs;
+	if(n_nbrs > 0) {
+		mask_repeat_nbrs(repeat_mask, n_nbrs);
 	}
 }
 

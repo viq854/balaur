@@ -59,6 +59,7 @@ typedef struct {
 	int sampling_intv;
 	int proc_contigs_thr;
 	int bin_size;
+	bool mask_repeat_nbrs;
 
 	// multi-threading
 	uint32_t n_threads;
@@ -72,7 +73,8 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
-		bin_size = 20;
+		mask_repeat_nbrs = false;
+		bin_size = 1;
 		proc_contigs_thr = 10000;
 		//if(ref_window_size > 150) proc_contigs_thr = 500;
 		//if(ref_window_size > 1000) proc_contigs_thr = 20;
@@ -102,6 +104,10 @@ typedef struct {
 		mapq_scale_x = 100;
 		sampling_intv = 1;
 		n_threads = 1;
+	}
+	
+	bool bin_sampling() {
+		return bin_size > 1;
 	}
 
 	// set the initial kmer hash function (rolling hash)

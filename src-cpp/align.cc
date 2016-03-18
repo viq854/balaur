@@ -246,12 +246,10 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 }
 
 void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers) {
-	
-	int n_filtered_contigs = 0;
 	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
 		voting_task* task = encrypt_kmer_buffers[i];
 		read_t& r = reads.reads[task->rid];
-		r.set_repeat_mask(params->k2, params->k2);
+		r.set_repeat_mask(params->k2, params->mask_repeat_nbrs ? params->k2 : 0);
 
 		if(task->strand == voting_task::strand_t::FWD) {
 			if(r.hashes_f == NULL) {
@@ -273,11 +271,8 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			if(!r.ref_matches[j].valid) continue;
 			int contig_id = idx;
 			idx++;
-			bool unique = lookup_sha1_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
-			if(!unique) {
-				//task->set_void_contig(contig_id);
-				n_filtered_contigs++;
-			}			
+			lookup_sha1_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
+				
 /*#if(SIM_EVAL)
 			r.get_sim_read_info(ref);
 	 		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
@@ -293,6 +288,4 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		uint64 key2_mult_pad = genrand64_int64();
 		apply_keys(task->get_data(), task->get_data_len(), key1_xor_pad, key2_mult_pad);
 	}
-	std::cout << n_filtered_contigs << "\n";
-
 }
