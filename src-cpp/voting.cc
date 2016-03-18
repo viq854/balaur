@@ -171,18 +171,19 @@ void find_max_vote_mid(const std::vector<int>& votes_prefsum, int& max_val, int&
 
 // dense, pos scrambled within bin_size
 void prepare_voting_read_kmers(const kmer_cipher_t* rkmers, std::vector<kmer_enc_t>& rvk) {
-	const int bin_size = params->k2;
 	for(int i = 0; i < rvk.size(); i++) {
-		rvk[i] = kmer_enc_t(rkmers[i], i/bin_size);
+		rvk[i] = kmer_enc_t(rkmers[i], i/params->bin_size);
 	}
 	std::sort(rvk.begin(), rvk.end(), kmer_enc_t::comp());
 }
 
 // sparse, pos scrambled within bin_size
 void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_enc_t>& cvk) {
-	const int bin_size_sampled = params->bin_size/params->sampling_intv;
+	int bin_size_sampled = params->bin_sampling() ? params->bin_size/params->sampling_intv : 1;
 	for(int i = 0; i < cvk.size(); i++) {
-		cvk[i] = kmer_enc_t(ckmers[i], i/bin_size_sampled);
+		int pos = i*params->sampling_intv;
+		if(params->bin_sampling()) pos /= params->bin_size;
+		cvk[i] = kmer_enc_t(ckmers[i], pos);
 	}
 	std::sort(cvk.begin(), cvk.end(), kmer_enc_t::comp());
 }
