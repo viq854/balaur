@@ -39,6 +39,8 @@ typedef struct {
 	kmer_hasher_t* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 bucket_entry_coverage;
+	bool vanilla;
+	int batch_size;
 
 	// sequence kmer filtering
 	uint64 max_count;				// upper bound on kmer occurrence in the reference
@@ -74,6 +76,8 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
+		batch_size = 1000000;
+		vanilla = false;
 		mask_repeat_nbrs = false;
 		bin_size = 1;
 		proc_contigs_thr = 10000;

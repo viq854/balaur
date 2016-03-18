@@ -8,11 +8,6 @@
 #include "seq.h"
 #include "crypt.h"
 
-static int max_repeats = 0;
-static int max_repeats_contig = 0;
-static std::vector<int> n_repeats_v;
-static std::vector<int> n_repeats_v_contig;
-
 // read hashing
 // repeat kmers are masked by default according to the repeat_mask
 void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const std::vector<bool>& repeat_mask, bool rev_mask) {
@@ -28,6 +23,15 @@ void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t 
 				ciphers[i] = ((uint64) hash[0] << 32 | hash[1]);
 			}
 		}
+}
+
+// read non-cryptographic hashing
+// repeats are allowed
+void generate_vanilla_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len) {
+	const int n_kmers = get_n_kmers(seq_len, params->k2);
+	for(int i = 0; i < n_kmers; i++) {
+			ciphers[i] = CityHash64(&seq[i], params->k2);
+	}
 }
 
 void apply_keys(kmer_cipher_t* ciphers, const int n_ciphers, const uint64 key1, const uint64 key2) {
@@ -76,6 +80,9 @@ void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle
 	}
 }
 
+// contig hashing
+// lookup precomputed sha-1 hashes
+// mask repeats
 void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes, const std::vector<uint16_t>& repeat_info) {
 	const int n_kmers = get_n_kmers(len, params->k2);
 	// mark repeats
@@ -127,5 +134,13 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 		for(int j = n_unique; j < n_sampled; j++) {
 			ciphers[cipher_offset + j] = genrand64_int64();
 		}
+	}
+}
+
+void  lookup_vanilla_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes) {
+	const int n_sampled_kmers = get_n_sampled_kmers(len, params->k2, params->sampling_intv);
+	for(int i = 0; i < n_sampled_kmers; i++) {
+		seq_t pos = i*params->sampling_intv;
+		ciphers[i] = precomp_ref_hashes[offset + pos];
 	}
 }
