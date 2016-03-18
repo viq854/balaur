@@ -60,6 +60,7 @@ typedef struct {
 	int proc_contigs_thr;
 	int bin_size;
 	bool mask_repeat_nbrs;
+	int* bin_shuffle;
 
 	// multi-threading
 	uint32_t n_threads;
@@ -108,6 +109,14 @@ typedef struct {
 	
 	bool bin_sampling() {
 		return bin_size > 1;
+	}
+	
+	void set_bin_shuffle() {
+		bin_shuffle = new int[bin_size];
+		for(int i = 0; i < bin_size; i++) {
+			bin_shuffle[i] = i;
+		}
+		shuffle(bin_shuffle, bin_size);
 	}
 
 	// set the initial kmer hash function (rolling hash)

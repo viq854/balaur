@@ -109,6 +109,7 @@ int main(int argc, char *argv[]) {
 	params->set_minhash_hash_function();
 	params->set_minhash_sketch_hash_function();
 	params->generate_sparse_sketch_projections();
+	params->set_bin_shuffle();
 		
 	printf("**********BALAUR**************\n");
 	params->n_buckets = pow(2, params->n_buckets_pow2);

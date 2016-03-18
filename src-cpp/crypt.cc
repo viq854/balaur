@@ -76,7 +76,6 @@ void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle
 	}
 }
 
-static int bin_shuffle[20] = {0,2,4,6,8,10,12,14,16,18,1,3,5,7,9,11,13,15,17,19};
 void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_t len, const std::vector<kmer_cipher_t>& precomp_ref_hashes, const std::vector<uint16_t>& repeat_info) {
 	const int n_kmers = get_n_kmers(len, params->k2);
 	// mark repeats
@@ -105,12 +104,9 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 	int bin_size = params->bin_size;
 	int n_sampled = bin_size/params->sampling_intv;
 	std::vector<int> shuffle(n_sampled);
-	
-	int n_contig_len = get_n_sampled_kmers(len, params->k2, params->sampling_intv, params->bin_size);
-
 	for(int i = 0; i < n_bins; i++) {
 		const int kmer_offset = i*params->bin_size;
-		const int cipher_offset = i*n_sampled; //kmer_offset/params->sampling_intv;
+		const int cipher_offset = i*n_sampled;
 		if(i == n_bins -1)  {
 			bin_size = n_kmers - kmer_offset;
 			n_sampled = bin_size/params->sampling_intv;
@@ -118,7 +114,7 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 		int n_unique = 0;
 		for(int j = 0; j < bin_size; j++) {
 			if(n_unique == n_sampled) break; // sampled sufficient unique kmers 
-			const int idx = bin_shuffle[j];
+			const int idx = params->bin_shuffle[j];
 			if(idx >= bin_size || repeat_mask[kmer_offset +idx]) continue; // index out of range in the last bucket or repeat
 			shuffle[n_unique] = idx;
 			n_unique++;
@@ -133,66 +129,3 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 		}
 	}
 }
-
-
-//static int n_prob_reads = 0;
-//void generate_voting_kmer_ciphers_ref(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_offset, const seq_t seq_len,
-//		const uint64 key1, const uint64 key2, const ref_t& ref) {
-
-	
-	//memcpy(&ciphers[0], &ref.precomputed_kmer2_hashes[seq_offset], n_kmers*sizeof(kmer_cipher_t));
-	//ciphers[i] = CityHash64(&seq[seq_offset + p], params->k2);
-//#if(!VANILLA)
-
-//	const int n_sampled_kmers = get_n_sampled_kmers(seq_len, params->k2, params->sampling_intv);
-//	for(int i = 0; i < n_sampled_kmers; i++) {
- //               seq_t p = i*params->sampling_intv;
-//		ciphers[i] = ref.precomputed_kmer2_hashes[seq_offset + p];
-//	}
-
-//	for(int i = 0; i < n_sampled_kmers; i++) {
-//		seq_t p = i*params->sampling_intv;
-//		uint16_t r = ref.precomputed_neighbor_repeats[seq_offset + p];
-//		if(ciphers[i] != 0 && (r == 0 || r >= (n_kmers-p))) {
-//			ciphers[i] = (ciphers[i] ^ key1)*key2;
-//		} else {
-//			ciphers[i] = genrand64_int64();
-  //                      if(r > 0 && r < (n_kmers-p) && (p+r) % params->sampling_intv == 0) ciphers[(p+r)/params->sampling_intv] = 0;
-//		}
-//	}
-	/*const int n_bins = ceil(((float)n_kmers)/params->k2);
-	int idx = 0;
-	for(int i = 0; i < n_bins; i++) {
-		seq_t offset = i*params->k2;
-		int n_unique = 0;
-		int bin_size = params->k2;
-		if(i == n_bins - 1) bin_size = n_kmers - params->k2*i; 
-		const int n_kept = bin_size/params->sampling_intv;
-		for(int j = 0; j < bin_size; j++) {
-			if(n_unique == n_kept) break;
-			int k = bin_shuffle[j];
-			if(k >= bin_size) continue;
-			seq_t pos = offset + k;
-			uint16_t r = ref.precomputed_neighbor_repeats[pos + seq_offset];
-                	if(ciphers[pos] != 0 && (r == 0 || r >= (n_kmers-i))) {
-				ciphers[idx] = (ciphers[pos] ^ key1)*key2; 		
-				idx++;
-				n_unique++;
-			} else {
-				if(r > 0 && r < (n_kmers-i)) ciphers[pos + r] = 0;
-				//ciphers[idx] = genrand64_int64();//(ciphers[pos] ^ key1)*key2;
-                                //idx++;
-				//n_unique++;
-			}
-		}
-		for(int x = n_unique; x < n_kept; x++) {
-			ciphers[idx] = genrand64_int64();//(ciphers[pos] ^ key1)*key2;
-                        idx++;
-               	}
-		///if(n_unique < n_kept) {
-		//	n_prob_reads++;
-		//	break;
-		}
-	}*/
-//#endif
-//}
