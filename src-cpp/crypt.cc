@@ -85,7 +85,7 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 	
 	// uniform sampling
 	if(!params->bin_sampling()) {
-		if(params->mask_repeat_nbrs > 0) {
+		if(params->mask_repeat_nbrs) {
 			mask_repeat_nbrs(repeat_mask, params->k2);
 		}
 		const int n_sampled_kmers = get_n_sampled_kmers(len, params->k2, params->sampling_intv);
@@ -105,9 +105,12 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 	int bin_size = params->bin_size;
 	int n_sampled = bin_size/params->sampling_intv;
 	std::vector<int> shuffle(n_sampled);
+	
+	int n_contig_len = get_n_sampled_kmers(len, params->k2, params->sampling_intv, params->bin_size);
+
 	for(int i = 0; i < n_bins; i++) {
 		const int kmer_offset = i*params->bin_size;
-		const int cipher_offset = kmer_offset/params->sampling_intv;
+		const int cipher_offset = i*n_sampled; //kmer_offset/params->sampling_intv;
 		if(i == n_bins -1)  {
 			bin_size = n_kmers - kmer_offset;
 			n_sampled = bin_size/params->sampling_intv;
@@ -120,9 +123,10 @@ void  lookup_sha1_ciphers(kmer_cipher_t* ciphers, const seq_t offset, const seq_
 			shuffle[n_unique] = idx;
 			n_unique++;
 		}
-		if(params->mask_repeat_nbrs) {
+		if(n_unique != n_sampled && params->mask_repeat_nbrs) {
 			n_unique = 0;
 		}
+
 		gather_sha1_ciphers(&ciphers[cipher_offset], shuffle, n_unique, offset + kmer_offset, precomp_ref_hashes); // fill in the sampled hashes
 		for(int j = n_unique; j < n_sampled; j++) {
 			ciphers[cipher_offset + j] = genrand64_int64();

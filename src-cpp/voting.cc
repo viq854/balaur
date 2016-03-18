@@ -181,8 +181,7 @@ void prepare_voting_read_kmers(const kmer_cipher_t* rkmers, std::vector<kmer_enc
 void prepare_voting_contig_kmers(const kmer_cipher_t* ckmers, std::vector<kmer_enc_t>& cvk) {
 	int bin_size_sampled = params->bin_sampling() ? params->bin_size/params->sampling_intv : 1;
 	for(int i = 0; i < cvk.size(); i++) {
-		int pos = i*params->sampling_intv;
-		if(params->bin_sampling()) pos /= params->bin_size;
+		int pos = params->bin_sampling() ? i/bin_size_sampled : i*params->sampling_intv;
 		cvk[i] = kmer_enc_t(ckmers[i], pos);
 	}
 	std::sort(cvk.begin(), cvk.end(), kmer_enc_t::comp());

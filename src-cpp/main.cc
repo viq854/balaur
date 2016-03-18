@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
 			case 'e': params->kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
 			case 'I': params->sampling_intv = atoi(optarg); break;
 			case 'B': params->bin_size = atoi(optarg); break;
-			case 'M': params->mask_repeat_nbrs = true;
+			case 'M': params->mask_repeat_nbrs = true; break;
 			default: return 0;
 		}
 	}
