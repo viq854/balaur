@@ -76,11 +76,11 @@ typedef struct {
 	bool monolith;
 
 	void set_default_index_params() {
-		batch_size = 1000000;
+		batch_size = 1;//1000000;
 		vanilla = false;
 		mask_repeat_nbrs = false;
 		bin_size = 1;
-		proc_contigs_thr = 10000;
+		proc_contigs_thr = 10000;//0;
 		//if(ref_window_size > 150) proc_contigs_thr = 500;
 		//if(ref_window_size > 1000) proc_contigs_thr = 20;
 		kmer_type = OVERLAP;
@@ -313,6 +313,8 @@ struct read_t {
         	second_best_aln.inlier_votes = 0;
 		top_aln.ref_start = 0;
 		second_best_aln.ref_start = 0;
+		top_aln.score = 0;
+		second_best_aln.score = 0;
 		hashes_f = 0;
 		hashes_rc = 0;
 	}
