@@ -21,14 +21,13 @@ typedef enum {SHA1_E = 0, CITY_HASH64 = 1, PACK64 = 2} kmer_hash_alg;
 // program parameters
 typedef struct {	
 	algorithm alg; 					// LSH scheme to use
-	kmer_hash_alg kmer_hashing_alg;
-
+	
 	// LSH parameters
 	kmer_selection kmer_type; 		// scheme for extracting the kmer features
 	uint32 k; 						// length of the sequence kmers
-	uint32 kmer_dist;				// shift between consecutive kmers
+	uint32 kmer_dist;			// shift between consecutive kmers
 	uint32 h; 						// number of hash functions for min-hash sketches
-	uint32 n_tables; 				// number of hash tables for the sketches
+	uint32 n_tables; 			// number of hash tables for the sketches
 	uint32 n_buckets;
 	uint32 sketch_proj_len;			// length of the sketch projection
 	VectorU32 sketch_proj_indices;	// indices into the sketch for the sparse projections
@@ -39,76 +38,76 @@ typedef struct {
 	kmer_hasher_t* kmer_hasher;		// function used to generate kmer hashes for the sequence set
 	uint32 ref_window_size;			// length of the reference windows to hash
 	uint32 bucket_entry_coverage;
-	bool vanilla;
-	int batch_size;
 
 	// sequence kmer filtering
 	uint64 max_count;				// upper bound on kmer occurrence in the reference
 	uint64 min_count;				// lower bound on kmer occurrence in the read set
 
-	// alignment evaluation
-	uint32 k2; 						// length of the sequence kmers for vote counting
-	bool precomp_k2;				// precompute k2 kmers for the reference
+	// candidate contigs
 	uint32 min_n_hits;
 	uint32 dist_best_hit; 			// how many fewer than best table hits to still keep
+	bool load_mhi;
+	std::string precomp_contig_file_name;
 	uint32 max_matched_contig_len;
+	
+	// voting
+	uint32 k2; 							// length of the sequence kmers for vote counting
+	bool precomp_k2;				// precompute k2 kmers for the reference
 	uint32 delta_inlier;
+	kmer_hash_alg kmer_hashing_alg;
+	bool vanilla;
+	int bin_size;
+	int* bin_shuffle;
+	int batch_size;
+	bool mask_repeat_nbrs;
+	int proc_contigs_thr;
+	int sampling_intv;
+
+	// alignment evaluation
 	uint32 delta_x;
 	uint32 n_init_anchors;
 	int votes_cutoff;
 	bool enable_scale;
 	int mapq_scale_x;
-	int sampling_intv;
-	int proc_contigs_thr;
-	int bin_size;
-	bool mask_repeat_nbrs;
-	int* bin_shuffle;
 
 	// multi-threading
 	uint32_t n_threads;
-	
-	// io
-	std::string in_index_fname;
-	std::string out_index_fname;
-
-	bool load_mhi;
-	std::string precomp_contig_file_name;
-	bool monolith;
 
 	void set_default_index_params() {
-		batch_size = 1;//1000000;
-		vanilla = false;
-		mask_repeat_nbrs = false;
-		bin_size = 1;
-		proc_contigs_thr = 10000;//0;
-		//if(ref_window_size > 150) proc_contigs_thr = 500;
-		//if(ref_window_size > 1000) proc_contigs_thr = 20;
 		kmer_type = OVERLAP;
-		kmer_hashing_alg = SHA1_E;
-		h = 64;
-		n_tables = 32;
+		h = 128;
+		n_tables = 78;
 		sketch_proj_len = 2;
-		n_buckets_pow2 = 16;
+		n_buckets_pow2 = 18;
 		bucket_size = 200;
 		k = 16;
 		kmer_dist = 1;
 		bucket_entry_coverage = 10;
-		ref_window_size = 1000;
-		max_count = 300;
+		ref_window_size = 150;
+		max_count = 800;
 		min_count = 0;
-		k2 = 32;
-		precomp_k2 = true;
-		min_n_hits = 2;
-		dist_best_hit = 25;
 		max_matched_contig_len = 100000;
+		
+		k2 = 20;
+		precomp_k2 = true;
+		min_n_hits = 1;
+		dist_best_hit = 20;
 		n_init_anchors = 10;
 		delta_inlier = 10;
-		delta_x = 3;
-		votes_cutoff = 50;
+		delta_x = 40;
+		votes_cutoff = 0;
 		enable_scale = true;
-		mapq_scale_x = 100;
+		mapq_scale_x = 50;
 		sampling_intv = 1;
 		n_threads = 1;
+		batch_size = 1;
+		bin_size = 1;
+		vanilla = false;
+		mask_repeat_nbrs = false;
+		proc_contigs_thr = 10000;//0;
+		//if(ref_window_size > 150) proc_contigs_thr = 500;
+		//if(ref_window_size > 1000) proc_contigs_thr = 20;
+		kmer_hashing_alg = SHA1_E;
 	}
 	
 	bool bin_sampling() {
@@ -366,7 +365,7 @@ struct read_t {
 	void compare_and_update_best_aln(int* n_votes, seq_t* pos, bool rc) {
 		for(int i = 0; i < 2; i++) {
 			if(n_votes[i] > top_aln.inlier_votes) {
-				if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+				if(!pos_in_range(pos[i], top_aln.ref_start, params->delta_x)) {
 					second_best_aln.inlier_votes = top_aln.inlier_votes;
 					second_best_aln.total_votes = top_aln.total_votes;
 					second_best_aln.ref_start = top_aln.ref_start;
@@ -376,7 +375,7 @@ struct read_t {
 				top_aln.ref_start = pos[i];
 				top_aln.rc = rc;
 			} else if(n_votes[i] > second_best_aln.inlier_votes) {
-				if(!pos_in_range(pos[i], top_aln.ref_start, 30)) {
+				if(!pos_in_range(pos[i], top_aln.ref_start, params->delta_x)) {
 					second_best_aln.inlier_votes = n_votes[i];
 					second_best_aln.ref_start = pos[i];
 				}

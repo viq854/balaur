@@ -52,15 +52,11 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	// --- phase 2 ---
 	load_kmer2_hashes(fastaName, ref, params);
 	load_repeat_info(fastaName, ref, params);
+	std::vector<voting_task*> encrypt_kmer_buffers;
 	std::vector<voting_results> results;
 	voting_stats stats;
-	if(!params->monolith) {
-		std::vector<voting_task*> encrypt_kmer_buffers;
-		phase2_encryption(reads, ref, encrypt_kmer_buffers);
-		phase2_voting(encrypt_kmer_buffers, results, stats);
-	} else {
-		phase2_monolith(reads, ref, results, stats);
-	}
+	phase2_encryption(reads, ref, encrypt_kmer_buffers);
+	phase2_voting(encrypt_kmer_buffers, results, stats);
 	finalize(reads, ref, results, stats);
 	eval(reads, ref);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
@@ -126,48 +122,6 @@ void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<
 		total_size += sizeof(results[i]); //TODO: more fine-grained
 	} 
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
-}
-
-// on-the-fly voting without buffering
-void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results> results,  voting_stats& stats) {
-	printf("////////////// Phase 2: MONOLITH //////////////\n");
-	double t = omp_get_wtime();
-	int sum = 0;
-	int n_nonzero = 0;
-	for(size_t i = 0; i < reads.reads.size(); i++) {
-		read_t& r = reads.reads[i];
-		if(!r.is_valid()) continue;
-		uint64 key1_xor_pad = genrand64_int64();
-		uint64 key2_mult_pad = genrand64_int64();
-		if(r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
-			if(new_task != NULL) {
-				//generate_voting_kmer_ciphers_read(&new_task->data[1], r.seq.c_str(), r.len, key1_xor_pad, key2_mult_pad);
-				for(int j = 0; j < r.n_match_f; j++) {
-					if(!r.ref_matches[j].valid) continue;
-					//generate_voting_kmer_ciphers_ref(&new_task->data[1], ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
-				}
-				voting_results res;
-				new_task->process(res);
-				results.push_back(res);
-				if(res.best_score[0] > 0) {
-					sum += res.best_score[0];
-					n_nonzero++;
-				}
-			}
-		}
-		if(r.ref_matches.size() - r.n_match_f > 0) {
-			voting_task* new_task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::RC, r.ref_matches, r.n_match_f, r.ref_matches.size());
-			if(new_task != NULL) {
-				//generate_voting_kmer_ciphers_read(&new_task->data[1], r.rc.c_str(), r.len, key1_xor_pad, key2_mult_pad);
-				for(int j = r.n_match_f; j < r.ref_matches.size(); j++) {
-					if(!r.ref_matches[j].valid) continue;
-					//generate_voting_kmer_ciphers_ref(&new_task->data[1], ref.seq.c_str(), r.ref_matches[j].pos, r.ref_matches[j].len, key1_xor_pad, key2_mult_pad, ref);
-				}
-			}
-		}
-	}
-	printf("Total time: %.2f sec\n", omp_get_wtime() - t);
 }
 
 void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats) {
@@ -260,37 +214,40 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
 		voting_task* task = encrypt_kmer_buffers[i];
 		read_t* r = &reads.reads[task->rid];
-		r->set_repeat_mask(params->k2, params->mask_repeat_nbrs ? params->k2 : 0);
+		const char* rseq;
+		kmer_cipher_t** rhashes; 
 		if(task->strand == voting_task::strand_t::FWD) {
-			if(r->hashes_f == NULL) {
-				generate_sha1_ciphers(task->get_read(), r->seq.c_str(), r->len, r->repeat_mask, false);
-				r->hashes_f = new kmer_cipher_t[task->get_read_data_len()];
-				memcpy(r->hashes_f, task->get_read(), sizeof(kmer_cipher_t)*task->get_read_data_len());
-			} else {
-				memcpy(task->get_read(), r->hashes_f, sizeof(kmer_cipher_t)*task->get_read_data_len());
-			}
+			rseq =  r->seq.c_str();
+			rhashes = &r->hashes_f;
 		} else {
-			if(r->hashes_rc == NULL) {
-				generate_sha1_ciphers(task->get_read(), r->rc.c_str(), r->len, r->repeat_mask, true);
-				r->hashes_rc = new kmer_cipher_t[task->get_read_data_len()];
-                                memcpy(r->hashes_rc, task->get_read(), sizeof(kmer_cipher_t)*task->get_read_data_len());
+			rseq =  r->rc.c_str();
+			rhashes = &r->hashes_rc;
+		}
+		if(params->vanilla) {
+			generate_vanilla_ciphers(task->get_read(), rseq, r->len);
+		} else {
+			r->set_repeat_mask(params->k2, params->mask_repeat_nbrs ? params->k2 : 0);
+			if(*rhashes == NULL) {
+				generate_sha1_ciphers(task->get_read(), rseq, r->len, r->repeat_mask, task->strand);
+				*rhashes = new kmer_cipher_t[task->get_read_data_len()];
+				memcpy(*rhashes, task->get_read(), sizeof(kmer_cipher_t)*task->get_read_data_len());
 			} else {
-				memcpy(task->get_read(), r->hashes_rc, sizeof(kmer_cipher_t)*task->get_read_data_len());
+				memcpy(task->get_read(), *rhashes, sizeof(kmer_cipher_t)*task->get_read_data_len());
 			}
 		}
-		int idx = 0;
+		
+		int contig_id = 0;
 		for(int j = task->start; j < task->end; j++) {
 			if(!r->ref_matches[j].valid) continue;
-			int contig_id = idx;
-			idx++;
 			lookup_sha1_ciphers(task->get_contig(contig_id), r->ref_matches[j].pos, r->ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
+			contig_id++;
 #if(SIM_EVAL)
 			r->get_sim_read_info(ref);
 	 		if(pos_in_intv(r->ref_pos_r, r->ref_matches[j].pos, r->ref_matches[j].len) || pos_in_intv(r->ref_pos_l, r->ref_matches[j].pos, r->ref_matches[j].len))  {
 				r->collected_true_hit = true;
 				r->processed_true_hit = true;
 				r->true_n_bucket_hits = r->ref_matches[j].n_diff_bucket_hits;
-				task->true_cid = contig_id;
+				task->true_cid = contig_id-1;
 			}
 #endif
 		}

@@ -44,19 +44,25 @@ void print_usage() {
 	printf("       -k        length of the sequence kmers [%d]\n", params->k);
 	printf("       -b        length of the fingerprint projections [%d]\n", params->sketch_proj_len);
 	printf("\nIndex-only options:\n\n");
-	printf("       -w        length of the reference windows to hash (should be set to the expected read length for optimal results) [%d]\n", params->ref_window_size);
-	printf("       -H        upper bound on kmer occurrence in the reference [%llu]\n", params->max_count);
+	printf("       -w       length of the reference windows to hash (should be set to the expected read length for optimal results) [%d]\n", params->ref_window_size);
+	printf("       -H       upper bound on kmer occurrence in the reference [%llu]\n", params->max_count);
 	printf("       -s        initially allocated hash table bucket size [%d]\n", params->bucket_size);
 	printf("\nAlignment-only options:\n\n");
-	printf("       -m        minimum required number of buckets shared between a reference window and the read for a contig to be examined [%d]\n", params->min_n_hits);
-	printf("       -N        maximum distance from the best number of shared buckets found for a contig to be examined [%d]\n", params->dist_best_hit);
+	printf("       -m       candidate contig filtering: min required number of index buckets shared with the read [%d]\n", params->min_n_hits);
+	printf("       -N       candidate contig filtering: max distance from the best found number of buckets shared with a contig [%d]\n", params->dist_best_hit);
+	printf("       -L        load precomputed candidate contigs [%d]\n", params->k2);
+	printf("       -z        precomputed candidate contigs file (store/load) [%d]\n", params->k2);
 	printf("       -v        length k2 of kmers counted during voting [%d]\n", params->k2);
-	printf("       -P        disable the pre-computation of k2 hash values for the reference kmers (executed once per k2 length) [ON]\n");
-	printf("       -n        number of initial inlier anchors to consider [%d]\n", params->n_init_anchors);
-	printf("       -d        RANSAC delta distance from the inlier anchor median considered close enough [%d]\n", params->delta_inlier);
-	printf("       -x        delta multiplier for the second RANSAC pass (i.e. number of deltas away the second position must be from the first pass median) [%d]\n", params->delta_x);
-	printf("       -c        cutoff minimum number of inlier votes [dynamic]\n");
-	printf("       -S        disable votes scaling [ON]\n");
+	printf("       -d        votes array convolution radius  [%d]\n", params->delta_inlier);
+	printf("       -x        min distance between separate mapping hits  [%d]\n", params->delta_x);
+	printf("       -c        cutoff on the min number of votes [auto]\n");
+	printf("       -f         mapq scaling factor  [auto]\n");
+	printf("       -I        voting kmer sampling factor [%d]\n", params->sampling_intv);
+	printf("\nPrivacy-related options:\n\n");
+	printf("       -V       enable vanilla mode (non-cryptographic hashing, no repeat filtering) \n");
+	printf("       -B       voting kmer discretized position range  [%d]\n", params->bin_size);
+	printf("       -S       voting task size: number of contigs per read encrypted with same keys [%d]\n", params->batch_size);
+	printf("       -M      enable masking kmers neighboring repeats (default: only repeats are masked) \n");
 	printf("\nOther options:\n\n");
 	printf("       -t        number of threads [%d]\n", params->n_threads);
 }
@@ -71,8 +77,9 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "i:o:w:k:h:L:H:T:b:p:l:t:m:s:d:v:PN:n:c:Sx:f:z:e:I:B:M")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "t:w:k:h:H:T:b:p:m:s:d:v:N:c:x:f:z:I:S:B:MV")) >= 0) {
 		switch (c) {
+			case 't': params->n_threads = atoi(optarg); break;
 			case 'h': params->h = atoi(optarg); break;
 			case 'T': params->n_tables = atoi(optarg); break;
 			case 'k': params->k = atoi(optarg); break;
@@ -80,25 +87,19 @@ int main(int argc, char *argv[]) {
 			case 'w': params->ref_window_size = atoi(optarg); break;
 			case 'p': params->n_buckets_pow2 = atoi(optarg); break;
 			case 's': params->bucket_size = atoi(optarg); break;
-			case 'l': params->bucket_entry_coverage = atoi(optarg); break;
 			case 'H': params->max_count = atoi(optarg); break;
-			case 'L': params->min_count = atoi(optarg); break;
 			case 'm': params->min_n_hits = atoi(optarg); break;
 			case 'N': params->dist_best_hit = atoi(optarg); break;
+			case 'L': params->load_mhi = false; break;
+			case 'z': params->precomp_contig_file_name = std::string(optarg); break;
 			case 'v': params->k2 = atoi(optarg); break;
-			case 'P': params->precomp_k2 = false; break;
-			case 'S': params->enable_scale = false; break;
-			case 'n': params->n_init_anchors = atoi(optarg); break;
 			case 'd': params->delta_inlier = atoi(optarg); break;
 			case 'x': params->delta_x = atoi(optarg); break;
-			case 'f': params->mapq_scale_x = atoi(optarg); break;
 			case 'c': params->votes_cutoff = atoi(optarg); break;
-			case 'i': params->in_index_fname = std::string(optarg); break;
-			case 'o': params->out_index_fname = std::string(optarg); break;
-			case 't': params->n_threads = atoi(optarg); break;
-			case 'z': params->precomp_contig_file_name = std::string(optarg); break;
-			case 'e': params->kmer_hashing_alg = (kmer_hash_alg) atoi(optarg); break;
+			case 'f': params->mapq_scale_x = atoi(optarg); break;
 			case 'I': params->sampling_intv = atoi(optarg); break;
+			case 'V': params->vanilla = true; break;
+			case 'S': params->batch_size = atoi(optarg); break;
 			case 'B': params->bin_size = atoi(optarg); break;
 			case 'M': params->mask_repeat_nbrs = true; break;
 			default: return 0;
@@ -110,38 +111,28 @@ int main(int argc, char *argv[]) {
 	params->set_minhash_sketch_hash_function();
 	params->generate_sparse_sketch_projections();
 	params->set_bin_shuffle();
+	if(params->vanilla) {
+		printf("Note: VANILLA mode activated (privacy-related parameter settings will be ignored) \n");
+		params->kmer_hashing_alg = CITY_HASH64;
+		params->batch_size = INT_MAX;
+		params->bin_size = 1;
+		params->mask_repeat_nbrs = false;
+	}
 		
 	printf("**********BALAUR**************\n");
 	params->n_buckets = pow(2, params->n_buckets_pow2);
 	if (strcmp(argv[1], "index") == 0) {
-		printf("Mode: Indexing \n");
 		ref_t ref;
 		index_ref_lsh(argv[optind+1], params, ref);
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
-		printf("Mode: Alignment \n");
-		params->load_mhi = false;
-		params->monolith = false;
-
-#if(VANILLA)
-                params->load_mhi = true;
-                params->monolith = true;
-#endif
-
-		// 1. load the reference index
 		ref_t ref;
-		load_index_ref_lsh(argv[optind+1], params, ref);
-
-		// 2. load the reads
 		reads_t reads;
+		load_index_ref_lsh(argv[optind+1], params, ref);
 		fastq2reads(argv[optind+2], reads);
-
-		// 3. align
 		balaur_main(argv[optind+1], ref, reads);
-
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
-		
 		//ref_t ref;
 		//load_ref_idx(argv[optind+1], ref, &params);
 		//store_ref_idx_flat(argv[optind+1], ref, &params);

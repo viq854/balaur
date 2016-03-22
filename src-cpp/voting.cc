@@ -212,7 +212,7 @@ void voting_task::process(voting_results& out) {
 		voting_results cur;
 		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
 		// second best
-		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x*params->delta_inlier);
+		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x);
 		cur.local_pos[0] -= n_read_kmers;
 		cur.local_pos[1] -= n_read_kmers;
 		cur.contig_id[0] = contig_ids[i];

@@ -155,7 +155,7 @@ struct voting_results {
 	void compare_and_update(voting_results& vr) {
 		for(int i = 0; i < 2; i++) {
 			if(vr.best_score[i] > best_score[BEST]) {
-				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], 30)) {
+				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], params->delta_x)) {
 					best_score[SECOND] = best_score[BEST];
 					local_pos[SECOND] = local_pos[BEST];
 					contig_id[SECOND] = contig_id[BEST];
@@ -167,7 +167,7 @@ struct voting_results {
 				contig_id[BEST] = vr.contig_id[i];
 				global_pos[BEST] = vr.global_pos[i];
 			} else if(vr.best_score[i]> best_score[SECOND]) {
-				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], 30)) {
+				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], params->delta_x)) {
 					best_score[SECOND]  = vr.best_score[i];
 					local_pos[SECOND]  = vr.local_pos[i];
 					contig_id[SECOND] = vr.contig_id[i];
