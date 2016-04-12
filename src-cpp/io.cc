@@ -99,6 +99,23 @@ bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 	return true;
 }
 
+void compute_ref_repeat_mask(ref_t& ref) {
+	const seq_t max_contig_len = params->max_matched_contig_len/10;
+	const seq_t n_contigs = ref.len - max_contig_len + 1;
+	ref.contig_mask.resize(n_contigs);
+	
+	#pragma omp parallel for
+	for(seq_t i = 0; i < n_contigs; i++) {
+		for(int j = 0; j < max_contig_len; j++) {
+			const uint16_t r = ref.precomputed_neighbor_repeats[i+j]; // distance to closest repeat
+			const seq_t next_occ =  i + r;
+			if(r == 0 || next_occ >= i + max_contig_len) continue; // unique kmer
+			ref.contig_mask[i] = 1;
+			break;
+		}
+	}
+}
+
 bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".rep.");
@@ -111,7 +128,12 @@ bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* pa
 	}
 	ref.precomputed_neighbor_repeats.resize(ref.len - params->k2 + 1);
 	file.read(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[0]), (ref.len - params->k2 + 1)*sizeof(ref.precomputed_neighbor_repeats[0]));
-	file.close();
+	
+	const seq_t max_contig_len = params->max_matched_contig_len;
+        const seq_t n_contigs = ref.len - max_contig_len + 1;
+	//ref.contig_mask.resize(n_contigs);
+ 	//file.read(reinterpret_cast<char*>(&ref.contig_mask[0]), ref.contig_mask.size()*sizeof(ref.contig_mask[0]));
+	//file.close();
 	return true;
 }
 
@@ -142,7 +164,7 @@ bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* pa
 
 void compute_store_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* params) {
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for (seq_t pos = 0; pos < ref.len - params->k2 + 1; pos++) {
 		switch(params->kmer_hashing_alg) {
 			case SHA1_E:
@@ -188,6 +210,8 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 			}
 		}
 	}
+	compute_ref_repeat_mask(ref);
+
 	std::string fname(refFname);
 	fname += std::string(".rep.");
 	fname += std::to_string(params->k2);
@@ -201,6 +225,8 @@ void compute_store_repeat_info(const char* refFname, ref_t& ref, const index_par
 	for (uint32 i = 0; i < ref.len - params->k2 + 1; i++) {
 		file.write(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[i]), sizeof(ref.precomputed_neighbor_repeats[i]));
 	}
+	file.write(reinterpret_cast<char*>(&ref.contig_mask[0]), ref.contig_mask.size()*sizeof(ref.contig_mask[0]));
+
 	file.close();
 }
 

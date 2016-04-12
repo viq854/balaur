@@ -56,6 +56,7 @@ typedef struct {
 	uint32 delta_inlier;
 	kmer_hash_alg kmer_hashing_alg;
 	bool vanilla;
+	bool monolith;
 	int bin_size;
 	int* bin_shuffle;
 	int batch_size;
@@ -74,6 +75,7 @@ typedef struct {
 	uint32_t n_threads;
 
 	void set_default_index_params() {
+		load_mhi = true;
 		kmer_type = OVERLAP;
 		h = 128;
 		n_tables = 78;
@@ -94,7 +96,7 @@ typedef struct {
 		dist_best_hit = 20;
 		n_init_anchors = 10;
 		delta_inlier = 10;
-		delta_x = 40;
+		delta_x = 30;
 		votes_cutoff = 0;
 		enable_scale = true;
 		mapq_scale_x = 50;
@@ -106,7 +108,7 @@ typedef struct {
 		mask_repeat_nbrs = false;
 		proc_contigs_thr = 10000;//0;
 		//if(ref_window_size > 150) proc_contigs_thr = 500;
-		//if(ref_window_size > 1000) proc_contigs_thr = 20;
+		if(ref_window_size > 350) proc_contigs_thr = 20;
 		kmer_hashing_alg = SHA1_E;
 	}
 	
@@ -215,6 +217,8 @@ typedef struct {
 	std::vector<uint64> packed_32bp_kmers;
 	std::vector<kmer_cipher_t> precomputed_kmer2_hashes;
 	std::vector<uint16_t> precomputed_neighbor_repeats;
+	std::vector<char> contig_mask;
+
 	//std::vector<char> precomputed_local_repeats;
 	//std::unordered_set<uint32> repeats;
 	//std::vector<kmer_cipher_t> repeats_vec;

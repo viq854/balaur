@@ -142,8 +142,10 @@ struct voting_results {
 	int contig_id[2];
 	int rid;
 	bool rc;
+	int n_true_votes;
 	
 	voting_results() {
+		n_true_votes = 0;
 		best_score[0] = 0;
 		best_score[1] = 0;
 		for(int i = 0; i < 2; i++) {

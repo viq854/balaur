@@ -24,11 +24,6 @@ void store_alns_sam(reads_t& reads, const ref_t& ref, const index_params_t* para
 void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 	int flag = 0; // FLAG
 	if(r->top_aln.ref_start != 0) {
-		//seq_t aln_pos = r->top_aln.ref_start;
-		//if(ref.subsequence_offsets.size() > 1) {
-		//	aln_pos -= ref.subsequence_offsets[r->seq_id];
-		//}
-
 		r->seq_id = ref.subsequence_offsets.size()-1;
 		for(uint32 i = 0; i < ref.subsequence_offsets.size()-1; i++) {
 			if(r->top_aln.ref_start >= ref.subsequence_offsets[i] && r->top_aln.ref_start < ref.subsequence_offsets[i+1]) {
@@ -55,7 +50,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		fprintf(samFile, "%d\t%d\t", (int)(aln_pos+1), r->top_aln.score);
 
 		// CIGAR
-		fprintf(samFile, "CIGAR");
+		fprintf(samFile, "%dM", r->len);
 
 		// RNEXT, PNEXT, TLEN (print void mate position and coordinate)
 		fprintf(samFile, "\t*\t0\t0\t");

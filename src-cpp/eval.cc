@@ -7,8 +7,8 @@ void eval(reads_t& reads, const ref_t& ref) {
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if (VERBOSE > 0 && r->top_aln.score >= 10 &&
-				!pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 30) &&
-				!pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 30)) {
+				!pos_in_range(r->ref_pos_r, r->top_aln.ref_start, 20) &&
+				!pos_in_range(r->ref_pos_l, r->top_aln.ref_start, 20)) {
 				printf("WRONG: score %u max-votes: %u second-best-votes: %u true-contig-votes: %u true-bucket-hits: %u max-bucket-hits %u true-pos-l  %u true-pos-r: %u found-pos %u\n",
 					r->top_aln.score,
 					r->top_aln.inlier_votes, r->second_best_aln.inlier_votes, r->comp_votes_hit, r->true_n_bucket_hits, r->best_n_bucket_hits,

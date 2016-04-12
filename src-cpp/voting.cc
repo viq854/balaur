@@ -10,6 +10,9 @@ inline bool is_unique_kmer(const std::vector<kmer_enc_t>& sorted_kmers, const ui
 	if(idx < sorted_kmers.size()-1 && sorted_kmers[idx+1].hash == hash) {
 		unique = false;
 	}
+
+	//if(!unique) std::cout << "NOT UNIQUE!!!\n";
+
 	return unique;
 }
 
@@ -48,9 +51,10 @@ bool vote_cast_and_count(const std::vector<kmer_enc_t>& read_kmers, const std::v
 	bool any_matches = false;
 	for(int i = 0; i < read_kmers.size(); i++) {
 		if(read_kmers[i].hash == 0) continue;
-		if(!is_unique_kmer(read_kmers, i)) continue;
-		for(uint32 j = skip; j < contig_kmers.size(); j++) {
-			if(!is_unique_kmer(contig_kmers, j)) continue;
+		//if(!is_unique_kmer(read_kmers, i)) continue;
+		uint32 j;
+		for(j = skip; j < contig_kmers.size(); j++) {
+			//if(!is_unique_kmer(contig_kmers, j)) continue;
 			if(read_kmers[i].hash == contig_kmers[j].hash) {
 				any_matches = true;
 				record_vote_discretized(read_kmers[i], contig_kmers[j], max_rpos, max_cpos, cstart_pos, votes);
@@ -59,6 +63,7 @@ bool vote_cast_and_count(const std::vector<kmer_enc_t>& read_kmers, const std::v
 					break;
 			}
 		}
+		if(j == contig_kmers.size()) break; 
 	}
 	return any_matches;
 }
@@ -203,7 +208,7 @@ void voting_task::process(voting_results& out) {
 		if(!any_votes) {
 			continue;
 		}
-
+		
 		// convolution
 		std::vector<int> votes_prefsum;
 		prefsum(votes, votes_prefsum);
@@ -211,8 +216,13 @@ void voting_task::process(voting_results& out) {
 		// max vote
 		voting_results cur;
 		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::BEST], cur.local_pos[voting_results::topid::BEST], params->delta_inlier, false, 0, 0);
+
+		if(i == true_cid) {
+                        out.n_true_votes = cur.best_score[voting_results::topid::BEST];
+                }
+
 		// second best
-		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], params->delta_x);
+		find_max_vote_mid(votes_prefsum, cur.best_score[voting_results::topid::SECOND], cur.local_pos[voting_results::topid::SECOND], params->delta_inlier, true, cur.local_pos[voting_results::topid::BEST], 50); //params->delta_x);
 		cur.local_pos[0] -= n_read_kmers;
 		cur.local_pos[1] -= n_read_kmers;
 		cur.contig_id[0] = contig_ids[i];
@@ -221,6 +231,7 @@ void voting_task::process(voting_results& out) {
 		cur.global_pos[1] = global_pos[i];
 		out.compare_and_update(cur);
 	}
+	//if(out.best_score[voting_results::topid::BEST] > 0) std::cout << out.rid << " best score " << out.best_score[voting_results::topid::BEST] << " " << out.best_score[voting_results::topid::SECOND] << "\n";
 }
 
 // input:

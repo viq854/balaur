@@ -31,7 +31,7 @@
 void phase1_minhash(const ref_t& ref, reads_t& reads);
 void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers);
 void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<voting_results>& results, voting_stats& stats);
-void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results> voting_results,  voting_stats& stats);
+void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results>& voting_results,  voting_stats& stats);
 void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
@@ -51,12 +51,16 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 
 	// --- phase 2 ---
 	load_kmer2_hashes(fastaName, ref, params);
-	load_repeat_info(fastaName, ref, params);
-	std::vector<voting_task*> encrypt_kmer_buffers;
 	std::vector<voting_results> results;
 	voting_stats stats;
-	phase2_encryption(reads, ref, encrypt_kmer_buffers);
-	phase2_voting(encrypt_kmer_buffers, results, stats);
+	if(params->monolith) {
+		phase2_monolith(reads, ref, results, stats);
+	} else {
+		load_repeat_info(fastaName, ref, params);
+		std::vector<voting_task*> encrypt_kmer_buffers;
+		phase2_encryption(reads, ref, encrypt_kmer_buffers);
+		phase2_voting(encrypt_kmer_buffers, results, stats);
+	}
 	finalize(reads, ref, results, stats);
 	eval(reads, ref);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
@@ -137,6 +141,8 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 		
 		task_out.convert2global_pos(global_offset1, global_offset2);
 		r.compare_and_update_best_aln(task_out.best_score, task_out.global_pos, task_out.rc);
+	
+		//std::cout << r.rid << " " << r.top_aln.inlier_votes << " " << r.second_best_aln.inlier_votes << "\n";
 	}
 
 	int sum = 0;
@@ -165,9 +171,9 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float) stats.avg_score;
 				}
 			}
-			if(r.top_aln.rc) {
-				r.top_aln.ref_start += r.len;
-			}	
+			//if(r.top_aln.rc) {
+			//	r.top_aln.ref_start += r.len;
+			//}	
 		}
 		//std::cout << r.top_aln.ref_start << " " << r.top_aln.score << " " << r.top_aln.rc << "\n";
 	}
@@ -239,7 +245,11 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		int contig_id = 0;
 		for(int j = task->start; j < task->end; j++) {
 			if(!r->ref_matches[j].valid) continue;
-			lookup_sha1_ciphers(task->get_contig(contig_id), r->ref_matches[j].pos, r->ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
+			if(params->vanilla) {
+				 lookup_vanilla_ciphers(task->get_contig(contig_id), r->ref_matches[j].pos, r->ref_matches[j].len, ref.precomputed_kmer2_hashes);
+			} else {
+				lookup_sha1_ciphers(task->get_contig(contig_id), true, r->ref_matches[j].pos, r->ref_matches[j].len, ref.precomputed_kmer2_hashes, ref.precomputed_neighbor_repeats);
+			}
 			contig_id++;
 #if(SIM_EVAL)
 			r->get_sim_read_info(ref);
@@ -257,3 +267,78 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 		apply_keys(task->get_data(), task->get_data_len(), key1_xor_pad, key2_mult_pad);
 	}
 }
+
+// on-the-fly voting without buffering
+void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats) {
+	printf("////////////// Phase 2: MONOLITH //////////////\n");
+	double t = omp_get_wtime();
+	int sum = 0;
+	int n_nonzero = 0;
+	for(size_t i = 0; i < reads.reads.size(); i++) {
+		read_t& r = reads.reads[i];
+		if(!r.is_valid()) continue;
+		if(r.n_match_f > 0) {
+			voting_task* task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::FWD, r.ref_matches, 0, r.n_match_f);
+			if(task != NULL) {
+				generate_vanilla_ciphers(task->get_read(), r.seq.c_str(), r.len);
+				int contig_id = 0;
+				for(int j = 0; j < r.n_match_f; j++) {
+					if(!r.ref_matches[j].valid) continue;
+					lookup_vanilla_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes);
+					contig_id++;
+					
+				#if(SIM_EVAL)
+        		                r.get_sim_read_info(ref);
+                        		if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
+                                		r.collected_true_hit = true;
+                               			r.processed_true_hit = true;
+                                		r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
+                                		task->true_cid = contig_id-1;
+                        		}
+				#endif		
+	
+				}
+				voting_results res;
+				res.rid = task->rid;
+                		res.rc = task->strand;
+				task->process(res);
+				results.push_back(res);
+				task->free();
+			}
+		}
+		if(r.ref_matches.size() - r.n_match_f > 0) {
+			voting_task* task = voting_task::alloc_voting_task(r.len, i, voting_task::strand_t::RC, r.ref_matches, r.n_match_f, r.ref_matches.size());
+			if(task != NULL) {
+				generate_vanilla_ciphers(task->get_read(), r.rc.c_str(), r.len);
+				int contig_id = 0;
+				for(int j = r.n_match_f; j < r.ref_matches.size(); j++) {
+					if(!r.ref_matches[j].valid) continue;
+					lookup_vanilla_ciphers(task->get_contig(contig_id), r.ref_matches[j].pos, r.ref_matches[j].len, ref.precomputed_kmer2_hashes);
+					contig_id++;
+				#if(SIM_EVAL)
+                                        r.get_sim_read_info(ref);
+                                        if(pos_in_intv(r.ref_pos_r, r.ref_matches[j].pos, r.ref_matches[j].len) || pos_in_intv(r.ref_pos_l, r.ref_matches[j].pos, r.ref_matches[j].len))  {
+                                                r.collected_true_hit = true;
+                                                r.processed_true_hit = true;
+                                                r.true_n_bucket_hits = r.ref_matches[j].n_diff_bucket_hits;
+                                                task->true_cid = contig_id-1;
+                                        }
+                                #endif				
+
+				}
+				voting_results res;
+				res.rid = task->rid;
+                                res.rc = task->strand;
+                                task->process(res);
+                                results.push_back(res);
+				task->free();
+
+				if(res.n_true_votes > 0) {
+					r.comp_votes_hit = res.n_true_votes;
+				}
+			}
+		}
+	}
+	printf("Total time: %.2f sec\n", omp_get_wtime() - t);
+}
+

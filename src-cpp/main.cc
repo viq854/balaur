@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "t:w:k:h:H:T:b:p:m:s:d:v:N:c:x:f:z:I:S:B:MV")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "t:w:k:h:H:T:b:p:m:s:d:v:N:c:x:Lf:z:I:S:B:MV")) >= 0) {
 		switch (c) {
 			case 't': params->n_threads = atoi(optarg); break;
 			case 'h': params->h = atoi(optarg); break;
@@ -117,6 +117,7 @@ int main(int argc, char *argv[]) {
 		params->batch_size = INT_MAX;
 		params->bin_size = 1;
 		params->mask_repeat_nbrs = false;
+		if(params->ref_window_size > 350) params->monolith = true;
 	}
 		
 	printf("**********BALAUR**************\n");
@@ -140,13 +141,13 @@ int main(int argc, char *argv[]) {
 		// load the reference index
 		ref_t ref;
 		fasta2ref(argv[optind+1], ref);
-		//load_kmer2_hashes(argv[optind+1], ref, &params);
-		//compute_store_repeat_info(argv[optind+1], ref, &params);
+		//load_kmer2_hashes(argv[optind+1], ref, params);
+		//compute_store_repeat_info(argv[optind+1], ref, params);
 		//compute_store_repeat_local(argv[optind+1], ref, &params);		
-		load_repeat_info(argv[optind+1], ref, params);
-		bin_repeat_stats(argv[optind+1], params, ref);
+		//load_repeat_info(argv[optind+1], ref, params);
+		//bin_repeat_stats(argv[optind+1], params, ref);
 
-		//compute_store_kmer2_hashes(argv[optind+1], ref, &params);
+		compute_store_kmer2_hashes(argv[optind+1], ref, params);
 	
 		//ref_kmer_repeat_stats(argv[optind+1], &params, ref);
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
