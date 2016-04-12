@@ -14,7 +14,7 @@ Privacy-preserving read alignment for hybrid clouds using MinHash and kmer votin
 ```-T <arg> ``` number of hash tables (default: 78)  
 ```-k <arg> ``` length of the sequence kmers (default: 16)  
 ```-b <arg> ``` length of the fingerprint projections (default: 2)  
-```-H <arg> ``` [index-only] upper bound on kmer occurrence in the reference (default: 800) 
+```-H <arg> ``` [index-only] upper bound on kmer occurrence in the reference (default: 800)  
 ```-w <arg> ``` [index-only] length of the reference windows to hash (should be set to the expected read length for optimal results) (default: 150) 
 
 #####Alignment options:  
