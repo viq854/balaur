@@ -28,10 +28,10 @@ Privacy-preserving read alignment for hybrid clouds using MinHash and kmer votin
 ```-I <arg> ``` voting contig kmer sampling rate (default: 3)  
 
 #####Privacy-related options:
-```-V ```  enable vanilla mode (non-cryptographic hashing, no repeat filtering)
-```-B <arg> ```  voting kmer discretized position range (default: 20)
-```-S <arg> ```  voting task batching: number of contigs per read encrypted with same keys (default: 1)
+```-V ```  enable vanilla mode (non-cryptographic hashing, no repeat filtering)  
+```-B <arg> ```  voting kmer discretized position range (default: 20)  
+```-S <arg> ```  voting task batching: number of contigs per read encrypted with same keys (default: 1)  
 ```-M ```  [recommended] enable masking repeat kmer neighbors
 
-#####Other options:
+#####Other options:  
 ```-t <arg> ``` number of threads (default: 1) 
