@@ -1,6 +1,8 @@
 #ifndef IO_H_
 #define IO_H_
 
+#include <seqan/sequence.h>
+#include <seqan/seq_io.h>
 #include "types.h"
 #include "index.h"
 
@@ -27,6 +29,102 @@ static const unsigned char nt4_table[256] = {
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
 
+#define READ_BATCH_SIZE 1000000
+struct fastq_reader_t {
+	seqan::SeqFileIn file_handle;
+	int n_records;
+
+	void open_file(const std::string& fname) {
+		if (!seqan::open(file_handle, seqan::toCString(fname))) {
+			std::cerr << "ERROR: Could not open FASTQ file: " << fname << "\n";
+			exit(1);
+		}
+		n_records = 0;
+	}
+	
+	// load FASTQ read records
+	bool load_next_read(read_t& r) {
+		if(!seqan::atEnd(file_handle)) {
+			seqan::readRecord(r.name, r.seq, r.qual, file_handle);
+			r.rid = n_records;
+			n_records++;
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	bool load_next_read_batch(reads_t& reads, const int read_batch_size) {
+		int n_reads_loaded = 0;
+		read_t r;
+		while(n_reads_loaded < read_batch_size && this->load_next_read(r)) {
+			reads.reads.push_back(r);
+			n_reads_loaded++;
+		}
+		std::cout << "Loaded " << n_reads_loaded << " reads\n";
+		return n_reads_loaded > 0;
+	}
+	
+	void close_file() {
+		seqan::close(file_handle);
+	}
+};
+
+typedef enum {STORE, LOAD} precomp_contig_io_mode_t;
+struct precomp_contig_io_t {
+	precomp_contig_io_mode_t file_open_mode;
+	std::ofstream file_handle_store;
+	std::ifstream file_handle_load;
+	
+	void open_file(const char* fname, const precomp_contig_io_mode_t file_open_mode) {
+		if(file_open_mode == STORE) {
+			file_handle_store.open(fname, std::ios::out | std::ios::binary);
+			if (!file_handle_store.is_open()) {
+				printf("precomp_contig_io_t store: Cannot open file %s!\n", fname);
+				exit(1);
+			}
+		} else { // LOAD
+			file_handle_load.open(fname, std::ios::in | std::ios::binary);
+			if (!file_handle_load.is_open()) {
+				printf("precomp_contig_io_t load: Cannot open file %s!\n", fname);
+				exit(1);
+			}
+		}
+	}
+	
+	void store_precomp_contigs(reads_t& reads) {
+		for(uint32 i = 0; i < reads.reads.size(); i++) {
+			read_t* r = &reads.reads[i];
+			if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+			uint32 ref_size = r->ref_matches.size();
+			file_handle_store.write(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+			file_handle_store.write(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+		}
+	}
+	
+	void load_precomp_contigs(reads_t& reads) {
+		for(uint32 i = 0; i < reads.reads.size(); i++) {
+			read_t* r = &reads.reads[i];
+			if(!r->valid_minhash_f && !r->valid_minhash_rc) continue;
+			uint32 ref_size;
+			file_handle_load.read(reinterpret_cast<char*>(&ref_size), sizeof(r->ref_matches.size()));
+			r->ref_matches.resize(ref_size);
+			file_handle_load.read(reinterpret_cast<char*>(&(r->ref_matches[0])), r->ref_matches.size()*sizeof(ref_match_t));
+			r->n_proc_contigs = ref_size;
+			for(uint32 j = 0; j < r->ref_matches.size(); j++) {
+				ref_match_t ref_contig = r->ref_matches[j];
+				if(ref_contig.n_diff_bucket_hits > r->best_n_bucket_hits) {
+					r->best_n_bucket_hits = ref_contig.n_diff_bucket_hits;
+				}
+			}
+		}
+	}
+	
+	void close_file() {
+		if(file_handle_store.is_open()) file_handle_store.close();
+		if(file_handle_load.is_open()) file_handle_load.close();
+	}
+};
 
 void fasta2ref(const char *fastaFname, ref_t& ref);
 void fastq2reads(const char *readsFname, reads_t& reads);

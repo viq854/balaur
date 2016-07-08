@@ -35,6 +35,7 @@
 #include <string.h>
 #include "index.h"
 #include "align.h"
+#include "sam.h"
 
 void print_usage() {
 	printf("Usage: ./balaur [options] <index|align> <ref.fa> <reads.fq> \n");
@@ -128,10 +129,36 @@ int main(int argc, char *argv[]) {
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
 		ref_t ref;
-		reads_t reads;
-		load_index_ref_lsh(argv[optind+1], params, ref);
-		fastq2reads(argv[optind+2], reads);
-		balaur_main(argv[optind+1], ref, reads);
+		//load_index_ref_lsh(argv[optind+1], params, ref);
+		// load all reads as a single batch
+		// reads_t reads;
+		// fastq2reads(argv[optind+2], reads);
+	
+		// read batch processing
+		fastq_reader_t reader;
+		reader.open_file(argv[optind+2]);
+		
+		precomp_contig_io_t contig_io;
+		if(params->load_mhi) {
+			if(params->precomp_contig_file_name.size() != 0) {
+				contig_io.open_file(params->precomp_contig_file_name.c_str(), STORE);
+			}
+		} else {
+			contig_io.open_file(params->precomp_contig_file_name.c_str(), LOAD);
+		}
+		
+		sam_writer_t sam_io;
+		sam_io.open_file(argv[optind+2]);
+		
+		while(true) {
+			load_index_ref_lsh(argv[optind+1], params, ref);
+			reads_t reads;
+			if(!reader.load_next_read_batch(reads, READ_BATCH_SIZE)) break;
+			balaur_main(argv[optind+1], ref, reads, contig_io, sam_io);
+		}
+		reader.close_file();
+		contig_io.close_file();
+		sam_io.close_file();
 	} else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
 		//ref_t ref;

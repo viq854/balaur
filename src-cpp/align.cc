@@ -32,9 +32,9 @@ void phase1_minhash(const ref_t& ref, reads_t& reads);
 void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers);
 void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<voting_results>& results, voting_stats& stats);
 void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results>& voting_results,  voting_stats& stats);
-void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats);
+void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats, sam_writer_t& sam_io);
 
-void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
+void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, precomp_contig_io_t& contig_io, sam_writer_t& sam_io) {
 	// --- phase 1 ---
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads);
@@ -42,10 +42,10 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 	if(params->load_mhi) {
 		ref.index.release();
 		if(params->precomp_contig_file_name.size() != 0) {
-			store_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
+			contig_io.store_precomp_contigs(reads);
 		}
 	} else {
-		load_precomp_contigs(params->precomp_contig_file_name.c_str(), reads);
+		contig_io.load_precomp_contigs(reads);
 	}
 	filter_candidate_contigs(reads);
 
@@ -61,7 +61,7 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads) {
 		phase2_encryption(reads, ref, encrypt_kmer_buffers);
 		phase2_voting(encrypt_kmer_buffers, results, stats);
 	}
-	finalize(reads, ref, results, stats);
+	finalize(reads, ref, results, stats, sam_io);
 	eval(reads, ref);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
 }
@@ -128,7 +128,8 @@ void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
 }
 
-void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats) {
+void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, 
+	voting_stats& stats, sam_writer_t& sam_writer) {
 	printf("////////////// Finalize Mappings //////////////\n");
 	double t = omp_get_wtime();
 	for(size_t i = 0; i < results.size(); i++) {
@@ -141,8 +142,6 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 		
 		task_out.convert2global_pos(global_offset1, global_offset2);
 		r.compare_and_update_best_aln(task_out.best_score, task_out.global_pos, task_out.rc);
-	
-		//std::cout << r.rid << " " << r.top_aln.inlier_votes << " " << r.second_best_aln.inlier_votes << "\n";
 	}
 
 	int sum = 0;
@@ -175,11 +174,11 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 			//	r.top_aln.ref_start += r.len;
 			//}	
 		}
-		//std::cout << r.top_aln.ref_start << " " << r.top_aln.score << " " << r.top_aln.rc << "\n";
 	}
 	
 	// output the alignment results to SAM
-	store_alns_sam(reads, ref, params);
+	//store_alns_sam(reads, ref, params);
+	sam_writer.write_sam_batch(reads, ref);
 	printf("Total post-processing time: %.2f sec\n", omp_get_wtime() - t);
 }
 
@@ -333,9 +332,9 @@ void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_result
                                 results.push_back(res);
 				task->free();
 
-				if(res.n_true_votes > 0) {
-					r.comp_votes_hit = res.n_true_votes;
-				}
+				//if(res.n_true_votes > 0) {
+				//	r.comp_votes_hit = res.n_true_votes;
+				//}
 			}
 		}
 	}

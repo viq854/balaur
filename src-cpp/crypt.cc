@@ -10,6 +10,8 @@
 
 // read hashing
 // repeat kmers are masked by default according to the repeat_mask
+#define KEY_LEN 32
+uint8_t blake2_key[KEY_LEN];
 void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const std::vector<bool>& repeat_mask, bool rev_mask) {
 		const int n_kmers = get_n_kmers(seq_len, params->k2);
 		uint32_t hash[5];
@@ -21,6 +23,7 @@ void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t 
 			} else {
 				sha1_hash(reinterpret_cast<const uint8_t*>(&seq[i]), params->k2, hash);
 				ciphers[i] = ((uint64) hash[0] << 32 | hash[1]);
+				//blake2bp(reinterpret_cast<uint8_t*>(&ciphers[i]), reinterpret_cast<const void*>(&seq[i]), blake2_key, 8, params->k2, 0);//KEY_LEN);
 			}
 		}
 }

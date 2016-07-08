@@ -592,7 +592,7 @@ void fastq2reads(const char *readsFname, reads_t& reads) {
 void store_precomp_contigs(const char* fileName, reads_t& reads) {
 	std::string fname(fileName);
 	std::ofstream file;
-	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	file.open(fname.c_str(), std::ios::out | std::ios::binary | std::ios::app);
 	if (!file.is_open()) {
 		printf("store_or_load_contigs: Cannot open file %s!\n", fname.c_str());
 		exit(1);

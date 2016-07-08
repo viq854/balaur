@@ -5,6 +5,7 @@
 #include "types.h"
 #include "../third-party/city.h"
 #include "../third-party/mt64.h"
+#include "blake2.h"
 //#include "../rollinghashcpp/cyclichash.h"
 struct CyclicHash{ CyclicHash(int x, int y){}; };
 
@@ -12,6 +13,8 @@ struct CyclicHash{ CyclicHash(int x, int y){}; };
 extern "C" 
 {
  	void sha1_compress(uint32_t state[5], const uint8_t block[64]);
+	int blake2bp(uint8_t *out, const void *in, const void *key, size_t outlen, size_t inlen, size_t keylen);
+	int blake2b( uint8_t *out, const void *in, const void *key, size_t outlen, size_t inlen, size_t keylen );
 }
 #else
 	void sha1_compress(uint32_t state[5], const uint8_t block[64]);
