@@ -1,3 +1,6 @@
+//#include <bitpck.h>
+//#include <varint.h>
+//#include <vbyte.h>
 #include <float.h>
 #include <emmintrin.h>
 #include <smmintrin.h>
@@ -33,14 +36,19 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task
 void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<voting_results>& results, voting_stats& stats);
 void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results>& voting_results,  voting_stats& stats);
 void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats, sam_writer_t& sam_io);
+void free_kmer_buffers(std::vector<voting_task*>& encrypt_kmer_buffers);
 
 void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, precomp_contig_io_t& contig_io, sam_writer_t& sam_io) {
+	omp_set_num_threads(1);
+
 	// --- phase 1 ---
 	double start_time = omp_get_wtime();
 	phase1_minhash(ref, reads);
-	
+	reads.free_minhash_data();
+
 	if(params->load_mhi) {
-		ref.index.release();
+		//std::cout << "Releasing index memory\n";
+		//ref.index.release();
 		if(params->precomp_contig_file_name.size() != 0) {
 			contig_io.store_precomp_contigs(reads);
 		}
@@ -50,19 +58,21 @@ void balaur_main(const char* fastaName, ref_t& ref, reads_t& reads, precomp_cont
 	filter_candidate_contigs(reads);
 
 	// --- phase 2 ---
-	load_kmer2_hashes(fastaName, ref, params);
+	//load_kmer2_hashes(fastaName, ref, params);
 	std::vector<voting_results> results;
 	voting_stats stats;
 	if(params->monolith) {
 		phase2_monolith(reads, ref, results, stats);
 	} else {
-		load_repeat_info(fastaName, ref, params);
+		//load_repeat_info(fastaName, ref, params);
 		std::vector<voting_task*> encrypt_kmer_buffers;
 		phase2_encryption(reads, ref, encrypt_kmer_buffers);
+		
 		phase2_voting(encrypt_kmer_buffers, results, stats);
+		free_kmer_buffers(encrypt_kmer_buffers);
 	}
 	finalize(reads, ref, results, stats, sam_io);
-	eval(reads, ref);
+	//eval(reads, ref);
 	printf("****TOTAL ALIGNMENT TIME****: %.2f sec\n", omp_get_wtime() - start_time);	
 }
 
@@ -72,6 +82,7 @@ void phase1_minhash(const ref_t& ref, reads_t& reads) {
 	printf("////////////// Phase 1: MinHash //////////////\n");
 	double t = omp_get_wtime();
 	///// ---- fingerprints ----
+	//#pragma omp parallel for
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		r->minhashes_f.resize(params->h);
@@ -108,9 +119,37 @@ void phase2_encryption(reads_t& reads, const ref_t& ref, std::vector<voting_task
 		total_size += task->offsets[task->offsets.size()-1]*sizeof(kmer_cipher_t);
 		total_contigs += task->offsets.size()-1;
 	}
+
 	printf("Total number of tasks: %lu \n", encrypt_kmer_buffers.size());
 	printf("Total contigs: %llu \n", total_contigs);
 	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
+
+	// compression (experimental)
+	/*total_size = 0;
+	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
+                voting_task* task = encrypt_kmer_buffers[i];
+                kmer_cipher_t* data = task->get_data();
+		int data_len = task->get_data_len();
+		
+		//uint32_t size = vbyte_compress_unsorted64(reinterpret_cast<uint64_t*>(data), out, data_len);
+		std::vector<uint64_t> data_vec(data_len);
+		std::vector<uint64_t> data_dec(data_len);
+		for(int x = 0; x < data_len; x++) {
+			data_vec[x] = data[x];
+		}
+		
+		//size_t size = oroch::varint_codec<uint64_t>::space(data_vec.begin(), data_vec.end());
+		size_t size = oroch::bitpck_codec<uint64_t>::space(data_len, 64);
+		total_size += size;
+		
+		//std::vector<uint8_t> data_enc(size);
+		//uint8_t *out = data_enc.data();
+		//oroch::varint_codec<uint64_t>::encode(out, data_vec.begin(), data_vec.end());
+		//const uint8_t* out2 = data_enc.data();
+		//oroch::varint_codec<uint64_t>::decode(data_dec.begin(), data_dec.end(), out2);
+	}
+	printf("Total size: %.2f MB\n", ((float) total_size)/1024/1024);
+	*/
 }
 
 void phase2_voting(std::vector<voting_task*>& encrypt_kmer_buffers, std::vector<voting_results>& results, voting_stats& stats) {
@@ -139,13 +178,24 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 		seq_t global_offset2 = 0;
 		if(task_out.contig_id[0] >= 0) global_offset1 = r.ref_matches[task_out.contig_id[0]].pos; 
 		if(task_out.contig_id[1] >= 0) global_offset2 = r.ref_matches[task_out.contig_id[1]].pos;
-		
 		task_out.convert2global_pos(global_offset1, global_offset2);
+
+		if(task_out.kmer_matches.size() > 0) {	
+			cipher_match_t m = task_out.kmer_matches[0];
+			seq_t cpos = get_global_cipher_pos(m.ck.pos, m.ck.hash, global_offset1, ref.precomputed_kmer2_hashes, task_out.key1_xor_pad, task_out.key2_mult_pad, params->vanilla);
+			seq_t rpos = m.rk.orig_pos;
+			seq_t ref_pos = 0;
+			if(cpos > rpos) {
+				ref_pos = cpos - rpos;
+			}
+			task_out.global_pos[0] = ref_pos;
+		}
 		r.compare_and_update_best_aln(task_out.best_score, task_out.global_pos, task_out.rc);
 	}
 
 	int sum = 0;
 	int n_nonzero = 0;
+	//#pragma omp parallel for reduction(+:sum, n_nonzero)
 	for(size_t i = 0; i < reads.reads.size(); i++) {
 		read_t& r = reads.reads[i];
 		if(r.top_aln.inlier_votes > 0) {
@@ -154,8 +204,10 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
                 }
 	}
 	if(n_nonzero > 0) stats.avg_score = sum/n_nonzero;
-	
+
 	// ---- mapq score -----
+	printf("Calculating the mapq scores...\n");
+	//#pragma omp parallel for
 	for(size_t i = 0; i < reads.reads.size(); i++) {
 		read_t& r = reads.reads[i];
 		r.top_aln.score = 0;
@@ -170,6 +222,7 @@ void finalize(reads_t& reads, const ref_t& ref, std::vector<voting_results>& res
 					r.top_aln.score *= (float) r.top_aln.inlier_votes/(float) stats.avg_score;
 				}
 			}
+			//enable for eval
 			//if(r.top_aln.rc) {
 			//	r.top_aln.ref_start += r.len;
 			//}	
@@ -189,6 +242,11 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 	int task_id = 0;
 	for(size_t i = 0; i < reads.reads.size(); i++) {
 		read_t& r = reads.reads[i];
+		if(r.len <= 0) {
+			std::cout << "ERROR: r.len \n";
+			exit(-1);
+		}
+
 		if(!r.is_valid()) continue;
 		if(r.n_match_f > 0) {
 			const int n_batches = ceil(((float) r.n_match_f) / params->batch_size);
@@ -215,7 +273,15 @@ void allocate_encrypt_kmer_buffers(reads_t& reads, std::vector<voting_task*>& en
 	}
 }
 
+void free_kmer_buffers(std::vector<voting_task*>& encrypt_kmer_buffers) {
+	//#pragma omp parallel for
+	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
+		encrypt_kmer_buffers[i]->free();
+	}
+}
+
 void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector<voting_task*>& encrypt_kmer_buffers) {
+	//#pragma omp parallel for (fix: rhashes access needs to be synchronized)
 	for(size_t i = 0; i < encrypt_kmer_buffers.size(); i++) {
 		voting_task* task = encrypt_kmer_buffers[i];
 		read_t* r = &reads.reads[task->rid];
@@ -234,6 +300,10 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 			r->set_repeat_mask(params->k2, params->mask_repeat_nbrs ? params->k2 : 0);
 			if(*rhashes == NULL) {
 				generate_sha1_ciphers(task->get_read(), rseq, r->len, r->repeat_mask, task->strand);
+				if(task->get_read_data_len() <= 0) {
+					std::cout << "ERROR alloc read len <= 0 " << i << "\n";
+					exit(-1);
+				}
 				*rhashes = new kmer_cipher_t[task->get_read_data_len()];
 				memcpy(*rhashes, task->get_read(), sizeof(kmer_cipher_t)*task->get_read_data_len());
 			} else {
@@ -261,9 +331,11 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 #endif
 		}
 		// apply the task-specific keys
-		uint64 key1_xor_pad = genrand64_int64();
-		uint64 key2_mult_pad = genrand64_int64();
-		apply_keys(task->get_data(), task->get_data_len(), key1_xor_pad, key2_mult_pad);
+		if(!params->vanilla){
+			task->key1_xor_pad = genrand64_int64();
+        		task->key2_mult_pad = genrand64_int64();
+			apply_keys(task->get_data(), task->get_data_len(), task->key1_xor_pad, task->key2_mult_pad);
+		}
 	}
 }
 
@@ -271,8 +343,7 @@ void populate_encrypt_kmer_buffers(reads_t& reads, const ref_t& ref, std::vector
 void phase2_monolith(reads_t& reads, const ref_t& ref, std::vector<voting_results>& results, voting_stats& stats) {
 	printf("////////////// Phase 2: MONOLITH //////////////\n");
 	double t = omp_get_wtime();
-	int sum = 0;
-	int n_nonzero = 0;
+	//#pragma omp parallel for
 	for(size_t i = 0; i < reads.reads.size(); i++) {
 		read_t& r = reads.reads[i];
 		if(!r.is_valid()) continue;

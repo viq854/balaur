@@ -1,0 +1,4 @@
+[submodule "third-party/seqan"]
+	path = third-party/seqan
+	url = https://github.com/seqan/seqan.git
+	branch = fdfdde5

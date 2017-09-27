@@ -7,6 +7,8 @@
 #include <limits.h>
 #include "io.h"
 #include "types.h"
+#include <seqan/sequence.h>
+#include <seqan/seq_io.h>
 
 /* Reference I/O */
 
@@ -14,6 +16,27 @@ void fasta_error(const char* fastaFname) {
 	printf("Error: File %s does not comply with the FASTA file format \n", fastaFname);
 	exit(1);
 }
+
+/*void fasta2ref2(const char *fastaFname, ref_t& ref) {
+	seqan::SeqFileIn file_handle;
+	if (!seqan::open(file_handle, fastaFname)) {
+		std::cerr << "ERROR: Could not open FASTA/FASTQ file: " << fastaFname << "\n";
+		exit(1);
+	}
+	while(!seqan::atEnd(file_handle)) {
+		std::string seq_name;
+		std::string seq;
+		ref.subsequence_offsets.push_back(ref.seq.size());
+		seqan::readRecord(seq_name, seq, file_handle);
+		ref.seq_names.push_back(seq_name);
+		for(int i = 0; i < seq.size(); i++) {
+			ref.seq.push_back(nt4_table[(int) seq[i]]);
+		}
+	}
+	ref.len = ref.seq.size();
+	seqan::close(file_handle);
+	printf("Done reading FASTA file. Number of subsequences: %zu. Total sequence length read = %u\n", ref.subsequence_offsets.size(), ref.len);
+}*/
 
 // reads the sequence data from the FASTA file
 void fasta2ref(const char *fastaFname, ref_t& ref) {
@@ -25,14 +48,21 @@ void fasta2ref(const char *fastaFname, ref_t& ref) {
 	char c = (char) getc(fastaFile);
 	if(c != '>') fasta_error(fastaFname);
 	while(!feof(fastaFile)) {
+		std::string seq_name;
+
 		c = (char) getc(fastaFile);
+		seq_name.push_back(c);		
 
 		ref.subsequence_offsets.push_back(ref.seq.size());
 		// sequence description line (> ...)
 		while(c != '\n' && !feof(fastaFile)){
 			c = (char) getc(fastaFile);
+			seq_name.push_back(c);
 		}
+		seq_name.pop_back();
 		if(feof(fastaFile)) fasta_error(fastaFname);
+		ref.seq_names.push_back(seq_name);
+		//std::cout << seq_name << "\n";
 
 		// sequence data
 		while(c != '>' && !feof(fastaFile)){
@@ -100,7 +130,7 @@ bool load_valid_window_mask(const char* refFname, ref_t& ref, const index_params
 }
 
 void compute_ref_repeat_mask(ref_t& ref) {
-	const seq_t max_contig_len = params->max_matched_contig_len/10;
+	const seq_t max_contig_len = params->max_matched_contig_len;///10;
 	const seq_t n_contigs = ref.len - max_contig_len + 1;
 	ref.contig_mask.resize(n_contigs);
 	
@@ -124,13 +154,14 @@ bool load_repeat_info(const char* refFname, ref_t& ref, const index_params_t* pa
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
+		printf("load_repeat_info: Could not open the file %s!\n", fname.c_str());
 		return false;
 	}
 	ref.precomputed_neighbor_repeats.resize(ref.len - params->k2 + 1);
 	file.read(reinterpret_cast<char*>(&ref.precomputed_neighbor_repeats[0]), (ref.len - params->k2 + 1)*sizeof(ref.precomputed_neighbor_repeats[0]));
 	
-	const seq_t max_contig_len = params->max_matched_contig_len;
-        const seq_t n_contigs = ref.len - max_contig_len + 1;
+	//const seq_t max_contig_len = params->max_matched_contig_len;
+        //const seq_t n_contigs = ref.len - max_contig_len + 1;
 	//ref.contig_mask.resize(n_contigs);
  	//file.read(reinterpret_cast<char*>(&ref.contig_mask[0]), ref.contig_mask.size()*sizeof(ref.contig_mask[0]));
 	//file.close();
@@ -272,6 +303,7 @@ bool load_kmer2_hashes(const char* refFname, ref_t& ref, const index_params_t* p
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
+                printf("load_kmer2_hashes: Could not open the file %s!\n", fname.c_str());
 		return false;
 	}
 	ref.precomputed_kmer2_hashes.resize(ref.len - params->k2 + 1);
@@ -292,11 +324,11 @@ void store_ref_idx_flat(const char* refFname, const ref_t& ref, const index_para
 	fname += std::string("_w");
 	fname += std::to_string(params->ref_window_size);
 	fname += std::string("_p");
-    fname += std::to_string(params->n_buckets_pow2);
-    fname += std::string("_k");
-    fname += std::to_string(params->k);
-    fname += std::string("_H");
-    fname += std::to_string(params->max_count);
+	fname += std::to_string(params->n_buckets_pow2);
+	fname += std::string("_k");
+	fname += std::to_string(params->k);
+	fname += std::string("_H");
+	fname += std::to_string(params->max_count);
 
 	std::ofstream file;
 	file.open(fname.c_str(), std::ios::out | std::ios::binary);

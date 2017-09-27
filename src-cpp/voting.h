@@ -9,9 +9,22 @@
 struct kmer_enc_t {
 	kmer_cipher_t hash;
 	pos_cipher_t pos;
+	int orig_pos;
 	kmer_enc_t() {};
-	kmer_enc_t(kmer_cipher_t _hash, pos_cipher_t _pos): hash(_hash), pos(_pos) {};
+	kmer_enc_t(const kmer_enc_t& k) {
+		hash = k.hash;
+		pos = k.pos;
+		orig_pos = k.orig_pos;
+	}
+	kmer_enc_t(kmer_cipher_t _hash, pos_cipher_t _pos, int _orig_pos): hash(_hash), pos(_pos), orig_pos(_orig_pos) {};
+	kmer_enc_t(kmer_cipher_t _hash, pos_cipher_t _pos): hash(_hash), pos(_pos), orig_pos(0) {};
 	
+	kmer_enc_t& operator= (const kmer_enc_t &c) {
+                this->hash = c.hash;
+                this->pos = c.pos;
+		this->orig_pos = c.orig_pos;
+        }
+
 	struct comp {
 		bool operator()(const kmer_enc_t& a, const kmer_enc_t& b) const {
 			return a.hash < b.hash || (a.hash == b.hash &&  a.pos < b.pos);
@@ -37,9 +50,6 @@ struct voting_task {
 	std::vector<int> contig_ids;
 	std::vector<seq_t> global_pos; //TEMP
 
-	//uint64 key1_xor_pad;
-	//uint64 key2_mult_pad;
-	
 	// client-only data
 	int rid;
 	int true_cid;
@@ -47,6 +57,9 @@ struct voting_task {
 	strand_t strand;
 	int start;
 	int end;
+	// to be moved into a separate client-side struct
+	uint64 key1_xor_pad;
+        uint64 key2_mult_pad;
 	
 	inline int get_contig_len(const int contig_id) const {
 		return contig_orig_lens[contig_id];
@@ -134,6 +147,31 @@ struct voting_stats {
 		int avg_score;
 };
 
+struct cipher_match_t {
+	kmer_enc_t rk;
+	kmer_enc_t ck;
+
+	cipher_match_t() {};
+	cipher_match_t(const cipher_match_t& c) {
+		this->rk = c.rk;
+		this->ck = c.ck;
+	}
+
+	cipher_match_t& operator= (const cipher_match_t &c) {
+		this->rk = c.rk;
+		this->ck = c.ck;
+	}
+
+	struct comp {
+                bool operator()(const cipher_match_t& a, const cipher_match_t& b) const {
+                        return a.rk.orig_pos < b.rk.orig_pos || (a.rk.orig_pos == b.rk.orig_pos && a.ck.pos < b.ck.pos);
+                }
+        };
+};
+
+//typedef std::vector<kmer_enc_t, tbb::scalable_allocator<kmer_enc_t>> VectorKmerEnc;
+
+typedef std::vector<kmer_enc_t> VectorKmerEnc;
 struct voting_results {
 	enum topid {BEST, SECOND};
 	int best_score[2];
@@ -143,6 +181,14 @@ struct voting_results {
 	int rid;
 	bool rc;
 	//int n_true_votes;
+	VectorKmerEnc rvk;
+	VectorKmerEnc cvk;
+	int contig_len;
+	std::vector<cipher_match_t> kmer_matches;
+	
+	// temp here for simplicity, should be saved in a client-side struct
+	uint64 key1_xor_pad;
+        uint64 key2_mult_pad;
 	
 	voting_results() {
 		//n_true_votes = 0;
@@ -168,6 +214,8 @@ struct voting_results {
 				local_pos[BEST] = vr.local_pos[i];
 				contig_id[BEST] = vr.contig_id[i];
 				global_pos[BEST] = vr.global_pos[i];
+				cvk.swap(vr.cvk);
+				contig_len = vr.contig_len;
 			} else if(vr.best_score[i]> best_score[SECOND]) {
 				if(/*vr.contig_id[i] != contig_id[BEST] ||*/ !pos_in_range(vr.global_pos[i] + vr.local_pos[i], global_pos[BEST] + local_pos[BEST], params->delta_x)) {
 					best_score[SECOND]  = vr.best_score[i];

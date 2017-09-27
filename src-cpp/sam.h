@@ -11,7 +11,7 @@ struct sam_writer_t {
 	void open_file(const std::string& fname) {
 		std::string samFname(fname);
 		samFname += std::string(".sam");
-		FILE* samFile = (FILE*) fopen(samFname.c_str(), "w");
+		samFile = (FILE*) fopen(samFname.c_str(), "w");
 		if (samFile == NULL) {
 			printf("sam_writer_t open: Cannot open SAM file: %s!\n", samFname.c_str());
 			exit(1);

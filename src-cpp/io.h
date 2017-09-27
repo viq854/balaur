@@ -29,7 +29,7 @@ static const unsigned char nt4_table[256] = {
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
 
-#define READ_BATCH_SIZE 1000000
+#define READ_BATCH_SIZE 100000
 struct fastq_reader_t {
 	seqan::SeqFileIn file_handle;
 	int n_records;
@@ -46,6 +46,14 @@ struct fastq_reader_t {
 	bool load_next_read(read_t& r) {
 		if(!seqan::atEnd(file_handle)) {
 			seqan::readRecord(r.name, r.seq, r.qual, file_handle);
+			r.len = r.seq.size();
+			for(uint32 i = 0; i < r.len; i++) {
+				r.seq[i] = nt4_table[(int) r.seq[i]];
+			}
+			r.rc = r.seq;
+			for(uint32 i = 0; i < r.len; i++) {
+				r.rc[i] = nt4_complement[r.seq[r.len-i-1]];
+			}
 			r.rid = n_records;
 			n_records++;
 			return true;
@@ -61,7 +69,7 @@ struct fastq_reader_t {
 			reads.reads.push_back(r);
 			n_reads_loaded++;
 		}
-		std::cout << "Loaded " << n_reads_loaded << " reads\n";
+		std::cout << "Loaded " << n_reads_loaded << " reads into current batch, total " << n_records << " reads loaded\n";
 		return n_reads_loaded > 0;
 	}
 	
@@ -156,8 +164,8 @@ void store_precomp_contigs(const char* fileName, reads_t& reads);
 void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);
 void compute_and_store_kmer_hist16(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params);
 void store_kmer_hist_stat(const char* refFname, const MapKmerCounts& hist);
-void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params);
-void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
+bool load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params);
+bool load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold);
 void kmer_stats(const char* refFname);
 void store_ref_index_stats(const char* refFname, const ref_t& ref, const index_params_t* params);
 void ref_kmer_repeat_stats(const char* fastaFname, index_params_t* params, ref_t& ref);

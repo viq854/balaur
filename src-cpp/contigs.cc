@@ -1,5 +1,6 @@
 #include "contigs.h"
 #include <bitset>
+#include <string.h>
 
 // Priority heap support (used to process reference index buckets)
 struct heap_entry_t {
@@ -220,6 +221,7 @@ void find_candidate_contigs(const ref_t& ref, read_t* r, const bool rc) {
 
 ///// project and merge the resulting buckets
 void assemble_candidate_contigs(const ref_t& ref, reads_t& reads) {
+	//#pragma omp parallel for	
 	for(uint32 i = 0; i < reads.reads.size(); i++) {
 		read_t* r = &reads.reads[i];
 		if(r->valid_minhash_f) {

@@ -11,7 +11,7 @@
 // read hashing
 // repeat kmers are masked by default according to the repeat_mask
 #define KEY_LEN 32
-uint8_t blake2_key[KEY_LEN];
+//uint8_t blake2_key[KEY_LEN];
 void generate_sha1_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq_t seq_len, const std::vector<bool>& repeat_mask, bool rev_mask) {
 		const int n_kmers = get_n_kmers(seq_len, params->k2);
 		uint32_t hash[5];
@@ -35,6 +35,10 @@ void generate_vanilla_ciphers(kmer_cipher_t* ciphers, const char* seq, const seq
 	for(int i = 0; i < n_kmers; i++) {
 			ciphers[i] = CityHash64(&seq[i], params->k2);
 	}
+}
+
+kmer_cipher_t apply_keys(const kmer_cipher_t input_key, const uint64 key1, const uint64 key2) {
+	return (input_key^key1)*key2;
 }
 
 void apply_keys(kmer_cipher_t* ciphers, const int n_ciphers, const uint64 key1, const uint64 key2) {
@@ -89,6 +93,30 @@ inline bool test_and_set_repeat(const seq_t local_pos, const seq_t offset, const
 	return true;
 }
 
+
+seq_t get_global_cipher_pos(const int bin_id, const kmer_cipher_t cipher, const seq_t offset,
+	const std::vector<kmer_cipher_t>& precomp_ref_hashes, const uint64 key1, const uint64 key2, bool vanilla) {
+	seq_t pos = offset;
+	pos += bin_id * params->bin_size;
+	
+	for(int j = 0; j < params->bin_size; j++) {
+		seq_t ref_pos = pos + j;
+		if(ref_pos >= precomp_ref_hashes.size()) {
+			std::cout << "ERROR: reached end of reference without finding a match " << bin_id << " " << cipher << " " << offset << " " << ref_pos << "\n";
+			exit(-1);
+		} else {
+			kmer_cipher_t ref_cipher = precomp_ref_hashes[ref_pos];
+			if(!vanilla) {
+				ref_cipher = apply_keys(ref_cipher, key1, key2);
+			}
+			if(ref_cipher == cipher) {
+				return ref_pos;
+			}
+		}
+	}
+	std::cout << "ERROR: did not find a cipher match " << bin_id << " " << cipher << " " << offset << " " << pos << "\n";
+	exit(-1);
+}
 
 // strided lookup of precomputed ref kmers (access pattern stored in the shuffle array)
 void gather_sha1_ciphers(kmer_cipher_t* ciphers, const std::vector<int>& shuffle, const int shuffle_len, const seq_t offset, const std::vector<kmer_cipher_t>& precomp_ref_hashes) {

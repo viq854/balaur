@@ -33,11 +33,16 @@ void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& ref) {
 	// 2. load the frequency of each kmer and collect high-frequency kmers
 	printf("Loading frequent kmers... \n");
 	double start_time = omp_get_wtime();
-	load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
+	if(!load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count)) {
+		printf("Precomputing frequent kmers. This only needs to run once per genome (will take time on large genomes)... \n");
+		compute_and_store_kmer_hist16(fastaFname, ref.seq.c_str(), ref.len, params);
+		load_freq_kmers(fastaFname, ref.high_freq_kmer_bitmap, ref.high_freq_kmer_trie, params->max_count);
+	}
 	mark_freq_kmers(ref, params);
 
 	printf("Loading valid windows mask... \n");
 	if(!load_valid_window_mask(fastaFname, ref, params)) {
+		printf("Precomputing valid reference windows. This only needs to run once per genome. \n");
 		mark_windows_to_discard(ref, params);
 		store_valid_window_mask(fastaFname, ref, params);
 	}
@@ -240,7 +245,7 @@ void load_index_ref_lsh(const char* fastaFname, const index_params_t* params, re
 	printf("Time: %.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 	if(params->load_mhi) {
-		printf("Loading reference MinHash index... \n");
+		printf("Loading reference MinHash index (takes time for a large index)... \n");
 		//t = clock();
 		double start_time = omp_get_wtime();
 		load_ref_idx(fastaFname, ref, params);

@@ -2,6 +2,7 @@
 #define SEQ_H
 
 #pragma once
+#include <algorithm>
 #include <istream>
 #include <sstream>
 #include <iostream>

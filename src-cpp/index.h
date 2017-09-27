@@ -202,6 +202,7 @@ typedef struct {
 	std::string seq; 					// reference sequence
 	seq_t len;							// reference sequence length
 	VectorU32 subsequence_offsets;
+	std::vector<std::string> seq_names;
 
 	MapKmerCounts kmer_hist;			// kmer occurrence histogram
 	MarisaTrie high_freq_kmer_trie;		// frequent reference kmers TRIE
@@ -222,6 +223,10 @@ typedef struct {
 	//std::vector<char> precomputed_local_repeats;
 	//std::unordered_set<uint32> repeats;
 	//std::vector<kmer_cipher_t> repeats_vec;
+
+	void free_repeats() {
+		std::vector<uint16_t>().swap(precomputed_neighbor_repeats);
+	}
 
 } ref_t;
 
@@ -290,7 +295,12 @@ struct read_t {
 	unsigned int seq_id;
 	uint32_t ref_pos_l;
 	uint32_t ref_pos_r;
-	
+
+	void free_minhash_state() {
+		std::vector<minhash_t>().swap(minhashes_f);
+		std::vector<minhash_t>().swap(minhashes_rc);	
+	}
+
 	read_t():  n_match_f(0),
 	 valid_minhash_f(0),
 	 valid_minhash_rc(0),
@@ -320,6 +330,11 @@ struct read_t {
 		second_best_aln.score = 0;
 		hashes_f = 0;
 		hashes_rc = 0;
+	}
+
+	void free() {
+		delete(hashes_f);
+        	delete(hashes_rc);
 	}
 	
 	// assumes that reads were generated with wgsim
@@ -401,6 +416,21 @@ typedef struct {
 	VectorReads reads;				// read data
 	MapKmerCounts kmer_hist;		// kmer histogram
 	MapKmerCounts low_freq_kmer_hist;
+
+	void free() {
+		for(uint32 i = 0; i < reads.size(); i++) {
+			read_t* r = &reads[i];
+			r->free();
+		}
+	}
+	
+	void free_minhash_data() {
+		for(uint32 i = 0; i < reads.size(); i++) {
+			read_t* r = &reads[i];
+			r->free_minhash_state();
+		}
+	}
+
 } reads_t;
 
 void index_ref_lsh(const char* fastaFname, index_params_t* params, ref_t& refidx);

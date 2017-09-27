@@ -11,7 +11,7 @@
 
 // K-Mer stats //
 
-void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params) {
+bool load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const index_params_t* params) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
 	fname += std::to_string(params->k);
@@ -19,7 +19,7 @@ void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const i
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
 	if (!file.is_open()) {
 		printf("load_freq_kmers: Cannot open the hist file %s!\n", fname.c_str());
-		exit(1);
+		return false;
 	}
 	uint32 filtered = 0;
 	uint64 kmer;
@@ -37,19 +37,19 @@ void load_freq_kmers(const char* refFname, std::set<uint64>& freq_kmers, const i
 	}
 	file.close();
 	std::set<uint64>::iterator it;
-	printf("Filtered %u kmers\n", filtered);
+	printf("Filtered %u kmers based on the specified threshold of %llu\n", filtered, params->max_count);
+	return true;
 }
 
-void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold) {
+bool load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, MarisaTrie& freq_trie, const uint32 max_count_threshold) {
 	std::string fname(refFname);
 	fname += std::string(".kmer_hist");
-
+	fname += std::to_string(params->k);
 	std::ifstream file;
 	file.open(fname.c_str(), std::ios::in | std::ios::binary);
-
 	if (!file.is_open()) {
 		printf("load_kmer_hist: Cannot open the hist file %s!\n", fname.c_str());
-		exit(1);
+		return false;
 	}
 	freq_kmers_bitmap.resize(UINT_MAX + 1L);
 	uint32 kmer, count;
@@ -83,11 +83,17 @@ void load_freq_kmers(const char* refFname, VectorBool& freq_kmers_bitmap, Marisa
 	freq_trie.build(keys, 0);
 #endif
 	file.close();
-	printf("Filtered %u kmers, tot %u \n", filtered, tot_filtered);
+	printf("Filtered %u kmers based on the specified threshold of %u\n", filtered, max_count_threshold);
+	return true;
 }
 
 // compute and store the frequency of each kmer in the given sequence (up to length 32)
 void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params) {
+	if (params->k > 32) {
+                printf("compute_and_store_kmer_hist32: k > 32 not supported.\n");
+                exit(1);
+        }
+
 	std::vector<uint64> kmers(seq_len - params->k + 1);
 	#pragma omp parallel
 	for(seq_t j = 0; j < seq_len - params->k + 1; j++) {
@@ -98,49 +104,39 @@ void compute_and_store_kmer_hist32(const char* refFname, const char* seq, const 
 	fname += std::string(".kmer_hist");
 	fname += std::to_string(params->k);
 	std::ofstream file;
-    file.open(fname.c_str(), std::ios::out | std::ios::binary);
-    if (!file.is_open()) {
+	file.open(fname.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open()) {
 		printf("compute_and_store_kmer_hist32: Cannot open the hist file %s!\n", fname.c_str());
 		exit(1);
 	}
-
-    int counter = 0;
-    seq_t unique = 0;
-	for(seq_t j = 0; j < kmers.size(); j++) {
-		if(j == 0) {
-			if(kmers[j] != 0) {
-				counter = 1;
+	
+	int counter = 1;
+	//seq_t unique = 0;
+	for(seq_t j = 1; j < kmers.size(); j++) {
+		if(kmers[j] == kmers[j-1]) {
+			counter++;
+			if(j == kmers.size()-1) {
+				file.write(reinterpret_cast<char*>(&kmers[j]), sizeof(kmers[j]));
+				file.write(reinterpret_cast<char*>(&counter), sizeof(counter));
 			}
 		} else {
-			if(kmers[j] != 0 && kmers[j] == kmers[j-1]) {
-				counter++;
-				if(j == kmers.size()-1) {
-					file.write(reinterpret_cast<char*>(&kmers[j]), sizeof(kmers[j]));
-					file.write(reinterpret_cast<char*>(&counter), sizeof(counter));
-				}
-			} else {
-				if(counter >= 1) {
-					if(counter == 1) {
-						unique++;
-					} else {
-						file.write(reinterpret_cast<char*>(&kmers[j-1]), sizeof(kmers[j-1]));
-						file.write(reinterpret_cast<char*>(&counter), sizeof(counter));
-					}
-				}
-				if(kmers[j] != 0) {
-					counter = 1;
-				} else {
-					counter = 0;
-				}
+			if(counter > 1) {
+				file.write(reinterpret_cast<char*>(&kmers[j-1]), sizeof(kmers[j-1]));
+				file.write(reinterpret_cast<char*>(&counter), sizeof(counter));
 			}
+			counter = 1;
 		}
 	}
 	file.close();
-    std::cout << "Total number of unique kmers " << unique << " out of " << kmers.size() << "\n";
+	//std::cout << "Total number of unique kmers " << unique << " out of " << kmers.size() << "\n";
 }
 
 // compute and store the frequency of each kmer in the given sequence (up to length 16)
 void compute_and_store_kmer_hist16(const char* refFname, const char* seq, const seq_t seq_len, const index_params_t* params) {
+	if (params->k > 16) {
+                printf("compute_and_store_kmer_hist16: k > 16 not supported.\n");
+                exit(1);
+        }
 	std::map<uint32, seq_t> hist;
 	for(seq_t j = 0; j < seq_len - params->k + 1; j++) {
 		uint32_t kmer;
@@ -158,11 +154,18 @@ void compute_and_store_kmer_hist16(const char* refFname, const char* seq, const 
 		printf("compute_and_store_kmer_hist16: Cannot open the hist file %s!\n", fname.c_str());
 		exit(1);
 	}
-	uint32 map_size = hist.size();
+	uint32 map_size = 0; //hist.size();
+	for (std::map<uint32, seq_t>::const_iterator it = hist.begin(); it != hist.end(); ++it) {
+		if(it->second > 1) {
+			map_size++;
+		}
+	}
 	file.write(reinterpret_cast<char*>(&map_size), sizeof(map_size));
 	for (std::map<uint32, seq_t>::const_iterator it = hist.begin(); it != hist.end(); ++it) {
-		file.write(reinterpret_cast<const char*>(&(it->first)), sizeof(it->first));
-		file.write(reinterpret_cast<const char*>(&(it->second)), sizeof(it->second));
+		if(it->second > 1) {
+			file.write(reinterpret_cast<const char*>(&(it->first)), sizeof(it->first));
+			file.write(reinterpret_cast<const char*>(&(it->second)), sizeof(it->second));
+		}
 	}
 	file.close();
 }

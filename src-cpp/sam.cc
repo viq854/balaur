@@ -40,11 +40,14 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		if (r->top_aln.rc) flag |= SAM_FSR;
 
 		// QNAME, FLAG, RNAME
-		if(r->seq_id+1 <= 22) {
-			fprintf(samFile, "%s\t%d\t%d\t", r->name.c_str(), flag, r->seq_id+1);
-		} else {
-			fprintf(samFile, "%s\t%d\tX\t", r->name.c_str(), flag);
-		}
+		//if(r->seq_id+1 <= 22) {
+			//fprintf(samFile, "%s\t%d\t%d\t", r->name.c_str(), flag, r->seq_id+1);
+		//} else {
+			//fprintf(samFile, "%s\t%d\tX\t", r->name.c_str(), flag);
+		//}
+		fprintf(samFile, "%s\t%d\t%s\t", r->name.c_str(), flag, ref.seq_names[r->seq_id].c_str());
+
+		//fprintf(samFile, "%s\t%d\t%s\t", r->name.c_str(), flag, ref.seq_names[r->seq_id].c_str());
 
 		// POS (1-based), MAPQ
 		fprintf(samFile, "%d\t%d\t", (int)(aln_pos+1), r->top_aln.score);
@@ -62,7 +65,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		}
 		fprintf(samFile, "\t");
 		for (uint32 i = 0; i != r->len; i++) {
-			fprintf(samFile, "%c", '*');
+			fprintf(samFile, "%c", r->qual[i]);
 		}
 		fprintf(samFile, "\n");
 	} else { // unmapped read
@@ -76,7 +79,7 @@ void print_aln2sam(FILE* samFile, read_t* r, const ref_t& ref) {
 		}
 		fprintf(samFile, "\t");
 		for (uint32 i = 0; i != r->len; i++) {
-			fprintf(samFile, "%c", '*');
+			fprintf(samFile, "%c", r->qual[i]);
 		}
 		fprintf(samFile, "\n");
 	}

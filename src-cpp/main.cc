@@ -47,38 +47,40 @@ void print_usage() {
 	printf("\nIndex-only options:\n\n");
 	printf("       -w       length of the reference windows to hash (should be set to the expected read length for optimal results) [%d]\n", params->ref_window_size);
 	printf("       -H       upper bound on kmer occurrence in the reference [%llu]\n", params->max_count);
-	printf("       -s        initially allocated hash table bucket size [%d]\n", params->bucket_size);
+	printf("       -s       initially allocated hash table bucket size [%d]\n", params->bucket_size);
 	printf("\nAlignment-only options:\n\n");
-	printf("       -m       candidate contig filtering: min required number of index buckets shared with the read [%d]\n", params->min_n_hits);
-	printf("       -N       candidate contig filtering: max distance from the best found number of buckets shared with a contig [%d]\n", params->dist_best_hit);
+	printf("       -v        length k2 of kmers counted during voting [%d]\n", params->k2);
+	printf("       -m      	 candidate contig filtering: min required number of index buckets shared with the read [%d]\n", params->min_n_hits);
+	printf("       -N        candidate contig filtering: max distance from the best found number of buckets shared with a contig [%d]\n", params->dist_best_hit);
 	printf("       -L        load precomputed candidate contigs [%d]\n", params->k2);
 	printf("       -z        precomputed candidate contigs file (store/load) [%d]\n", params->k2);
-	printf("       -v        length k2 of kmers counted during voting [%d]\n", params->k2);
 	printf("       -d        votes array convolution radius  [%d]\n", params->delta_inlier);
 	printf("       -x        min distance between separate mapping hits  [%d]\n", params->delta_x);
 	printf("       -c        cutoff on the min number of votes [auto]\n");
-	printf("       -f         mapq scaling factor  [auto]\n");
+	printf("       -f        mapq scaling factor  [auto]\n");
 	printf("       -I        voting kmer sampling factor [%d]\n", params->sampling_intv);
+	printf("       -Z        read batch size (number of reads loaded/processed at a time) [%d]\n", READ_BATCH_SIZE);
 	printf("\nPrivacy-related options:\n\n");
 	printf("       -V       enable vanilla mode (non-cryptographic hashing, no repeat filtering) \n");
 	printf("       -B       voting kmer discretized position range  [%d]\n", params->bin_size);
 	printf("       -S       voting task size: number of contigs per read encrypted with same keys [%d]\n", params->batch_size);
-	printf("       -M      enable masking kmers neighboring repeats (default: only repeats are masked) \n");
+	printf("       -M       enable masking kmers neighboring repeats (default: only repeats are masked) \n");
 	printf("\nOther options:\n\n");
-	printf("       -t        number of threads [%d]\n", params->n_threads);
+	printf("       -t        number of threads, index/voting computation [%d]\n", params->n_threads);
 }
 
 index_params_t* params;
 int main(int argc, char *argv[]) {
 	params = new index_params_t();
 	params->set_default_index_params();
+	uint32 read_batch_size = READ_BATCH_SIZE;
 
 	if (argc < 4) {
 		print_usage();
 		exit(1);
 	}
 	int c;
-	while ((c = getopt(argc-1, argv+1, "t:w:k:h:H:T:b:p:m:s:d:v:N:c:x:Lf:z:I:S:B:MV")) >= 0) {
+	while ((c = getopt(argc-1, argv+1, "t:w:k:h:H:T:b:p:m:s:d:v:N:c:x:Lf:z:I:Z:S:B:MV")) >= 0) {
 		switch (c) {
 			case 't': params->n_threads = atoi(optarg); break;
 			case 'h': params->h = atoi(optarg); break;
@@ -103,6 +105,7 @@ int main(int argc, char *argv[]) {
 			case 'S': params->batch_size = atoi(optarg); break;
 			case 'B': params->bin_size = atoi(optarg); break;
 			case 'M': params->mask_repeat_nbrs = true; break;
+			case 'Z': read_batch_size = atoi(optarg); break;
 			default: return 0;
 		}
 	}
@@ -118,7 +121,10 @@ int main(int argc, char *argv[]) {
 		params->batch_size = INT_MAX;
 		params->bin_size = 1;
 		params->mask_repeat_nbrs = false;
-		if(params->ref_window_size > 350) params->monolith = true;
+		if(params->ref_window_size > 350) { // todo: expose params
+			printf("Switching to *monolith* mode for long reads.\n");
+			params->monolith = true;
+		}
 	}
 		
 	printf("**********BALAUR**************\n");
@@ -128,16 +134,21 @@ int main(int argc, char *argv[]) {
 		index_ref_lsh(argv[optind+1], params, ref);
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
+		// load the reference, index, and auxiliary ref structures
 		ref_t ref;
-		//load_index_ref_lsh(argv[optind+1], params, ref);
-		// load all reads as a single batch
-		// reads_t reads;
-		// fastq2reads(argv[optind+2], reads);
-	
-		// read batch processing
-		fastq_reader_t reader;
-		reader.open_file(argv[optind+2]);
-		
+		load_index_ref_lsh(argv[optind+1], params, ref);
+		if(!load_kmer2_hashes(argv[optind+1], ref, params)) {
+			printf("Precomputing voting kmer reference hashes; this only needs to run once for this -v value and encryption algorithm.\n");
+			compute_store_kmer2_hashes(argv[optind+1], ref, params);
+		}
+		if(!params->vanilla) {
+			if(!load_repeat_info(argv[optind+1], ref, params)) {
+				printf("Precomputing kmer reference repeats; this only needs to run once for this -v value.\n");
+				compute_store_repeat_info(argv[optind+1], ref, params);
+			}
+ 		}
+
+		// load/store contig candidates (optional)	
 		precomp_contig_io_t contig_io;
 		if(params->load_mhi) {
 			if(params->precomp_contig_file_name.size() != 0) {
@@ -147,41 +158,51 @@ int main(int argc, char *argv[]) {
 			contig_io.open_file(params->precomp_contig_file_name.c_str(), LOAD);
 		}
 		
+		// will store alignment results
 		sam_writer_t sam_io;
 		sam_io.open_file(argv[optind+2]);
-		
+	
+		// load all reads as a single batch
+                // reads_t reads;
+                // fastq2reads(argv[optind+2], reads);
+
+		// read batch processing
+                fastq_reader_t reader;
+                reader.open_file(std::string(argv[optind+2]));	
 		while(true) {
-			load_index_ref_lsh(argv[optind+1], params, ref);
+			printf(">>>>>>>Loading read batch.....\n");
 			reads_t reads;
-			if(!reader.load_next_read_batch(reads, READ_BATCH_SIZE)) break;
+			if(!reader.load_next_read_batch(reads, read_batch_size)) break;
+			//ref_t ref;
+                        //load_index_ref_lsh(argv[optind+1], params, ref);
 			balaur_main(argv[optind+1], ref, reads, contig_io, sam_io);
+			reads.free();
 		}
+		printf(">>>>>>>Alignment done!\n");
 		reader.close_file();
 		contig_io.close_file();
 		sam_io.close_file();
-	} else if (strcmp(argv[1], "stats") == 0) {
+	} /*else if (strcmp(argv[1], "stats") == 0) {
 		printf("Mode: STATS \n");
 		//ref_t ref;
 		//load_ref_idx(argv[optind+1], ref, &params);
 		//store_ref_idx_flat(argv[optind+1], ref, &params);
 
-		// load the reference index
 		ref_t ref;
 		fasta2ref(argv[optind+1], ref);
-		//load_kmer2_hashes(argv[optind+1], ref, params);
-		//compute_store_repeat_info(argv[optind+1], ref, params);
+		load_kmer2_hashes(argv[optind+1], ref, params);
+		compute_store_repeat_info(argv[optind+1], ref, params);
 		//compute_store_repeat_local(argv[optind+1], ref, &params);		
 		//load_repeat_info(argv[optind+1], ref, params);
 		//bin_repeat_stats(argv[optind+1], params, ref);
-
-		compute_store_kmer2_hashes(argv[optind+1], ref, params);
-	
+		//compute_store_kmer2_hashes(argv[optind+1], ref, params);
 		//ref_kmer_repeat_stats(argv[optind+1], &params, ref);
 		//ref_kmer_fingerprint_stats(argv[optind+1], &params, ref);
 		//load_index_ref_lsh(argv[optind+1], &params, ref);
 		//store_ref_index_stats(argv[optind+1], ref, &params);
 		//kmer_stats(argv[optind+1]);
-	} else {
+	} */ else {
+		std::cout<< "No valid command specified.\n";
 		print_usage();
 		exit(1);
 	}
