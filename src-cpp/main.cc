@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
 	params->set_default_index_params();
 	uint32 read_batch_size = READ_BATCH_SIZE;
 
-	if (argc < 4) {
+	if (argc < 3) {
 		print_usage();
 		exit(1);
 	}
