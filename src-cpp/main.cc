@@ -134,6 +134,12 @@ int main(int argc, char *argv[]) {
 		index_ref_lsh(argv[optind+1], params, ref);
 		store_index_ref_lsh(argv[optind+1], params, ref);
 	} else if (strcmp(argv[1], "align") == 0) {
+		if (argc < 4) {
+			printf("Must specify the <ref.fa> and <reads.fastq> files\n");
+                	print_usage();
+                	exit(1);
+        	}
+
 		// load the reference, index, and auxiliary ref structures
 		ref_t ref;
 		load_index_ref_lsh(argv[optind+1], params, ref);
