@@ -29,6 +29,11 @@ wgsim/wgsim_eval.pl alneval -ag 20 ../test_data/chr21.0.01.L150.100k.fastq.sam
 wgsim/wgsim_eval.pl alneval -ag 20 ../test_data/chr21.0.02.L150.100k.fastq.sam
 ```
 
+An example that adds position binning, kmer sampling, and repeat neighborhood masking:
+```
+./balaur align ../test_data/chr21.fa ../test_data/chr21.0.02.L150.100k.fastq -I 3 -B 20 -M
+```
+
 #### Commands
 1.```index``` construct the MinHash reference genome index   
 ```balaur index [options] <seq_fasta>```   
